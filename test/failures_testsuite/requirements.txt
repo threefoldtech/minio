@@ -1,0 +1,7 @@
+nose
+nose-progressive
+nose-testconfig
+sphinx
+sphinx-rtd-theme
+parameterized
+rednose

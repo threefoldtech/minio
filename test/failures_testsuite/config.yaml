@@ -1,0 +1,17 @@
+robot:
+  url: http://localhost:6600
+  client: demo
+
+zerotier:
+  id: af78bf9436fae600
+  token: 
+
+s3:
+  deploy: true # True > deploy, false > use
+  instance:
+    farm: 'tlre'
+    size: 20000
+    shards: 16
+    parity: 4
+  use:
+    s3_service_name: 's3_demo_0'
