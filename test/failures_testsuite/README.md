@@ -1,1 +1,1 @@
-# demo
+# failure test suite to cover all failure scenarios
