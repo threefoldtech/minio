@@ -12,6 +12,7 @@ class TestS3Failures(BaseTest):
         """
         - upload 2M, should succeed.
         - Download file, should succeed
+        - Deleted the downloaded file
         - assert md5 checksum is matching
         - Stop n zdb, n <= parity
         - Download file, should succeed
@@ -23,14 +24,15 @@ class TestS3Failures(BaseTest):
 
         md5_after = self.download_file(file_name=self.file_name)
         self.assertEqual(md5_after, md5_before)
+        self._delete_file('tmp/{}'.format(md5_after))
 
-        self.logger.info(' Stop {} zdb'.format((self.parity)))
+        self.logger.info('Stop {} zdb'.format((self.parity)))
         self.s3.failures.zdb_down(count=self.parity)
 
         md5_after = self.download_file(file_name=self.file_name)
         self.assertEqual(md5_after, md5_before)
 
-        self.logger.info(' Start {} zdb'.format((self.parity)))
+        self.logger.info('Start {} zdb'.format((self.parity)))
         self.s3.failures.zdb_up(count=self.parity)
 
     def test002_stop_parity_zdb_upload_download_start(self):

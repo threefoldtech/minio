@@ -92,7 +92,7 @@ class BaseTest(TestCase):
          - Upload it
         :return: file_name
         """
-        self.logger.info(' Uploading file')
+        self.logger.info('Uploading file')
         self._create_directory(directory='tmp')
         self.file_name = self._create_file(directory='tmp', size=1024*1024*2)
 
@@ -164,7 +164,7 @@ class BaseTest(TestCase):
 
     def _create_directory(self, directory):
         if not os.path.exists(directory):
-            os.makedirs(directory)
+            os.system("rm -rf {}".format(directory))
 
     def _delete_directory(self, directory):
         os.rmdir(directory)
@@ -177,3 +177,6 @@ class BaseTest(TestCase):
 
         os.rename('{}/random'.format(directory), '{}/{}'.format(directory,file_name))
         return file_name
+
+    def _delete_file(self, file_path):
+        os.system("rm -f {}".format(file_path))
