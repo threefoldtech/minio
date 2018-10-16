@@ -93,7 +93,6 @@ class BaseTest(TestCase):
         :return: file_name
         """
         self.logger.info(' Uploading file')
-
         self._create_directory(directory='tmp')
         self.file_name = self._create_file(directory='tmp', size=1024*1024*2)
 
@@ -145,7 +144,7 @@ class BaseTest(TestCase):
         self.s3_data = self.s3.service.data['data']
         self.parity = self.s3_data['parityShards']
         self.shards = self.s3_data['dataShards']
-
+        self.logger.info(' - shards {}, parity {}'.format(self.shards, self.parity))
         self.minio = {'minio_ip': self.s3_data['minioUrls']['public'],
                       'username': self.s3_data['minioLogin'],
                       'password': self.s3_data['minioPassword']
