@@ -135,8 +135,8 @@ class BaseTest(TestCase):
         :return: str(downloaded_file_md5)
         """
         self.logger.info('downloading {} .... '.format(file_name))
-        upload_cmd = '/bin/mc cp s3Minio/testingbucket/{} tmp/{}_out'.format(file_name, file_name)
-        out, err = self.execute_cmd(cmd=upload_cmd)
+        download_cmd = '/bin/mc cp s3Minio/testingbucket/tmp/{} tmp/{}_out'.format(file_name, file_name)
+        out, err = self.execute_cmd(cmd=download_cmd)
         if err:
             self.logger.error(err)
         return self.calc_md5_checksum('tmp/{}_out'.format(file_name))
