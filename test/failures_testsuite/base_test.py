@@ -79,7 +79,7 @@ class BaseTest(TestCase):
         self.s3 = self.s3_controller.s3[self.s3_service_name]
         self.get_s3_info()
         logger.info('Start all zdb')
-        self.s3.failures.zdb_start_all()
+        #self.s3.failures.zdb_start_all()
 
     def tearDown(self):
         pass
@@ -95,7 +95,6 @@ class BaseTest(TestCase):
         self.logger.info(' Uploading file')
 
         self._create_directory(directory='tmp')
-        import ipdb; ipdb.set_trace()
         self.file_name = self._create_file(directory='tmp', size=1024*1024*2)
 
         config_minio_cmd = '/bin/mc config host add s3Minio {} {} {}'.format(self.minio['minio_ip'],
