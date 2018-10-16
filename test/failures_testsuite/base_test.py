@@ -62,7 +62,7 @@ class BaseTest(TestCase):
                 raise Exception("cant find {} s3 service under {} robot client".format(cls.s3_service_name,
                                                                                        cls.config['robot']['client']))
         cls.s3 = cls.s3_controller.s3[cls.s3_service_name]
-        cls.s3.failures.zdb_start_all()
+        #cls.s3.failures.zdb_start_all()
         self.get_s3_info()
 
     @classmethod
@@ -95,6 +95,7 @@ class BaseTest(TestCase):
         self.logger.info(' Uploading file')
 
         self._create_directory(directory='tmp')
+        import ipdb; ipdb.set_trace()
         self.file_name = self._create_file(directory='tmp', size=1024*1024*2)
 
         config_minio_cmd = '/bin/mc config host add s3Minio {} {} {}'.format(self.minio['minio_ip'],
@@ -171,10 +172,10 @@ class BaseTest(TestCase):
         os.rmdir(directory)
 
     def _create_file(self, directory, size):
-        with open('/{}/random'.format(directory), 'wb') as fout:
+        with open('{}/random'.format(directory), 'wb') as fout:
             fout.write(os.urandom(size))  # 1
 
         file_name = self.calc_md5_checksum('random')
 
-        os.rename('/{}/random'.format(directory), file_name)
+        os.rename('{}/random'.format(directory), file_name)
         return file_name

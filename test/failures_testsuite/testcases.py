@@ -66,19 +66,23 @@ class TestS3Failures(BaseTest):
 
     def test004_stop_greater_parity_zdb_upload(self):
         """
+        - Upload file, should succeed
         - Stop n+ zdb, n = parity, should succeed
         - Upload file, should fail
+        - Download the uploaded file, should succeed
         - Start n+ zdb
         """
+        self.file_name = self.upload_file()
         zdb_turn_down = self.parity + randint(1, self.shards)
         self.logger.info(' Stop {} zdb'.format(zdb_turn_down))
         self.s3.failures.zdb_down(count=zdb_turn_down)
 
         try:
-            self.file_name = self.upload_file()
+            self.upload_file()
             self.assertTrue(False, 'Uploading should raise an error')
         except:
             pass
 
         self.logger.info(' Start {} zdb'.format(zdb_turn_down))
         self.s3.failures.zdb_up(count=zdb_turn_down)
+
