@@ -78,7 +78,7 @@ class BaseTest(TestCase):
     def setUp(self):
         self.s3 = self.s3_controller.s3[self.s3_service_name]
         self.get_s3_info()
-        logger.info('Start all zdb')
+        #logger.info('Start all zdb')
         #self.s3.failures.zdb_start_all()
 
     def tearDown(self):
@@ -174,7 +174,7 @@ class BaseTest(TestCase):
         with open('{}/random'.format(directory), 'wb') as fout:
             fout.write(os.urandom(size))  # 1
 
-        file_name = self.calc_md5_checksum('random')
+        file_name = self.calc_md5_checksum('{}/random'.format(directory))
 
-        os.rename('{}/random'.format(directory), file_name)
+        os.rename('{}/random'.format(directory), '{}/{}'.format(directory,file_name))
         return file_name
