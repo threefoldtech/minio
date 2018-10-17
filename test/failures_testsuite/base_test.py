@@ -164,10 +164,10 @@ class BaseTest(TestCase):
 
     def _create_directory(self, directory):
         if not os.path.exists(directory):
-            os.system("rm -rf {}".format(directory))
+            os.makedirs(directory)
 
     def _delete_directory(self, directory):
-        os.rmdir(directory)
+        os.system("rm -rf {}".format(directory))
 
     def _create_file(self, directory, size):
         with open('{}/random'.format(directory), 'wb') as fout:
