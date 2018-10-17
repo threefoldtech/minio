@@ -180,3 +180,4 @@ class BaseTest(TestCase):
 
     def _delete_file(self, file_path):
         os.system("rm -f {}".format(file_path))
+
