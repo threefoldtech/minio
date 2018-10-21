@@ -28,20 +28,20 @@ class BaseTest(TestCase):
         cls.config = j.data.serializer.yaml.load('./config.yaml')
         if cls.config['s3']['deploy']:
             cls.s3_controller = Controller(cls.config)
-            s3_service_name = str(time.time()).split('.')[0]
-            logger.info("s3 service name : {}".format(s3_service_name))
+            cls.s3_service_name = str(time.time()).split('.')[0]
+            logger.info("s3 service name : {}".format(cls.s3_service_name))
 
             data = [cls.config['s3']['instance']['farm'], cls.config['s3']['instance']['size'],
                     cls.config['s3']['instance']['shards'], cls.config['s3']['instance']['parity'],
                     cls.config['s3']['instance']['nsName']]
-            instance = cls.s3_controller.deploy(s3_service_name, *data)
-            logger.info("wait for deploying {} s3 service".format(s3_service_name))
+            instance = cls.s3_controller.deploy(cls.s3_service_name, *data)
+            logger.info("wait for deploying {} s3 service".format(cls.s3_service_name))
             try:
                 instance.wait(die=True)
             except:
                 logger.error("May be there is an error while installing s3! ")
             for _ in range(10):
-                cls.s3 = cls.s3_controller.s3[s3_service_name]
+                cls.s3 = cls.s3_controller.s3[cls.s3_service_name]
                 state = cls.s3.service.state
                 logger.info(" s3 state : {}".format(state))
                 try:
