@@ -147,3 +147,10 @@ class TestS3Failures(BaseTest):
         md5_after = self.download_file(file_name=self.file_name)
         self.assertEqual(md5_after, md5_before)
 
+    def test006_kill_minio_process(self):
+        """
+        - kill minio process and make sure it will restart automatically.
+        """
+        self.logger.info('kill minio process and make sure it will restart automatically')
+        flag = self.s3.failures.minio_process_down(timeout=200)
+        self.assertTrue(flag, "minio didn't restart")
