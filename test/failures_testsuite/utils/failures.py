@@ -47,7 +47,7 @@ class FailureGenenator:
 
         self._parent.execute_all_nodes(do, nodes=s3.service.data['data']['namespaces'])
 
-    def minio_process_down(self):
+    def minio_process_down(self, timeout):
         """
         turn off the minio process, then count how much times it takes to restart
         """
@@ -58,26 +58,20 @@ class FailureGenenator:
         logger.info('killing minio process')
         job_id = 'minio.%s' % s3.service.guid
         cont.client.job.kill(job_id, signal=signal.SIGINT)
-        jobids = [j['cmd']['id'] for j in cont.client.job.list()]
-        while job_id in jobids:
-            jobids = [j['cmd']['id'] for j in cont.client.job.list()]
         logger.info('minio process killed')
 
         logger.info("wait for minio to restart")
         start = time.time()
-        while True:
+        while (start + timeout) > time.time():
             try:
-                resp = requests.get(url, timeout=0.2)
+                requests.get(url, timeout=0.2)
                 end = time.time()
-                break
+                duration = end - start
+                logger.info("minio took %s sec to restart" % duration)
+                return True
             except ConnectionError:
                 continue
-            except ConnectionError:
-                continue
-
-        duration = end-start
-        logger.info("minio took %s sec to restart" % duration)
-        return duration
+        return False
 
     def zdb_down(self, count=1):
         """
