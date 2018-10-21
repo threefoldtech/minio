@@ -126,7 +126,7 @@ class S3Manager:
         vm = self.dm_robot.services.get(template_name='dm_vm', name=self.service.guid)
         return j.clients.zrobot.robots[vm.data['data']['nodeId']]
 
-    def deploy(self, farm, size=20000, data=4, parity=2, login='admin', password='adminadmin'):
+    def deploy(self, farm, size=20000, data=4, parity=2, login='admin', password='adminadmin', nsName='namespace'):
         """
         deploy an s3 environment
 
@@ -135,7 +135,7 @@ class S3Manager:
         """
 
         logger.info("install zerotier client")
-        zt = self.dm_robot.services.find_or_create('zerotier_client', 'zt', data={'token': self._zt_token})
+        self.dm_robot.services.find_or_create('zerotier_client', 'zt', data={'token': self._zt_token})
 
         logger.info("install s3 service")
         s3_data = {
@@ -146,7 +146,8 @@ class S3Manager:
             'storageType': 'hdd',
             'storageSize': size,
             'minioLogin': login,
-            'minioPassword': password}
+            'minioPassword': password,
+            'nsName': nsName}
         self._service = self.dm_robot.services.find_or_create('s3', self.name, data=s3_data)
         return self._service.schedule_action('install')
 

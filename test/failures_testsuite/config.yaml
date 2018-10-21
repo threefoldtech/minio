@@ -7,11 +7,12 @@ zerotier:
   token: 
 
 s3:
-  deploy: true # True > deploy, false > use
+  deploy: True # True > deploy, false > use
   instance:
-    farm: 'tlre'
-    size: 20000
-    shards: 16
-    parity: 4
+    farm: 'kristof-farm'
+    size: 10000
+    shards: 4
+    parity: 2
+    nsName: 'namespace'
   use:
     s3_service_name: 's3_demo_0'

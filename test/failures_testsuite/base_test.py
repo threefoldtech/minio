@@ -32,7 +32,8 @@ class BaseTest(TestCase):
             logger.info("s3 service name : {}".format(s3_service_name))
 
             data = [cls.config['s3']['instance']['farm'], cls.config['s3']['instance']['size'],
-                    cls.config['s3']['instance']['shards'], cls.config['s3']['instance']['parity']]
+                    cls.config['s3']['instance']['shards'], cls.config['s3']['instance']['parity'],
+                    cls.config['s3']['instance']['nsName']]
             instance = cls.s3_controller.deploy(s3_service_name, *data)
             logger.info("wait for deploying {} s3 service".format(s3_service_name))
             try:
