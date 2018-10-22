@@ -12,7 +12,6 @@ logger = j.logger.get()
 
 
 class FailureGenenator:
-
     def __init__(self, parent):
         self._parent = parent
 
@@ -136,6 +135,7 @@ class FailureGenenator:
         robot = robot_god_token(robot)
 
         ns = robot.services.get(name=tlog['name'])
+        import ipdb; ipdb.set_trace()
         zdb = robot.services.get(name=ns.data['data']['zerodb'])
 
         try:

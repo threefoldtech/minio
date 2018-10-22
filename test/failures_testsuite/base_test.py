@@ -126,10 +126,9 @@ class BaseTest(TestCase):
             self.logger.error(err)
             return err
 
-        self.logger.info(' {} file has been Uploaded'.format(self.file_name))
         return
 
-    def download_file(self, file_name):
+    def download_file(self, file_name, keep_trying=False):
         """
          - downlaod file
          - return its md5 checksum hash
@@ -140,6 +139,14 @@ class BaseTest(TestCase):
         out, err = self.execute_cmd(cmd=download_cmd)
         if err:
             self.logger.error(err)
+
+        if keep_trying and err:
+            for _ in range(50):
+                out, err = self.execute_cmd(cmd=download_cmd)
+                if not err:
+                    break
+                else:
+                    time.sleep(5)
         return self.calc_md5_checksum('tmp/{}_out'.format(file_name))
 
     def get_s3_info(self):

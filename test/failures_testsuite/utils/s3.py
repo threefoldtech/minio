@@ -1,10 +1,6 @@
 from jumpscale import j
 from zerorobot.service_collection import ServiceNotFoundError
-
 from gevent.pool import Group
-
-from utils.monitoring import Monitoring
-from utils.perf import Perf
 from utils.reset import EnvironmentReset
 from utils.failures import FailureGenenator
 
@@ -13,9 +9,7 @@ logger = j.logger.get('s3demo')
 
 class S3Manager:
     def __init__(self, parent, name):
-        self.monitoring = Monitoring(self)
         self.failures = FailureGenenator(self)
-        self.perf = Perf(self)
         self.reset = EnvironmentReset(self)
 
         self._parent = parent
@@ -126,7 +120,7 @@ class S3Manager:
         vm = self.dm_robot.services.get(template_name='dm_vm', name=self.service.guid)
         return j.clients.zrobot.robots[vm.data['data']['nodeId']]
 
-    def deploy(self, farm, size=20000, data=4, parity=2, login='admin', password='adminadmin', nsName='namespace'):
+    def deploy(self, farm, size=20000, data=4, parity=2, nsName='namespace', login='admin', password='adminadmin'):
         """
         deploy an s3 environment
 

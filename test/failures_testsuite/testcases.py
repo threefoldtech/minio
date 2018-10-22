@@ -180,6 +180,6 @@ class TestS3Failures(BaseTest):
         self.file_name = self.upload_file()
         md5_before = self.file_name
 
-        md5_after = self.download_file(file_name=self.file_name)
+        md5_after = self.download_file(file_name=self.file_name, keep_trying=True)
         self.assertEqual(md5_after, md5_before)
 
