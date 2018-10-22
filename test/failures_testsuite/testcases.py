@@ -2,7 +2,6 @@ from random import randint
 from base_test import BaseTest
 import unittest
 
-
 class TestS3Failures(BaseTest):
 
     def tearDown(self):
@@ -154,3 +153,11 @@ class TestS3Failures(BaseTest):
         self.logger.info('kill minio process and make sure it will restart automatically')
         flag = self.s3.failures.minio_process_down(timeout=200)
         self.assertTrue(flag, "minio didn't restart")
+
+    def test007_zdb_down(self):
+        """
+        - down zdb process  and make sure it will restart automatically.
+        """
+        self.logger.info('kill zdb process and make sure it will restart automatically')
+        flag = self.s3.failures.zdb_process_down()
+        self.assertTrue(flag, "zdb didn't restart")

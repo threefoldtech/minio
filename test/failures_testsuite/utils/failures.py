@@ -20,6 +20,7 @@ class FailureGenenator:
         """
         start all the zerodb services used by minio
         """
+
         s3 = self._parent
 
         def do(namespace):
@@ -72,6 +73,43 @@ class FailureGenenator:
             except ConnectionError:
                 continue
         return False
+
+    def zdb_process_down(self, count=1,timeout=100):
+        """
+        turn off zdb process , check it will be restart.
+        """
+        s3 = self._parent
+        if not s3:
+            return
+        n = 0
+        for namespace in s3.service.data['data']['namespaces']:
+            if n >= count:
+                break
+            robot = j.clients.zrobot.robots[namespace['node']]
+            robot = robot_god_token(robot)
+            ns = robot.services.get(name=namespace['name'])
+            zdb = robot.services.get(name=ns.data['data']['zerodb'])
+            try:
+                zdb.state.check('status', 'running', 'ok')
+                n +=1
+            except StateCheckError:
+                continue
+            logger.info('stop %s  process on node %s', zdb.name, namespace['node'])
+            zdb_node = j.clients.zos.get(zdb.name,data={"host": namespace['url'][7:-5]})
+            zdb_cont_client = zdb_node.containers.get("zerodb_{}".format(zdb.name))
+            zdb_node.client.container.terminate(zdb_cont_client.id)
+            logger.info('zdb process killed')
+            start = time.time()
+            while (start + timeout) > time.time():
+                try:
+                    zdb_node.containers.get("zerodb_{}".format(zdb.name))
+                    end = time.time()
+                    duration = end - start 
+                    logger.info("zdb took %s sec to restart" % duration)
+                    return True
+                except LookupError:
+                    continue
+            return False
 
     def zdb_down(self, count=1):
         """
