@@ -187,6 +187,27 @@ class FailureGenenator:
         except StateCheckError:
             return False
 
+    def kill_tlog(self):
+        """
+        Tlog is a namespace under a zdb container, This method will terminate this container
+        :return:
+        """
+        s3 = self._parent
+        if not s3:
+            return
+
+        tlog = s3.service.data['data']['tlog']
+        robot = j.clients.zrobot.robots[tlog['node']]
+        robot = robot_god_token(robot)
+
+        ns = robot.services.get(name=tlog['name'])
+        zdb = robot.services.get(name=ns.data['data']['zerodb'])
+
+        tlog_node = s3.tlog_node
+        import ipdb; ipdb.set_trace()
+
+
+
 def robot_god_token(robot):
     """
     try to retreive the god token from the node 0-robot

@@ -88,7 +88,12 @@ class S3Manager:
     def tlog_node(self):
         data = self.service.data['data']
         if data['tlog'] and data['tlog']['node']:
-            return j.clients.zos.get(data['tlog']['node'])
+            if data['tlog']['node'] in j.clients.zos.list():
+                return j.clients.zos.get(data['tlog']['node'])
+            else:
+                tlogs_host = data['tlog']['url'].replace('//', '').split(':')[1]
+                j.clients.zos.get(data['tlog']['node'], data={'host': tlogs_host})
+                return j.clients.zos.get(data['tlog']['node'])
 
     @property
     def minio_container(self):
