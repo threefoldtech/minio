@@ -167,7 +167,7 @@ class TestS3Failures(BaseTest):
 
         self.s3.failures.tlog_down()
 
-        for _ in range(5):
+        for _ in range(10):
             self.logger.info('wait till tlog  be up')
             if self.s3.failures.tlog_status():
                 break
