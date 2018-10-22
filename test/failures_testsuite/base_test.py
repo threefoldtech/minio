@@ -116,7 +116,7 @@ class BaseTest(TestCase):
         if err:
             raise ValueError(err)
 
-        self.logger.info(' {} file has been Uploaded'.format(self.file_name))
+        self.logger.info('{} file has been Uploaded'.format(self.file_name))
         return self.file_name
 
     def _upload_file(self, minio, bucket, file_name):
@@ -156,8 +156,7 @@ class BaseTest(TestCase):
         self.logger.info(' - shards {}, parity {}'.format(self.shards, self.parity))
         self.minio = {'minio_ip': self.s3_data['minioUrls']['public'],
                       'username': self.s3_data['minioLogin'],
-                      'password': self.s3_data['minioPassword']
-                      }
+                      'password': self.s3_data['minioPassword']}
         self.tlog = self.s3_data['tlog']
 
     def execute_cmd(self, cmd):
