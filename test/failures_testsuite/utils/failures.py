@@ -135,7 +135,6 @@ class FailureGenenator:
         robot = robot_god_token(robot)
 
         ns = robot.services.get(name=tlog['name'])
-        import ipdb; ipdb.set_trace()
         zdb = robot.services.get(name=ns.data['data']['zerodb'])
 
         try:
@@ -165,6 +164,28 @@ class FailureGenenator:
         except StateCheckError:
             logger.info('start %s on node %s', zdb.name, tlog['node'])
             zdb.schedule_action('start').wait(die=True)
+
+    def tlog_status(self):
+        """
+        Check tlog status
+        :return:
+        True if tlog status is up
+        """
+        s3 = self._parent
+        if not s3:
+            return
+
+        tlog = s3.service.data['data']['tlog']
+        robot = j.clients.zrobot.robots[tlog['node']]
+        robot = robot_god_token(robot)
+
+        ns = robot.services.get(name=tlog['name'])
+        zdb = robot.services.get(name=ns.data['data']['zerodb'])
+
+        try:
+            return zdb.state.check('status', 'running', 'ok')
+        except StateCheckError:
+            return False
 
 def robot_god_token(robot):
     """

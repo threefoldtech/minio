@@ -1,6 +1,6 @@
 from random import randint
 from base_test import BaseTest
-import unittest
+import unittest, time
 
 
 class TestS3Failures(BaseTest):
@@ -159,6 +159,7 @@ class TestS3Failures(BaseTest):
         """
          - Upload file
          - Kill tlog
+         - wait till tlog back to works
          - Download file, should succeed
         """
         self.file_name = self.upload_file()
@@ -166,16 +167,34 @@ class TestS3Failures(BaseTest):
 
         self.s3.failures.tlog_down()
 
-        md5_after = self.download_file(file_name=self.file_name)
+        for _ in range(5):
+            self.logger.info('wait till tlog  be up')
+            if self.s3.failures.tlog_status():
+                break
+            else:
+                time.sleep(60)
+        else:
+            self.assertTrue(self.s3.failures.tlog_status())
+
+        md5_after = self.download_file(file_name=self.file_name, keep_trying=True)
         self.assertEqual(md5_after, md5_before)
 
     def test008_kill_tlog_upload_download(self):
         """
          - Kill tlog
+         - wait till tlog back to works
          - Upload file
          - Download file, should succeed
         """
         self.s3.failures.tlog_down()
+        for _ in range(5):
+            self.logger.info('wait till tlog  be up')
+            if self.s3.failures.tlog_status():
+                break
+            else:
+                time.sleep(60)
+        else:
+            self.assertTrue(self.s3.failures.tlog_status())
 
         self.file_name = self.upload_file()
         md5_before = self.file_name
