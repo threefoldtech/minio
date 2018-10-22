@@ -1,6 +1,6 @@
 from random import randint
 from base_test import BaseTest
-import unittest
+import unittest, time
 
 class TestS3Failures(BaseTest):
 
@@ -154,10 +154,58 @@ class TestS3Failures(BaseTest):
         flag = self.s3.failures.minio_process_down(timeout=200)
         self.assertTrue(flag, "minio didn't restart")
 
-    def test007_zdb_down(self):
+    def test007_upload_stop_tlog_download(self):
+        """
+         - Upload file
+         - stop tlog
+         - wait till tlog back to works
+         - Download file, should succeed
+        """
+        self.file_name = self.upload_file()
+        md5_before = self.file_name
+
+        self.s3.failures.tlog_down()
+
+        # for _ in range(10):
+        #     self.logger.info('wait till tlog  be up')
+        #     if self.s3.failures.tlog_status():
+        #         break
+        #     else:
+        #         time.sleep(60)
+        # else:
+        #     self.assertTrue(self.s3.failures.tlog_status())
+
+        md5_after = self.download_file(file_name=self.file_name, keep_trying=True)
+        self.assertEqual(md5_after, md5_before)
+
+    def test008_stop_tlog_upload_download(self):
+        """
+         - stop tlog
+         - wait till tlog back to works
+         - Upload file
+         - Download file, should succeed
+        """
+        self.s3.failures.tlog_down()
+        # for _ in range(10):
+        #     self.logger.info('wait till tlog  be up')
+        #     if self.s3.failures.tlog_status():
+        #         break
+        #     else:
+        #         time.sleep(60)
+        # else:
+        #     self.assertTrue(self.s3.failures.tlog_status())
+
+        self.file_name = self.upload_file()
+        md5_before = self.file_name
+
+        md5_after = self.download_file(file_name=self.file_name, keep_trying=True)
+        self.assertEqual(md5_after, md5_before)
+
+    def test009_zdb_down(self):
         """
         - down zdb process  and make sure it will restart automatically.
         """
         self.logger.info('kill zdb process and make sure it will restart automatically')
         flag = self.s3.failures.zdb_process_down()
         self.assertTrue(flag, "zdb didn't restart")
+        

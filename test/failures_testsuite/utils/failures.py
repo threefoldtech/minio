@@ -12,7 +12,6 @@ logger = j.logger.get()
 
 
 class FailureGenenator:
-
     def __init__(self, parent):
         self._parent = parent
 
@@ -160,6 +159,91 @@ class FailureGenenator:
                 logger.info('start %s on node %s', zdb.name, namespace['node'])
                 zdb.schedule_action('start').wait(die=True)
                 n += 1
+
+    def tlog_down(self):
+        """
+            Turn down tlog
+        """
+        s3 = self._parent
+        if not s3:
+            return
+
+        tlog = s3.service.data['data']['tlog']
+        robot = j.clients.zrobot.robots[tlog['node']]
+        robot = robot_god_token(robot)
+
+        ns = robot.services.get(name=tlog['name'])
+        zdb = robot.services.get(name=ns.data['data']['zerodb'])
+
+        try:
+            zdb.state.check('status', 'running', 'ok')
+            logger.info('stop %s on node %s', zdb.name, tlog['node'])
+            zdb.schedule_action('stop').wait(die=True)
+        except StateCheckError:
+            logger.error("tlog zdb status isn't running")
+
+    def tlog_up(self):
+        """
+            Turn up tlog
+        """
+        s3 = self._parent
+        if not s3:
+            return
+
+        tlog = s3.service.data['data']['tlog']
+        robot = j.clients.zrobot.robots[tlog['node']]
+        robot = robot_god_token(robot)
+
+        ns = robot.services.get(name=tlog['name'])
+        zdb = robot.services.get(name=ns.data['data']['zerodb'])
+
+        try:
+            zdb.state.check('status', 'running', 'ok')
+        except StateCheckError:
+            logger.info('start %s on node %s', zdb.name, tlog['node'])
+            zdb.schedule_action('start').wait(die=True)
+
+    def tlog_status(self):
+        """
+        Check tlog status
+        :return:
+        True if tlog status is up
+        """
+        s3 = self._parent
+        if not s3:
+            return
+
+        tlog = s3.service.data['data']['tlog']
+        robot = j.clients.zrobot.robots[tlog['node']]
+        robot = robot_god_token(robot)
+
+        ns = robot.services.get(name=tlog['name'])
+        zdb = robot.services.get(name=ns.data['data']['zerodb'])
+
+        try:
+            return zdb.state.check('status', 'running', 'ok')
+        except StateCheckError:
+            return False
+
+    def kill_tlog(self):
+        """
+        Tlog is a namespace under a zdb container, This method will terminate this container
+        :return:
+        """
+        s3 = self._parent
+        if not s3:
+            return
+
+        tlog = s3.service.data['data']['tlog']
+        robot = j.clients.zrobot.robots[tlog['node']]
+        robot = robot_god_token(robot)
+
+        ns = robot.services.get(name=tlog['name'])
+        zdb = robot.services.get(name=ns.data['data']['zerodb'])
+
+        tlog_node = s3.tlog_node
+        import ipdb; ipdb.set_trace()
+
 
 
 def robot_god_token(robot):

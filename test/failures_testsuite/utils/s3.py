@@ -1,10 +1,6 @@
 from jumpscale import j
 from zerorobot.service_collection import ServiceNotFoundError
-
 from gevent.pool import Group
-
-from utils.monitoring import Monitoring
-from utils.perf import Perf
 from utils.reset import EnvironmentReset
 from utils.failures import FailureGenenator
 
@@ -13,9 +9,7 @@ logger = j.logger.get('s3demo')
 
 class S3Manager:
     def __init__(self, parent, name):
-        self.monitoring = Monitoring(self)
         self.failures = FailureGenenator(self)
-        self.perf = Perf(self)
         self.reset = EnvironmentReset(self)
 
         self._parent = parent
@@ -94,7 +88,12 @@ class S3Manager:
     def tlog_node(self):
         data = self.service.data['data']
         if data['tlog'] and data['tlog']['node']:
-            return j.clients.zos.get(data['tlog']['node'])
+            if data['tlog']['node'] in j.clients.zos.list():
+                return j.clients.zos.get(data['tlog']['node'])
+            else:
+                tlogs_host = data['tlog']['url'].replace('//', '').split(':')[1]
+                j.clients.zos.get(data['tlog']['node'], data={'host': tlogs_host})
+                return j.clients.zos.get(data['tlog']['node'])
 
     @property
     def minio_container(self):
@@ -126,7 +125,7 @@ class S3Manager:
         vm = self.dm_robot.services.get(template_name='dm_vm', name=self.service.guid)
         return j.clients.zrobot.robots[vm.data['data']['nodeId']]
 
-    def deploy(self, farm, size=20000, data=4, parity=2, login='admin', password='adminadmin', nsName='namespace'):
+    def deploy(self, farm, size=20000, data=4, parity=2, nsName='namespace', login='admin', password='adminadmin'):
         """
         deploy an s3 environment
 
