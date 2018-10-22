@@ -159,22 +159,26 @@ class TestS3Failures(BaseTest):
         """
          - Upload file
          - stop tlog
-         - wait till tlog back to works
+         - Try to download, should fail
+         - Start tlog
          - Download file, should succeed
         """
         self.file_name = self.upload_file()
         md5_before = self.file_name
 
         self.s3.failures.tlog_down()
+        self.assertIsNone(self.download_file(file_name=self.file_name))
 
-        # for _ in range(10):
-        #     self.logger.info('wait till tlog  be up')
-        #     if self.s3.failures.tlog_status():
-        #         break
-        #     else:
-        #         time.sleep(60)
-        # else:
-        #     self.assertTrue(self.s3.failures.tlog_status())
+        self.s3.failures.tlog_up()
+
+        for _ in range(10):
+            self.logger.info('wait till tlog  be up')
+            if self.s3.failures.tlog_status():
+                break
+            else:
+                time.sleep(60)
+        else:
+            self.assertTrue(self.s3.failures.tlog_status())
 
         md5_after = self.download_file(file_name=self.file_name, keep_trying=True)
         self.assertEqual(md5_after, md5_before)

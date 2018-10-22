@@ -201,9 +201,12 @@ class FailureGenenator:
         robot = robot_god_token(robot)
 
         ns = robot.services.get(name=tlog['name'])
-        zdb = robot.services.get(name=ns.data['data']['zerodb'])
+        zdb_name = ns.data['data']['zerodb']
 
         tlog_node = s3.tlog_node
+
+        zdb_cont = tlog_node.containers.get(name='zerodb_{}'.format(zdb_name))
+
         import ipdb; ipdb.set_trace()
 
 

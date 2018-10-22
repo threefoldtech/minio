@@ -24,7 +24,7 @@ class BaseTest(TestCase):
         function to deploy s3 with one of pre-configured parameters.
 
         """
-        self = cls()
+        #self = cls()
         cls.config = j.data.serializer.yaml.load('./config.yaml')
         if cls.config['s3']['deploy']:
             cls.s3_controller = Controller(cls.config)
@@ -64,7 +64,7 @@ class BaseTest(TestCase):
                                                                                        cls.config['robot']['client']))
         cls.s3 = cls.s3_controller.s3[cls.s3_service_name]
         #cls.s3.failures.zdb_start_all()
-        self.get_s3_info()
+        #self.get_s3_info()
 
     @classmethod
     def tearDownClass(cls):
@@ -114,7 +114,7 @@ class BaseTest(TestCase):
         self.logger.info('uploading {} to  testingbucket bucket'.format(self.file_name))
         err = self._upload_file('s3Minio', 'testingbucket', 'tmp/{}'.format(self.file_name))
         if err:
-            raise ValueError(err)
+            return None
 
         self.logger.info('{} file has been Uploaded'.format(self.file_name))
         return self.file_name
@@ -139,6 +139,7 @@ class BaseTest(TestCase):
         out, err = self.execute_cmd(cmd=download_cmd)
         if err:
             self.logger.error(err)
+            return None
 
         if keep_trying and err:
             for _ in range(50):
@@ -147,6 +148,8 @@ class BaseTest(TestCase):
                     break
                 else:
                     time.sleep(5)
+            else:
+                return None
         return self.calc_md5_checksum('tmp/{}_out'.format(file_name))
 
     def get_s3_info(self):
