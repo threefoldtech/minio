@@ -154,3 +154,32 @@ class TestS3Failures(BaseTest):
         self.logger.info('kill minio process and make sure it will restart automatically')
         flag = self.s3.failures.minio_process_down(timeout=200)
         self.assertTrue(flag, "minio didn't restart")
+
+    def test007_upload_kill_tlog_download(self):
+        """
+         - Upload file
+         - Kill tlog
+         - Download file, should succeed
+        """
+        self.file_name = self.upload_file()
+        md5_before = self.file_name
+
+        self.s3.failures.tlog_down()
+
+        md5_after = self.download_file(file_name=self.file_name)
+        self.assertEqual(md5_after, md5_before)
+
+    def test008_kill_tlog_upload_download(self):
+        """
+         - Kill tlog
+         - Upload file
+         - Download file, should succeed
+        """
+        self.s3.failures.tlog_down()
+
+        self.file_name = self.upload_file()
+        md5_before = self.file_name
+
+        md5_after = self.download_file(file_name=self.file_name)
+        self.assertEqual(md5_after, md5_before)
+

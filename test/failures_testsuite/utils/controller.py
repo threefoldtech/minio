@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 from gevent import monkey
 monkey.patch_all()
-
-import click
 from gevent.pool import Group
 from jumpscale import j
 from utils.s3 import S3Manager

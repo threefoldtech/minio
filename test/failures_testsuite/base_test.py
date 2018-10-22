@@ -75,6 +75,7 @@ class BaseTest(TestCase):
         """
         self = cls()
         self._delete_directory(directory='tmp')
+        self.s3.failures.tlog_up()
 
     def setUp(self):
         self.s3 = self.s3_controller.s3[self.s3_service_name]
@@ -150,6 +151,7 @@ class BaseTest(TestCase):
                       'username': self.s3_data['minioLogin'],
                       'password': self.s3_data['minioPassword']
                       }
+        self.tlog = self.s3_data['tlog']
 
     def execute_cmd(self, cmd):
         sub = Popen(cmd, stdout=PIPE, stderr=PIPE, shell=True)

@@ -123,6 +123,48 @@ class FailureGenenator:
                 zdb.schedule_action('start').wait(die=True)
                 n += 1
 
+    def tlog_down(self):
+        """
+            Turn down tlog
+        """
+        s3 = self._parent
+        if not s3:
+            return
+
+        tlog = s3.service.data['data']['tlog']
+        robot = j.clients.zrobot.robots[tlog['node']]
+        robot = robot_god_token(robot)
+
+        ns = robot.services.get(name=tlog['name'])
+        zdb = robot.services.get(name=ns.data['data']['zerodb'])
+
+        try:
+            zdb.state.check('status', 'running', 'ok')
+            logger.info('stop %s on node %s', zdb.name, tlog['node'])
+            zdb.schedule_action('stop').wait(die=True)
+        except StateCheckError:
+            logger.error("tlog zdb status isn't running")
+
+    def tlog_up(self):
+        """
+            Turn up tlog
+        """
+        s3 = self._parent
+        if not s3:
+            return
+
+        tlog = s3.service.data['data']['tlog']
+        robot = j.clients.zrobot.robots[tlog['node']]
+        robot = robot_god_token(robot)
+
+        ns = robot.services.get(name=tlog['name'])
+        zdb = robot.services.get(name=ns.data['data']['zerodb'])
+
+        try:
+            zdb.state.check('status', 'running', 'ok')
+        except StateCheckError:
+            logger.info('start %s on node %s', zdb.name, tlog['node'])
+            zdb.schedule_action('start').wait(die=True)
 
 def robot_god_token(robot):
     """
