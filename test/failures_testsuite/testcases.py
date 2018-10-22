@@ -209,3 +209,10 @@ class TestS3Failures(BaseTest):
         flag = self.s3.failures.zdb_process_down()
         self.assertTrue(flag, "zdb didn't restart")
         
+    def test010_zrobot_dwon(self):
+        """
+        - down zrobot process and make sure it will restart automatically.
+        """
+        self.logger.info('kill zrobot process and make sure it will restart automatically')
+        flag = self.s3.failures.Kill_node_robot_process()
+        self.assertTrue(flag, "zrobot didn't restart")

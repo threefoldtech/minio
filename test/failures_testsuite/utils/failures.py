@@ -2,7 +2,7 @@ import signal
 import time
 from urllib.parse import urlparse
 
-import requests
+import requests, random
 from requests.exceptions import ConnectionError, ConnectTimeout
 
 from jumpscale import j
@@ -244,6 +244,45 @@ class FailureGenenator:
         tlog_node = s3.tlog_node
         import ipdb; ipdb.set_trace()
 
+    def Kill_node_robot_process(self,node_addr=None, timeout=100):
+        """
+        kill robot process. 
+        """
+        s3 = self._parent
+        if not s3:
+            return
+            
+        if not node_addr:
+            farm_name = s3.service.data['data']['farmerIyoOrg']
+            capacity = j.clients.threefold_directory.get(interactive=False)
+            nodes_data = capacity.api.ListCapacity(query_params={'farmer': farm_name})[1].json()
+            for _ in range(len(nodes_data)):
+                node_addr = random.choice(nodes_data)["robot_address"][7:-5]
+                node = j.clients.zos.get("zrobot", data={"host":node_addr})
+                try:
+                    node.client.ping()
+                    break                         
+                except:
+                    logger.error(" can't reach %s skipping", node.addr)
+                    continue
+        else:
+            node = j.clients.zos.get("zrobot", data={"host":node_addr})
+
+        logger.info("kill the robot on node{}".format(node_addr))
+        node.client.container.terminate(node.containers.get('zrobot').id)
+
+        logger.info("wait for the robot to restart")
+        start = time.time()
+        while (start + timeout) > time.time():
+            try:
+                node.containers.get("zrobot")
+                end = time.time()
+                duration = end - start 
+                logger.info("zrobot took %s sec to restart" % duration)
+                return True
+            except LookupError:
+                continue
+        return False
 
 
 def robot_god_token(robot):
