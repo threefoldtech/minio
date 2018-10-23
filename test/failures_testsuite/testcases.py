@@ -230,7 +230,8 @@ class TestS3Failures(BaseTest):
         md5_before = file_name
 
         self.logger.info('kill zrobot process and make sure it will restart automatically')
-        flag = self.s3.failures.Kill_node_robot_process()
+        minio_node_adder = self.s3.vm_node.addr
+        flag = self.s3.failures.Kill_node_robot_process(node_addr=minio_node_adder)
         self.assertTrue(flag, "zrobot didn't restart")
 
         self.logger.info("Download uploaded file, and check that both are same.")
