@@ -4,8 +4,12 @@ import time
 
 
 class TestTlog(BaseTest):
+    def setUp(self):
+        super().setUp()
+        if not self.s3.failures.tlog_status():
+            self.s3.failures.tlog_up()
+
     def tearDown(self):
-        self.s3.failures.tlog_up()
         super().tearDown()
 
     def test001_upload_stop_tlog_start_download(self):
