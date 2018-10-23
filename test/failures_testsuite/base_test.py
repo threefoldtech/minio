@@ -24,7 +24,6 @@ class BaseTest(TestCase):
         function to deploy s3 with one of pre-configured parameters.
 
         """
-        #self = cls()
         cls.config = j.data.serializer.yaml.load('./config.yaml')
         if cls.config['s3']['deploy']:
             cls.s3_controller = Controller(cls.config)
@@ -63,8 +62,7 @@ class BaseTest(TestCase):
                 raise Exception("cant find {} s3 service under {} robot client".format(cls.s3_service_name,
                                                                                        cls.config['robot']['client']))
         cls.s3 = cls.s3_controller.s3[cls.s3_service_name]
-        #cls.s3.failures.zdb_start_all()
-        #self.get_s3_info()
+        # cls.s3.failures.zdb_start_all()
 
     @classmethod
     def tearDownClass(cls):
@@ -80,8 +78,8 @@ class BaseTest(TestCase):
     def setUp(self):
         self.s3 = self.s3_controller.s3[self.s3_service_name]
         self.get_s3_info()
-        #logger.info('Start all zdb')
-        #self.s3.failures.zdb_start_all()
+        # logger.info('Start all zdb')
+        # self.s3.failures.zdb_start_all()
 
     def tearDown(self):
         pass
@@ -94,25 +92,28 @@ class BaseTest(TestCase):
          - Upload it
         :return: file_name
         """
+        self.minio['name'] = '{}_minio'.format(self.s3_service_name)
+        self.minio['bucket'] = '{}_bucket'.format(self.s3_service_name)
         self.logger.info('Uploading file')
         self._create_directory(directory='tmp')
-        self.file_name = self._create_file(directory='tmp', size=1024*1024*2)
+        self.file_name = self._create_file(directory='tmp', size=1024 * 1024 * 2)
 
-        config_minio_cmd = '/bin/mc config host add s3Minio {} {} {}'.format(self.minio['minio_ip'],
-                                                                             self.minio['username'],
-                                                                             self.minio['password'])
+        config_minio_cmd = '/bin/mc config host add {} {} {} {}'.format(self.minio['name'],
+                                                                        self.minio['minio_ip'],
+                                                                        self.minio['username'],
+                                                                        self.minio['password'])
         out, err = self.execute_cmd(cmd=config_minio_cmd)
         if err:
             self.logger.error(err)
 
-        self.logger.info('create testingbucket bucket')
-        creat_bucket_cmd = '/bin/mc mb s3Minio/{}'.format('testingbucket')
+        self.logger.info('create {} bucket'.format(self.minio['bucket']))
+        creat_bucket_cmd = '/bin/mc mb {}/{}'.format(self.minio['name'], self.minio['bucket'])
         out, err = self.execute_cmd(cmd=creat_bucket_cmd)
         if err:
             self.logger.error(err)
 
-        self.logger.info('uploading {} to  testingbucket bucket'.format(self.file_name))
-        err = self._upload_file('s3Minio', 'testingbucket', 'tmp/{}'.format(self.file_name))
+        self.logger.info('uploading {} to  {} bucket'.format(self.file_name, self.minio['bucket']))
+        err = self._upload_file(self.minio['name'], self.minio['bucket'], 'tmp/{}'.format(self.file_name))
         if err:
             return None
 
@@ -135,12 +136,9 @@ class BaseTest(TestCase):
         :return: str(downloaded_file_md5)
         """
         self.logger.info('downloading {} .... '.format(file_name))
-        download_cmd = '/bin/mc cp s3Minio/testingbucket/tmp/{} tmp/{}_out'.format(file_name, file_name)
+        download_cmd = '/bin/mc cp {}/{}/tmp/{} tmp/{}_out'.format(self.minio['name'], self.minio['bucket'],
+                                                                   file_name, file_name)
         out, err = self.execute_cmd(cmd=download_cmd)
-        if err:
-            self.logger.error(err)
-            return None
-
         if keep_trying and err:
             for _ in range(50):
                 out, err = self.execute_cmd(cmd=download_cmd)
@@ -148,8 +146,11 @@ class BaseTest(TestCase):
                     break
                 else:
                     time.sleep(5)
-            else:
-                return None
+
+        if err:
+            self.logger.error(err)
+            return None
+
         return self.calc_md5_checksum('tmp/{}_out'.format(file_name))
 
     def get_s3_info(self):
@@ -187,9 +188,8 @@ class BaseTest(TestCase):
 
         file_name = self.calc_md5_checksum('{}/random'.format(directory))
 
-        os.rename('{}/random'.format(directory), '{}/{}'.format(directory,file_name))
+        os.rename('{}/random'.format(directory), '{}/{}'.format(directory, file_name))
         return file_name
 
     def _delete_file(self, file_path):
         os.system("rm -f {}".format(file_path))
-
