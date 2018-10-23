@@ -181,7 +181,7 @@ class FailureGenenator:
 
         try:
             zdb.state.check('status', 'running', 'ok')
-            logger.info('stop %s on node %s', zdb.name, tlog['node'])
+            logger.info('stop Tlog %s on node %s', zdb.name, tlog['node'])
             zdb.schedule_action('stop').wait(die=True)
         except StateCheckError:
             logger.error("tlog zdb status isn't running")
@@ -204,7 +204,7 @@ class FailureGenenator:
         try:
             zdb.state.check('status', 'running', 'ok')
         except StateCheckError:
-            logger.info('start %s on node %s', zdb.name, tlog['node'])
+            logger.info('start Tlog %s on node %s', zdb.name, tlog['node'])
             zdb.schedule_action('start').wait(die=True)
 
     def tlog_status(self):
@@ -243,11 +243,11 @@ class FailureGenenator:
         robot = robot_god_token(robot)
 
         ns = robot.services.get(name=tlog['name'])
-        zdb = robot.services.get(name=ns.data['data']['zerodb'])
+        zdb_name = ns.data['data']['zerodb']
 
         tlog_node = s3.tlog_node
-        import ipdb; ipdb.set_trace()
-
+        zdb_cont = tlog_node.containers.get(name='zerodb_{}'.format(zdb_name)
+        
     def Kill_node_robot_process(self,node_addr=None, timeout=100):
         """
         kill robot process. 
@@ -292,6 +292,21 @@ class FailureGenenator:
                 return True
         return False
 
+    def get_tlog_info(self):
+        self.tlog = {}
+        s3 = self._parent
+        if not s3:
+            return
+
+        minio_config = s3.minio_config.split('\n')
+        for data in minio_config:
+            if 'address' in data:
+                self.tlog['ip'] = data.re.findall(r'[0-9]+(?:\.[0-9]+){3}:[0-9]{4}', data)[0]
+                logger.info(' Tlog ip in minio config : {}'.format(self.tlog['ip']))
+                break
+
+        self.tlog['s3_data_ip'] = s3.service.data['data']['tlog']['address']
+        logger.info(' Tlog ip in s3 data : {}'.format(self.tlog['s3_data_ip']))
 
 def robot_god_token(robot):
     """
@@ -307,5 +322,5 @@ def robot_god_token(robot):
         token = resp.stdout.split(':', 1)[1].strip()
         robot._client.god_token_set(token)
     finally:
-        node = j.clients.zos.delete('godtoken')
+        j.clients.zos.delete('godtoken')
     return robot
