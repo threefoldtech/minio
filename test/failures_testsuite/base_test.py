@@ -107,10 +107,10 @@ class BaseTest(TestCase):
             self.logger.error(err)
 
         self.logger.info('create {} bucket'.format(self.minio['bucket']))
-        creat_bucket_cmd = '/bin/mc mb {}/{}'.format(self.minio['name'], self.minio['bucket'])
-        out, err = self.execute_cmd(cmd=creat_bucket_cmd)
+        create_bucket_cmd = '/bin/mc mb {}/{}'.format(self.minio['name'], self.minio['bucket'])
+        out, err = self.execute_cmd(cmd=create_bucket_cmd)
         if err:
-            self.logger.error(err)
+            self.logger.warning(err)
 
         self.logger.info('uploading {} to  {} bucket'.format(self.file_name, self.minio['bucket']))
         err = self._upload_file(self.minio['name'], self.minio['bucket'], 'tmp/{}'.format(self.file_name))

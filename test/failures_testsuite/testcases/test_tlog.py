@@ -4,6 +4,10 @@ import time
 
 
 class TestTlog(BaseTest):
+    def tearDown(self):
+        self.s3.failures.tlog_up()
+        super().tearDown()
+
     def test001_upload_stop_tlog_start_download(self):
         """
          - Upload file
@@ -16,6 +20,8 @@ class TestTlog(BaseTest):
         md5_before = self.file_name
 
         self.s3.failures.tlog_down()
+        time.sleep(60)
+
         self.assertIsNone(self.download_file(file_name=self.file_name))
 
         self.s3.failures.tlog_up()
@@ -40,6 +46,7 @@ class TestTlog(BaseTest):
          - Download file, should succeed
         """
         self.s3.failures.tlog_down()
+        time.sleep(60)
         self.assertIsNone(self.upload_file())
 
         self.s3.failures.tlog_up()
