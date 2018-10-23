@@ -92,8 +92,8 @@ class BaseTest(TestCase):
          - Upload it
         :return: file_name
         """
-        self.minio['name'] = '{}_minio'.format(self.s3_service_name)
-        self.minio['bucket'] = '{}_bucket'.format(self.s3_service_name)
+        self.minio['name'] = 'minio_{}'.format(self.s3_service_name)
+        self.minio['bucket'] = 'bucket{}'.format(self.s3_service_name)
         self.logger.info('Uploading file')
         self._create_directory(directory='tmp')
         self.file_name = self._create_file(directory='tmp', size=1024 * 1024 * 2)
