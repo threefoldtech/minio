@@ -201,18 +201,34 @@ class TestS3Failures(BaseTest):
         md5_after = self.download_file(file_name=self.file_name, keep_trying=True)
         self.assertEqual(md5_after, md5_before)
 
-    def test009_zdb_down(self):
+    def test009_zdb_kill(self):
         """
-        - down zdb process  and make sure it will restart automatically.
+        - kill zdb process  and make sure it will restart automatically.
         """
+        self.logger.info("Upload File.")
+        file_name = self.upload_file()
+        md5_before = file_name
+
         self.logger.info('kill zdb process and make sure it will restart automatically')
         flag = self.s3.failures.zdb_process_down()
         self.assertTrue(flag, "zdb didn't restart")
-        
-    def test010_zrobot_dwon(self):
+
+        self.logger.info("Download uploaded file, and check that both are same.")
+        md5_after = self.download_file(file_name=file_name)
+        self.assertEqual(md5_after, md5_before)
+
+    def test010_zrobot_kill(self):
         """
-        - down zrobot process and make sure it will restart automatically.
+        - kill zrobot process and make sure it will restart automatically.
         """
+        self.logger.info("Upload File.")
+        file_name = self.upload_file()
+        md5_before = file_name
+
         self.logger.info('kill zrobot process and make sure it will restart automatically')
         flag = self.s3.failures.Kill_node_robot_process()
         self.assertTrue(flag, "zrobot didn't restart")
+
+        self.logger.info("Download uploaded file, and check that both are same.")
+        md5_after = self.download_file(file_name=file_name,keep_trying=True)
+        self.assertEqual(md5_after, md5_before)

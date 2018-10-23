@@ -96,18 +96,22 @@ class FailureGenenator:
             logger.info('stop %s  process on node %s', zdb.name, namespace['node'])
             zdb_node = j.clients.zos.get(zdb.name,data={"host": namespace['url'][7:-5]})
             zdb_cont_client = zdb_node.containers.get("zerodb_{}".format(zdb.name))
-            zdb_node.client.container.terminate(zdb_cont_client.id)
+            job_id = "zerodb.{}".format(zdb.name)
+            result = zdb_cont_client.client.job.kill(job_id, signal=signal.SIGINT)
+            if not result:
+                logger.info("zerodb job not exist")
+                return False
             logger.info('zdb process killed')
+
+            logger.info("wait zdb process to restart. ")
             start = time.time()
             while (start + timeout) > time.time():
-                try:
-                    zdb_node.containers.get("zerodb_{}".format(zdb.name))
+                zdb_job = [job for job in zdb_cont_client.client.job.list() if job['cmd']["id"]==job_id]
+                if zdb_job:
                     end = time.time()
                     duration = end - start 
                     logger.info("zdb took %s sec to restart" % duration)
                     return True
-                except LookupError:
-                    continue
             return False
 
     def zdb_down(self, count=1):
@@ -269,19 +273,23 @@ class FailureGenenator:
             node = j.clients.zos.get("zrobot", data={"host":node_addr})
 
         logger.info("kill the robot on node{}".format(node_addr))
-        node.client.container.terminate(node.containers.get('zrobot').id)
+        zrobot_cl = node.containers.get('zrobot')
+        job_id = 'zrobot'
+        result = zrobot_cl.client.job.kill(job_id, signal=signal.SIGINT)
+        if not result:
+            logger.info("zrobot job not exist")
+            return False
+        logger.info('the robot process killed')
 
         logger.info("wait for the robot to restart")
         start = time.time()
         while (start + timeout) > time.time():
-            try:
-                node.containers.get("zrobot")
+            zrobot_job = [job for job in zrobot_cl.client.job.list() if job['cmd']["id"]=="zrobot"]
+            if zrobot_job:
                 end = time.time()
                 duration = end - start 
                 logger.info("zrobot took %s sec to restart" % duration)
                 return True
-            except LookupError:
-                continue
         return False
 
 
