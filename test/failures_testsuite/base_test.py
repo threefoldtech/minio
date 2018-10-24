@@ -93,7 +93,6 @@ class BaseTest(TestCase):
         """
         self.minio['name'] = 'minio_{}'.format(self.s3_service_name)
         self.minio['bucket'] = 'bucket{}'.format(self.s3_service_name)
-        self.logger.info('Uploading file')
         self._create_directory(directory='tmp')
         self.file_name = self._create_file(directory='tmp', size=1024 * 1024 * 2)
 
@@ -101,6 +100,8 @@ class BaseTest(TestCase):
                                                                         self.minio['minio_ip'],
                                                                         self.minio['username'],
                                                                         self.minio['password'])
+        self.logger.info('config minio')
+        self.logger.info(config_minio_cmd)
         out, err = self.execute_cmd(cmd=config_minio_cmd)
         if err:
             self.logger.error(err)
@@ -111,12 +112,12 @@ class BaseTest(TestCase):
         if err:
             self.logger.warning(err)
 
-        self.logger.info('uploading {} to  {} bucket'.format(self.file_name, self.minio['bucket']))
+        self.logger.info('Upload {} to  {} bucket'.format(self.file_name, self.minio['bucket']))
         err = self._upload_file(self.minio['name'], self.minio['bucket'], 'tmp/{}'.format(self.file_name))
         if err:
             return None
 
-        self.logger.info('{} file has been Uploaded'.format(self.file_name))
+        self.logger.info('{} file has been uploaded'.format(self.file_name))
         return self.file_name
 
     def _upload_file(self, minio, bucket, file_name):
@@ -156,7 +157,7 @@ class BaseTest(TestCase):
         self.s3_data = self.s3.service.data['data']
         self.parity = self.s3_data['parityShards']
         self.shards = self.s3_data['dataShards']
-        self.logger.info(' - shards {}, parity {}'.format(self.shards, self.parity))
+        self.logger.info('- shards {}, parity {}'.format(self.shards, self.parity))
         self.minio = {'minio_ip': self.s3_data['minioUrls']['public'],
                       'username': self.s3_data['minioLogin'],
                       'password': self.s3_data['minioPassword']}
