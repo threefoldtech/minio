@@ -22,6 +22,7 @@ class S3Manager:
 
         self._vm_node = None
         self._vm_robot = None
+        self._vm_host_robot = None
         try:
             self._service = self.dm_robot.services.get(name=name)
         except ServiceNotFoundError:
@@ -78,6 +79,16 @@ class S3Manager:
             j.clients.zrobot.get('demo_vm_robot', data={'url': "http://%s:6600" % self.vm_node.public_addr})
             self._vm_robot = j.clients.zrobot.robots['demo_vm_robot']
         return self._vm_robot
+
+    @property
+    def vm_host_robot(self):
+        """
+        zrobot client of the node  that hosts the zos VM which hosts the minio container
+        """
+        if self._vm_host_robot is None:
+            j.clients.zrobot.get('demo_vm_host_robot', data={'url': "http://%s:6600" % self.vm_host.public_addr}) # 'god_token_': ''
+            self._vm_host_robot = j.clients.zrobot.robots['demo_vm_host_robot']
+        return self._vm_host_robot
 
     @property
     def zerodb_nodes(self):

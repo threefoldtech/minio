@@ -109,7 +109,7 @@ class FailureGenenator:
                 zdb_job = [job for job in zdb_cont_client.client.job.list() if job['cmd']["id"]==job_id]
                 if zdb_job:
                     end = time.time()
-                    duration = end - start 
+                    duration = end - start
                     logger.info("zdb took %s sec to restart" % duration)
                     return True
             return False
@@ -138,6 +138,26 @@ class FailureGenenator:
                 n += 1
             except StateCheckError:
                 pass
+
+    def disable_minio_vdisk_ssd(self):
+        s3 = self._parent
+        dm_vm = s3.dm_robot.services.get(template_name='dm_vm', name=s3.service.guid)
+        vdisk = s3.vm_host_robot.services.get(template_name='vdisk', name='%s_s3vm' % dm_vm.guid)
+        zerodb = s3.vm_host_robot.services.get(name=vdisk.data['data']['zerodb'])
+
+        storagepools = s3.vm_host.storagepools.list()
+        device = None
+        for sp in storagepools:
+            for filesystem in sp.list():
+                if filesystem.path == zerodb.data['data']['path']:
+                    device = sp.device.split('/')[-1]
+                    break
+        else:
+            return
+
+        disk = ''.join([i for i in device if not i.isdigit()])
+        s3.vm_host.client.bash('echo 1 > /sys/block/{}/device/delete'.format(disk)).get()
+        return disk
 
     def zdb_up(self, count=1):
         """
@@ -249,10 +269,10 @@ class FailureGenenator:
         zdb_cont = tlog_node.containers.get(name='zerodb_{}'.format(zdb_name))
         zdb_cont.stop()
         return zdb_cont.is_running()
-        
+
     def Kill_node_robot_process(self, node_addr=None, timeout=100):
         """
-        kill robot process. 
+        kill robot process.
         """
         s3 = self._parent
         if not s3:
@@ -266,7 +286,7 @@ class FailureGenenator:
                 node = j.clients.zos.get("zrobot", data={"host":node_addr})
                 try:
                     node.client.ping()
-                    break                         
+                    break
                 except:
                     logger.error(" can't reach %s skipping", node.addr)
                     continue
@@ -290,7 +310,7 @@ class FailureGenenator:
             zrobot_job = [job for job in zrobot_cl.client.job.list() if job['cmd']["id"]=="zrobot"]
             if zrobot_job:
                 end = time.time()
-                duration = end - start 
+                duration = end - start
                 logger.info("zrobot took %s sec to restart" % duration)
                 return True
         return False

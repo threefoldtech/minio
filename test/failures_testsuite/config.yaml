@@ -4,7 +4,7 @@ robot:
 
 zerotier:
   id: af78bf9436fae600
-  token: 
+  token:
 
 s3:
   deploy: True # True > deploy, false > use
@@ -16,3 +16,5 @@ s3:
     nsName: 'namespace'
   use:
     s3_service_name: 's3_demo_0'
+    s3_active_service_name: ''
+    s3_passive_service_name: ''
