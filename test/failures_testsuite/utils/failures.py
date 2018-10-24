@@ -269,8 +269,10 @@ class FailureGenenator:
 
         tlog_node = s3.tlog_node
         zdb_cont = tlog_node.containers.get(name='zerodb_{}'.format(zdb_name))
-
-    def Kill_node_robot_process(self,node_addr=None, timeout=100):
+        zdb_cont.stop()
+        return zdb_cont.is_running()
+        
+    def Kill_node_robot_process(self, node_addr=None, timeout=100):
         """
         kill robot process.
         """
@@ -290,6 +292,8 @@ class FailureGenenator:
                 except:
                     logger.error(" can't reach %s skipping", node.addr)
                     continue
+            else:
+                node.client.ping()
         else:
             node = j.clients.zos.get("zrobot", data={"host":node_addr})
 

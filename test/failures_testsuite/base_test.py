@@ -105,6 +105,8 @@ class BaseTest(TestCase):
         self._create_directory(directory='tmp')
         self.file_name = self._create_file(directory='tmp', size=1024 * 1024 * 2)
 
+        self._check_minio_ip()
+
         config_minio_cmd = '/bin/mc config host add {} {} {} {}'.format(self.minio['name'],
                                                                         self.minio['minio_ip'],
                                                                         self.minio['username'],
@@ -144,7 +146,7 @@ class BaseTest(TestCase):
          - return its md5 checksum hash
         :return: str(downloaded_file_md5)
         """
-        self.logger.info('downloading {} .... '.format(file_name))
+        self.logger.info('Download {} .... '.format(file_name))
         download_cmd = '/bin/mc cp {}/{}/tmp/{} tmp/{}_out'.format(self.minio['name'], self.minio['bucket'],
                                                                    file_name, file_name)
         out, err = self.execute_cmd(cmd=download_cmd)
@@ -202,3 +204,15 @@ class BaseTest(TestCase):
 
     def _delete_file(self, file_path):
         os.system("rm -f {}".format(file_path))
+
+    def _check_minio_ip(self):
+        self.logger.info('Checking if minio ip is existing')
+        for _ in range(5):
+            if 'http' in self.minio['minio_ip']:
+                break
+            else:
+                time.sleep(60)
+                self.logger.info('Wait ... ')
+        else:
+            raise RuntimeError("There is no minio ip, We can't connect to it!")
+

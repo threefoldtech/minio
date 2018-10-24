@@ -2,7 +2,8 @@ from random import randint
 from base_test import BaseTest
 import unittest, time
 
-class ZROBOTFailures(BaseTest):      
+
+class ZROBOTFailures(BaseTest):
     def tearDown(self):
         super().tearDown()
 
@@ -20,6 +21,5 @@ class ZROBOTFailures(BaseTest):
         self.assertTrue(flag, "zrobot didn't restart")
 
         self.logger.info("Download uploaded file, and check that both are same.")
-        md5_after = self.download_file(file_name=md5_before,keep_trying=True)
+        md5_after = self.download_file(file_name=md5_before, keep_trying=True)
         self.assertEqual(md5_after, md5_before)
-
