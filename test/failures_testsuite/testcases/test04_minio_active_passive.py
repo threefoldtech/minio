@@ -4,6 +4,7 @@ from requests.exceptions import ConnectionError
 import time
 from jumpscale import j
 import unittest
+from unittest import skipTest
 
 
 class TestActivePassive(BaseTest):
