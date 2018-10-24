@@ -209,25 +209,21 @@ class TestS3Failures(BaseTest):
         """
         - kill zdb process  and make sure it will restart automatically.
         """
-        self.logger.info("Upload File.")
-        file_name = self.upload_file()
-        md5_before = file_name
+        md5_before = self.upload_file()
 
         self.logger.info('kill zdb process and make sure it will restart automatically')
         flag = self.s3.failures.zdb_process_down()
         self.assertTrue(flag, "zdb didn't restart")
 
         self.logger.info("Download uploaded file, and check that both are same.")
-        md5_after = self.download_file(file_name=file_name)
+        md5_after = self.download_file(file_name=md5_before)
         self.assertEqual(md5_after, md5_before)
 
     def test010_zrobot_kill(self):
         """
         - kill zrobot process and make sure it will restart automatically.
         """
-        self.logger.info("Upload File.")
-        file_name = self.upload_file()
-        md5_before = file_name
+        md5_before = self.upload_file()
 
         self.logger.info('kill zrobot process and make sure it will restart automatically')
         minio_node_adder = self.s3.vm_node.addr
@@ -235,5 +231,5 @@ class TestS3Failures(BaseTest):
         self.assertTrue(flag, "zrobot didn't restart")
 
         self.logger.info("Download uploaded file, and check that both are same.")
-        md5_after = self.download_file(file_name=file_name,keep_trying=True)
+        md5_after = self.download_file(file_name=md5_before,keep_trying=True)
         self.assertEqual(md5_after, md5_before)

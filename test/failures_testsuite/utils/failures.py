@@ -101,7 +101,7 @@ class FailureGenenator:
             if not result:
                 logger.info("zerodb job not exist")
                 return False
-            logger.info('zdb process killed')
+            logger.info('zdb process has been killed')
 
             logger.info("wait zdb process to restart. ")
             start = time.time()
