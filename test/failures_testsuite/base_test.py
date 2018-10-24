@@ -60,9 +60,11 @@ class BaseTest(TestCase):
             cls.s3_service_name = cls.config['s3']['use']['s3_service_name']
             s3_services.append(cls.s3_service_name)
             cls.s3_active_service_name = cls.config['s3']['use']['s3_active_service_name']
-            s3_services.append(cls.s3_active_service_name)
+            if cls.s3_active_service_name:
+                s3_services.append(cls.s3_active_service_name)
             cls.s3_passive_service_name = cls.config['s3']['use']['s3_passive_service_name']
-            s3_services.append(cls.s3_passive_service_name)
+            if cls.s3_passive_service_name:
+                s3_services.append(cls.s3_passive_service_name)
             for s3_service in s3_services:
                 if s3_service not in cls.s3_controller.s3:
                     logger.error("cant find {} s3 service under {} robot client".format(cls.s3_service_name,
@@ -215,4 +217,3 @@ class BaseTest(TestCase):
                 self.logger.info('Wait ... ')
         else:
             raise RuntimeError("There is no minio ip, We can't connect to it!")
-

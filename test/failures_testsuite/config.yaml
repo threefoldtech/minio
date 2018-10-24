@@ -16,5 +16,5 @@ s3:
     nsName: 'namespace'
   use:
     s3_service_name: 's3_demo_0'
-    s3_active_service_name: '_active'
-    s3_passive_service_name: '_passive'
+    s3_active_service_name: ''
+    s3_passive_service_name: ''

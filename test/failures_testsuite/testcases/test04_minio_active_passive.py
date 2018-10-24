@@ -9,6 +9,10 @@ import unittest
 class TestActivePassive(BaseTest):
 
     def setUp(self):
+        if not self.s3_active_service_name:
+           self.skipTest('No s3 service for active minio is found')
+        if not self.s3_active_service_name:
+           self.skipTest('No s3 service for passive minio is found')
         super().setUp()
         self.s3_active = self.s3_controller.s3[self.s3_active_service_name]
         self.s3_passive = self.s3_controller.s3[self.s3_passive_service_name]
@@ -39,6 +43,7 @@ class TestActivePassive(BaseTest):
         - Download F1 and check on its md5sum
         - Check that a new vm has been deployed (instead of VM1) and now acting as a passive minio.
         """
+
 
         self.logger.info('Get the active minio vm (VM1)')
         vm_host = self.s3_active.vm_host
