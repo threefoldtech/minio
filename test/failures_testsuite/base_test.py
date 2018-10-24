@@ -56,11 +56,20 @@ class BaseTest(TestCase):
             god_token = str(out).split(' ')[2]
             cls.s3_controller = Controller(cls.config, god_token)
             cls.s3_service_name = cls.config['s3']['use']['s3_service_name']
-            if cls.s3_service_name not in cls.s3_controller.s3:
-                logger.error("cant find {} s3 service under {} robot client".format(cls.s3_service_name,
-                                                                                    cls.config['robot']['client']))
-                raise Exception("cant find {} s3 service under {} robot client".format(cls.s3_service_name,
-                                                                                       cls.config['robot']['client']))
+            s3_services = []
+            cls.s3_service_name = cls.config['s3']['use']['s3_service_name']
+            s3_services.append(cls.s3_service_name)
+            cls.s3_active_service_name = cls.config['s3']['use']['s3_active_service_name']
+            s3_services.append(cls.s3_active_service_name)
+            cls.s3_passive_service_name = cls.config['s3']['use']['s3_passive_service_name']
+            s3_services.append(cls.s3_passive_service_name)
+            for s3_service in s3_services:
+                if s3_service not in cls.s3_controller.s3:
+                    logger.error("cant find {} s3 service under {} robot client".format(cls.s3_service_name,
+                                                                                        cls.config['robot']['client']))
+                    raise Exception("cant find {} s3 service under {} robot client".format(cls.s3_service_name,
+                                                                                           cls.config['robot']['client']))
+
         cls.s3 = cls.s3_controller.s3[cls.s3_service_name]
         # cls.s3.failures.zdb_start_all()
 
