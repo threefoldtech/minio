@@ -8,7 +8,9 @@ class ZDBFailures(BaseTest):
 
     def test001_zdb_kill(self):
         """
+        - upload file, should pass
         - kill zdb process  and make sure it will restart automatically.
+        - download uploaded file, should pass
         """
         md5_before = self.upload_file()
 

@@ -8,7 +8,9 @@ class ZROBOTFailures(BaseTest):
 
     def test001_zrobot_kill(self):
         """
-        - kill zrobot process and make sure it will restart automatically.
+        - upload file, should pass
+        - kill zrobot process on minio vm and make sure it will restart automatically.
+        - download uploaded file, should pass
         """
         md5_before = self.upload_file()
 
