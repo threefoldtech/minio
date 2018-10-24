@@ -152,9 +152,7 @@ class FailureGenenator:
                 if filesystem.path == zerodb.data['data']['path']:
                     device = sp.device.split('/')[-1]
                     break
-            if device:
-                break
-        if not device:
+        else:
             return
 
         disk = ''.join([i for i in device if not i.isdigit()])
@@ -271,7 +269,7 @@ class FailureGenenator:
         zdb_cont = tlog_node.containers.get(name='zerodb_{}'.format(zdb_name))
         zdb_cont.stop()
         return zdb_cont.is_running()
-        
+
     def Kill_node_robot_process(self, node_addr=None, timeout=100):
         """
         kill robot process.
