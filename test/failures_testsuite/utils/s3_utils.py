@@ -65,5 +65,7 @@ class s3_utils:
         try:
             assert(hashlib.md5(d_file.data).hexdigest() == upload_file_md5)
             logger.info("comparison valid")
+        except:
+            raise
         finally:
             self.client.remove_bucket(bucket_name)
