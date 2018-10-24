@@ -247,6 +247,8 @@ class FailureGenenator:
 
         tlog_node = s3.tlog_node
         zdb_cont = tlog_node.containers.get(name='zerodb_{}'.format(zdb_name))
+        zdb_cont.stop()
+        return zdb_cont.is_running()
         
     def Kill_node_robot_process(self,node_addr=None, timeout=100):
         """

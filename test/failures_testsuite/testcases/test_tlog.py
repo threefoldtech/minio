@@ -72,3 +72,34 @@ class TestTlog(BaseTest):
         md5_after = self.download_file(file_name=self.file_name, keep_trying=True)
         self.assertEqual(md5_after, md5_before)
 
+    def test003_upload_kill_tlog_download(self):
+        """
+         - Upload file
+         - kill tlog
+         - wait 60 sec, tlog should be returned
+         - Download file, should succeed
+        """
+        self.file_name = self.upload_file()
+        md5_before = self.file_name
+
+        self.assertFalse(self.s3.failures.kill_tlog())
+        time.sleep(60)
+
+        md5_after = self.download_file(file_name=self.file_name, keep_trying=True)
+        self.assertEqual(md5_after, md5_before)
+
+    def test004_kill_tlog_upload_download(self):
+        """
+         - kill tlog
+         - wait 60 sec, tlog should be returned
+         - Upload file
+         - Download file, should succeed
+        """
+        self.assertFalse(self.s3.failures.kill_tlog())
+        time.sleep(60)
+
+        self.file_name = self.upload_file()
+        md5_before = self.file_name
+
+        md5_after = self.download_file(file_name=self.file_name, keep_trying=True)
+        self.assertEqual(md5_after, md5_before)
