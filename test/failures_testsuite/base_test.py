@@ -73,7 +73,6 @@ class BaseTest(TestCase):
         """
         self = cls()
         self._delete_directory(directory='tmp')
-        #self.s3.failures.tlog_up()
 
     def setUp(self):
         self.s3 = self.s3_controller.s3[self.s3_service_name]

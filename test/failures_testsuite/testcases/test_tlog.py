@@ -1,5 +1,6 @@
 from random import randint
 from base_test import BaseTest
+from unittest import skip
 import time
 
 
@@ -12,6 +13,7 @@ class TestTlog(BaseTest):
     def tearDown(self):
         super().tearDown()
 
+    @skip('https://github.com/threefoldtech/0-templates/issues/179')
     def test001_upload_stop_tlog_start_download(self):
         """
          - Upload file
@@ -42,6 +44,7 @@ class TestTlog(BaseTest):
         md5_after = self.download_file(file_name=self.file_name, keep_trying=True)
         self.assertEqual(md5_after, md5_before)
 
+    @skip('https://github.com/threefoldtech/0-templates/issues/179')
     def test002_stop_tlog_upload_download(self):
         """
          - Stop tlog
