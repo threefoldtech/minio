@@ -246,7 +246,7 @@ class FailureGenenator:
         zdb_name = ns.data['data']['zerodb']
 
         tlog_node = s3.tlog_node
-        zdb_cont = tlog_node.containers.get(name='zerodb_{}'.format(zdb_name)
+        zdb_cont = tlog_node.containers.get(name='zerodb_{}'.format(zdb_name))
         
     def Kill_node_robot_process(self,node_addr=None, timeout=100):
         """
@@ -255,7 +255,6 @@ class FailureGenenator:
         s3 = self._parent
         if not s3:
             return
-            
         if not node_addr:
             farm_name = s3.service.data['data']['farmerIyoOrg']
             capacity = j.clients.threefold_directory.get(interactive=False)
