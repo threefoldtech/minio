@@ -204,8 +204,39 @@ class FailureGenenator:
         zdb_name = ns.data['data']['zerodb']
 
         tlog_node = s3.tlog_node
-
         zdb_cont = tlog_node.containers.get(name='zerodb_{}'.format(zdb_name))
+        
+    def Kill_node_robot_process(self,node_addr=None, timeout=100):
+        """
+        kill robot process. 
+        """
+        s3 = self._parent
+        if not s3:
+            return
+        if not node_addr:
+            farm_name = s3.service.data['data']['farmerIyoOrg']
+            capacity = j.clients.threefold_directory.get(interactive=False)
+            nodes_data = capacity.api.ListCapacity(query_params={'farmer': farm_name})[1].json()
+            for _ in range(len(nodes_data)):
+                node_addr = random.choice(nodes_data)["robot_address"][7:-5]
+                node = j.clients.zos.get("zrobot", data={"host":node_addr})
+                try:
+                    node.client.ping()
+                    break                         
+                except:
+                    logger.error(" can't reach %s skipping", node.addr)
+                    continue
+        else:
+            node = j.clients.zos.get("zrobot", data={"host":node_addr})
+
+        logger.info("kill the robot on node{}".format(node_addr))
+        zrobot_cl = node.containers.get('zrobot')
+        job_id = 'zrobot'
+        result = zrobot_cl.client.job.kill(job_id, signal=signal.SIGINT)
+        if not result:
+            logger.info("zrobot job not exist")
+            return False
+        logger.info('the robot process killed')
 
     def get_tlog_info(self):
         self.tlog = {}
