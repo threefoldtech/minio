@@ -61,8 +61,8 @@ class s3_utils:
         return file_name, bucket_name, file_md5
 
     def download_file(self, file_name, bucket_name, upload_file_md5):
-        d_file = self.client.get_object(bucket_name, file_name)
         try:
+            d_file = self.client.get_object(bucket_name, file_name)
             assert(hashlib.md5(d_file.data).hexdigest() == upload_file_md5)
             logger.info("comparison valid")
         except:
