@@ -86,7 +86,6 @@ class BaseTest(TestCase):
 
     def setUp(self):
         self.s3 = self.s3_controller.s3[self.s3_service_name]
-        self.get_s3_info()
         # logger.info('Start all zdb')
         # self.s3.failures.zdb_start_all()
 

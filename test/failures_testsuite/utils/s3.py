@@ -40,7 +40,7 @@ class S3Manager:
     @property
     def client(self):
         if self._client is None:
-            s3 = self._parent.service
+            s3 = self.service
             if not s3:
                 raise RuntimeError("s3 services not found")
 
@@ -71,7 +71,6 @@ class S3Manager:
         return bucket_name
 
     def upload_file(self, size=1024 * 1024):
-        logger.info("Create a bucket")
         bucket_name = self._create_bucket()
         file_name = j.data.idgenerator.generateXCharID(16)
         file_path = self._create_file(file_name, size)
@@ -171,7 +170,7 @@ class S3Manager:
     def minio_container(self):
         if self._container_client is None:
             container = self.vm_node.client.container.find('minio_%s'.format(self.service.guid))
-            self._container_client = self.s3.vm_node.client.container.client(list(container.keys())[0])
+            self._container_client = self.vm_node.client.container.client(list(container.keys())[0])
         return self._container_client
 
     @property
