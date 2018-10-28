@@ -13,7 +13,7 @@ class ZROBOTFailures(BaseTest):
         - kill zrobot process on minio vm and make sure it will restart automatically.
         - download uploaded file, should pass
         """
-        md5_before = self.upload_file()
+        file_name, bucket_name, md5_before = self.s3.upload_file()
 
         self.logger.info('kill zrobot process and make sure it will restart automatically')
         minio_node_adder = self.s3.vm_node.addr
@@ -21,5 +21,5 @@ class ZROBOTFailures(BaseTest):
         self.assertTrue(flag, "zrobot didn't restart")
 
         self.logger.info("Download uploaded file, and check that both are same.")
-        md5_after = self.download_file(file_name=md5_before, keep_trying=True)
+        md5_after = self.s3.download_file(file_name, bucket_name, timeout=250)
         self.assertEqual(md5_after, md5_before)
