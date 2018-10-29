@@ -7,6 +7,7 @@ from requests.exceptions import ConnectionError, ConnectTimeout
 
 from jumpscale import j
 from zerorobot.template.state import StateCheckError
+from zerorobot.service_collection import ServiceNotFoundError
 
 logger = j.logger.get()
 
@@ -241,8 +242,12 @@ class FailureGenenator:
         robot = j.clients.zrobot.robots[tlog['node']]
         robot = robot_god_token(robot)
 
-        ns = robot.services.get(name=tlog['name'])
-        zdb = robot.services.get(name=ns.data['data']['zerodb'])
+        try:
+            ns = robot.services.get(name=tlog['name'])
+            zdb = robot.services.get(name=ns.data['data']['zerodb'])
+        except ServiceNotFoundError:
+            logger.warning("Seems that there is no tlog namespace nor zdb")
+            return False
 
         try:
             return zdb.state.check('status', 'running', 'ok')
@@ -251,7 +256,8 @@ class FailureGenenator:
 
     def kill_tlog(self):
         """
-        Tlog is a namespace under a zdb container, This method will terminate this container
+        Tlog is a namespace under a zdb container, This method will terminate this container but the zrobot will bring
+        it back.
         :return:
         """
         s3 = self._parent
@@ -264,6 +270,35 @@ class FailureGenenator:
 
         ns = robot.services.get(name=tlog['name'])
         zdb_name = ns.data['data']['zerodb']
+
+        tlog_node = s3.tlog_node
+        zdb_cont = tlog_node.containers.get(name='zerodb_{}'.format(zdb_name))
+        zdb_cont.stop()
+        return zdb_cont.is_running()
+
+    def tlog_die_forever(self):
+        """
+        Tlog is a namespace under a zdb container, This method will terminate this container forever
+        :return:
+        """
+        s3 = self._parent
+        if not s3:
+            return
+
+        tlog = s3.service.data['data']['tlog']
+        robot = j.clients.zrobot.robots[tlog['node']]
+        robot = robot_god_token(robot)
+
+        try:
+            ns = robot.services.get(name=tlog['name'])
+            zdb_name = ns.data['data']['zerodb']
+            zdb = robot.services.get(name=zdb_name)
+        except ServiceNotFoundError:
+            logger.warning("Seems that there is no tlog namespace nor zdb")
+            return False
+
+        ns.delete()
+        zdb.delete()
 
         tlog_node = s3.tlog_node
         zdb_cont = tlog_node.containers.get(name='zerodb_{}'.format(zdb_name))
@@ -330,6 +365,7 @@ class FailureGenenator:
 
         self.tlog['s3_data_ip'] = s3.service.data['data']['tlog']['address']
         logger.info(' Tlog ip in s3 data : {}'.format(self.tlog['s3_data_ip']))
+
 
 def robot_god_token(robot):
     """

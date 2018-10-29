@@ -5,17 +5,11 @@ import time
 
 
 class TestTlog(BaseTest):
-    def setUp(self):
-        super().setUp()
-        if not self.s3.failures.tlog_status():
-            self.s3.failures.tlog_up()
-
-    def tearDown(self):
-        super().tearDown()
-
     @skip('https://github.com/threefoldtech/0-templates/issues/179')
     def test001_upload_stop_tlog_start_download(self):
         """
+
+        test001_upload_stop_tlog_start_download
          - Upload file
          - stop tlog
          - Try to download, should fail
@@ -47,6 +41,8 @@ class TestTlog(BaseTest):
     @skip('https://github.com/threefoldtech/0-templates/issues/179')
     def test002_stop_tlog_upload_download(self):
         """
+
+        test002_stop_tlog_upload_download
          - Stop tlog
          - Upload file, should fail
          - Start tlog
@@ -74,6 +70,8 @@ class TestTlog(BaseTest):
 
     def test003_upload_kill_tlog_download(self):
         """
+
+        test003_upload_kill_tlog_download
          - Upload file
          - kill tlog
          - wait 60 sec, tlog should be returned
@@ -90,6 +88,8 @@ class TestTlog(BaseTest):
 
     def test004_kill_tlog_upload_download(self):
         """
+
+        test004_kill_tlog_upload_download
          - kill tlog
          - wait 60 sec, tlog should be returned
          - Upload file
@@ -103,3 +103,39 @@ class TestTlog(BaseTest):
 
         md5_after = self.download_file(file_name=self.file_name, keep_trying=True)
         self.assertEqual(md5_after, md5_before)
+
+    def test005_upload_tlog_die_forever_download(self):
+        """
+
+        test005_upload_tlog_die_forever_download
+         - Upload file
+         - Make tlog die forever
+         - Wait for 60 sec.
+         - Download file, should succeed
+        """
+        self.file_name = self.upload_file()
+        md5_before = self.file_name
+
+        self.assertFalse(self.s3.failures.tlog_die_forever())
+        time.sleep(60)
+
+        md5_after = self.download_file(file_name=self.file_name, keep_trying=True)
+        self.assertEqual(md5_after, md5_before)
+
+    def test006_tlog_die_forever_upload_download(self):
+        """
+
+         - Make tlog die forever
+         - Wait for 60 sec.
+         - Upload file, should succeed
+         - Download file, should succeed
+        """
+        self.file_name = self.upload_file()
+        md5_before = self.file_name
+
+        self.assertFalse(self.s3.failures.tlog_die_forever())
+        time.sleep(60)
+
+        md5_after = self.download_file(file_name=self.file_name, keep_trying=True)
+        self.assertEqual(md5_after, md5_before)
+
