@@ -1,11 +1,9 @@
 from jumpscale import j
-import os
-import time
+import os, time, hashlib
 from zerorobot.service_collection import ServiceNotFoundError
 from gevent.pool import Group
 from utils.reset import EnvironmentReset
 from utils.failures import FailureGenenator
-import hashlib
 from urllib.parse import urlparse
 from minio import Minio
 from minio.error import BucketAlreadyExists, BucketAlreadyOwnedByYou
@@ -65,18 +63,27 @@ class S3Manager:
             logger.info("create bucket")
             self.client.make_bucket(bucket_name)
         except BucketAlreadyExists:
-            pass
+            logger.warning('Bucket already exists')
         except BucketAlreadyOwnedByYou:
-            pass
+            logger.warning('Bucket already owned by you')
+        except:
+            logger.warning("Can't create bucket!")
+            raise RuntimeError
         return bucket_name
 
     def upload_file(self, size=1024 * 1024):
         bucket_name = self._create_bucket()
+        if not bucket_name:
+            raise RuntimeError
         file_name = j.data.idgenerator.generateXCharID(16)
         file_path = self._create_file(file_name, size)
         file_md5 = hashlib.md5(open(file_path, 'rb').read()).hexdigest()
         logger.info("Upload a file")
-        self.client.fput_object(bucket_name, file_name, file_path)
+        try:
+            self.client.fput_object(bucket_name, file_name, file_path)
+        except:
+            logger.warning("Can't upload {} file".format(file_name))
+            raise RuntimeError
         os.remove(file_path)
         return file_name, bucket_name, file_md5
 
@@ -93,12 +100,13 @@ class S3Manager:
         else:
             resource(*args, **kwargs)
 
-    def download_file(self, file_name, bucket_name, timeout=0):
+    def download_file(self, file_name, bucket_name, timeout=300):
         try:
             logger.info("Download a file")
             d_file = self.call_timeout(timeout, self.client.get_object, bucket_name, file_name)
         except:
-            raise
+            logger.warning("Can't download {} file".format(file_name))
+            raise RuntimeError
         finally:
             self.client.remove_bucket(bucket_name)
         d_file_md5 = hashlib.md5(d_file.data).hexdigest()
@@ -188,14 +196,6 @@ class S3Manager:
                 tlogs_host = data['tlog']['url'].replace('//', '').split(':')[1]
                 j.clients.zos.get(data['tlog']['node'], data={'host': tlogs_host})
                 return j.clients.zos.get(data['tlog']['node'])
-
-    @property
-    def minio_container(self):
-        """
-        container running minio.
-        This containers run on vm_node
-        """
-        return self.vm_node.containers.get("minio_%s" % self.service.guid)
 
     @property
     def minio_config(self):
