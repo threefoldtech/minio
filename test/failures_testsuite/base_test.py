@@ -73,7 +73,7 @@ class BaseTest(TestCase):
                                                                                            cls.config['robot']['client']))
 
         cls.s3 = cls.s3_controller.s3[cls.s3_service_name]
-        # cls.s3.failures.zdb_start_all()
+
 
     @classmethod
     def tearDownClass(cls):
@@ -82,12 +82,11 @@ class BaseTest(TestCase):
 
         :return:
         """
-        self = cls()
+        pass
 
     def setUp(self):
         self.s3 = self.s3_controller.s3[self.s3_service_name]
-        # logger.info('Start all zdb')
-        # self.s3.failures.zdb_start_all()
+
 
     def tearDown(self):
         pass
