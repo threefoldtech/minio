@@ -56,7 +56,7 @@ class TestActivePassive(BaseTest):
                 raise Exception("can't find vm with name: %s_vm" % self.s3.dm_vm.guid)
 
         self.logger.info('upload file to the active minio')
-        file_name, bucket_name, file_md5 = self.s3_active.s3_utils.upload_file()
+        file_name, bucket_name, file_md5 = self.s3_active.upload_file()
 
         self.logger.info('kill VM1')
         vm_host.client.kvm.destroy(vm['uuid'])
@@ -69,7 +69,7 @@ class TestActivePassive(BaseTest):
         self.assertTrue(duration, "Active minio vm didn't start")
         self.logger.info("Active minio vm took %s sec to restart" % duration)
         self.logger.info('Download the file and check on its md5sum')
-        self.s3_active.s3_utils.download_file(file_name, bucket_name, file_md5)
+        self.s3_active.download_file(file_name, bucket_name, file_md5)
 
         self.logger.info('Check that a new vm has been deployed (instead of VM1) and now acting as a passive minio')
         #wait till u make sure new passive vm has been created
@@ -118,7 +118,7 @@ class TestActivePassive(BaseTest):
         """
 
         self.logger.info('upload file to the active minio')
-        file_name, bucket_name, file_md5 = self.s3_active.s3_utils.upload_file()
+        file_name, bucket_name, file_md5 = self.s3_active.upload_file()
 
         self.logger.info('Disable ssd of the active minio vdisk, should succeed')
         flag = self.s3_active.failures.disable_minio_vdisk_ssd()
@@ -133,7 +133,7 @@ class TestActivePassive(BaseTest):
         self.logger.info("Active minio vm took %s sec to restart" % duration)
 
         self.logger.info('Download the file and check on its md5sum')
-        self.s3_active.s3_utils.download_file(file_name, bucket_name, file_md5)
+        self.s3_active.download_file(file_name, bucket_name, file_md5)
 
         self.logger.info('Check that a new vm has been deployed (instead of VM1) and now acting as a passive minio.')
         #wait till u make sure new passive vm has been created
