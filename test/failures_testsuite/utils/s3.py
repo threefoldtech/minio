@@ -1,8 +1,14 @@
 from jumpscale import j
+import os
+import time
 from zerorobot.service_collection import ServiceNotFoundError
 from gevent.pool import Group
 from utils.reset import EnvironmentReset
 from utils.failures import FailureGenenator
+import hashlib
+from urllib.parse import urlparse
+from minio import Minio
+from minio.error import BucketAlreadyExists, BucketAlreadyOwnedByYou
 
 logger = j.logger.get('s3demo')
 
@@ -20,13 +26,83 @@ class S3Manager:
         self._zt_id = self._parent.config['zerotier']['id']
         self._zt_token = self._parent.config['zerotier']['token']
 
+        self._client_type = 'public'
+        self._client = None
         self._vm_node = None
         self._vm_robot = None
         self._vm_host_robot = None
+        self._container_client = None
         try:
             self._service = self.dm_robot.services.get(name=name)
         except ServiceNotFoundError:
             self._service = None
+
+    @property
+    def client(self):
+        if self._client is None:
+            s3 = self.service
+            if not s3:
+                raise RuntimeError("s3 services not found")
+
+            url = s3.schedule_action('url').wait(die=True).result
+            u = urlparse(url[self._client_type])
+
+            self._client = Minio(u.netloc,
+                                 access_key=s3.data['data']['minioLogin'],
+                                 secret_key=s3.data['data']['minioPassword'],
+                                 secure=False)
+        return self._client
+
+    def _create_file(self, file_name, size, directory='/tmp'):
+        file_path = '{}/{}'.format(directory, file_name)
+        with open('{}/{}'.format(directory, file_name), 'wb') as f:
+            f.write(os.urandom(size))
+        return file_path
+
+    def _create_bucket(self):
+        bucket_name = j.data.idgenerator.generateXCharID(16)
+        try:
+            logger.info("create bucket")
+            self.client.make_bucket(bucket_name)
+        except BucketAlreadyExists:
+            pass
+        except BucketAlreadyOwnedByYou:
+            pass
+        return bucket_name
+
+    def upload_file(self, size=1024 * 1024):
+        bucket_name = self._create_bucket()
+        file_name = j.data.idgenerator.generateXCharID(16)
+        file_path = self._create_file(file_name, size)
+        file_md5 = hashlib.md5(open(file_path, 'rb').read()).hexdigest()
+        logger.info("Upload a file")
+        self.client.fput_object(bucket_name, file_name, file_path)
+        os.remove(file_path)
+        return file_name, bucket_name, file_md5
+
+    @staticmethod
+    def call_timeout(timeout, resource, *args, **kwargs):
+        now = time.time()
+        while now + timeout > time.time():
+            try:
+                result = resource(*args, **kwargs)
+                return result
+            except:
+                time.sleep(1)
+                continue
+        else:
+            resource(*args, **kwargs)
+
+    def download_file(self, file_name, bucket_name, timeout=0):
+        try:
+            logger.info("Download a file")
+            d_file = self.call_timeout(timeout, self.client.get_object, bucket_name, file_name)
+        except:
+            raise
+        finally:
+            self.client.remove_bucket(bucket_name)
+        d_file_md5 = hashlib.md5(d_file.data).hexdigest()
+        return d_file_md5
 
     def execute_all_nodes(self, func, nodes=None):
         """
@@ -89,6 +165,13 @@ class S3Manager:
             j.clients.zrobot.get('demo_vm_host_robot', data={'url': "http://%s:6600" % self.vm_host.public_addr}) # 'god_token_': ''
             self._vm_host_robot = j.clients.zrobot.robots['demo_vm_host_robot']
         return self._vm_host_robot
+
+    @property
+    def minio_container(self):
+        if self._container_client is None:
+            container = self.vm_node.client.container.find('minio_%s'.format(self.service.guid))
+            self._container_client = self.vm_node.client.container.client(list(container.keys())[0])
+        return self._container_client
 
     @property
     def zerodb_nodes(self):
