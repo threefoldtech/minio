@@ -1,6 +1,4 @@
-from random import randint
 from base_test import BaseTest
-import unittest, time
 
 
 class ZROBOTFailures(BaseTest):

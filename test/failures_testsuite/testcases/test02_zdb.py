@@ -1,6 +1,6 @@
 from random import randint
 from base_test import BaseTest
-import unittest, time
+
 
 class ZDBFailures(BaseTest):
     def tearDown(self):
@@ -37,14 +37,14 @@ class ZDBFailures(BaseTest):
         md5_after = self.s3.download_file(file_name, bucket_name)
         self.assertEqual(md5_after, md5_before)
 
-        self.logger.info('Stop {} zdb'.format((self.parity)))
-        self.s3.failures.zdb_down(count=self.parity)
+        self.logger.info('Stop {} zdb'.format((self.s3.parity)))
+        self.s3.failures.zdb_down(count=self.s3.parity)
 
         md5_after = self.s3.download_file(file_name, bucket_name)
         self.assertEqual(md5_after, md5_before)
 
-        self.logger.info('Start {} zdb'.format((self.parity)))
-        self.s3.failures.zdb_up(count=self.parity)
+        self.logger.info('Start {} zdb'.format((self.s3.parity)))
+        self.s3.failures.zdb_up(count=self.s3.parity)
 
     def test003_stop_parity_zdb_upload_download_start(self):
         """
@@ -55,14 +55,14 @@ class ZDBFailures(BaseTest):
         - start n zdb, should pass
         """
         file_name, bucket_name, md5_before = self.s3.upload_file()
-        self.logger.info(' Stop {} zdb'.format((self.parity)))
-        self.s3.failures.zdb_down(count=self.parity)
+        self.logger.info(' Stop {} zdb'.format((self.s3.parity)))
+        self.s3.failures.zdb_down(count=self.s3.parity)
 
         md5_after = self.s3.download_file(file_name, bucket_name)
         self.assertEqual(md5_after, md5_before)
 
-        self.logger.info(' Start {} zdb'.format((self.parity)))
-        self.s3.failures.zdb_up(count=self.parity)
+        self.logger.info(' Start {} zdb'.format((self.s3.parity)))
+        self.s3.failures.zdb_up(count=self.s3.parity)
 
     def test004_stop_parity_zdb_upload_start_download(self):
         """
@@ -73,11 +73,11 @@ class ZDBFailures(BaseTest):
         - assert md5 checksum is matching
         """
         file_name, bucket_name, md5_before = self.s3.upload_file()
-        self.logger.info(' Stop {} zdb'.format((self.parity)))
-        self.s3.failures.zdb_down(count=self.parity)
+        self.logger.info(' Stop {} zdb'.format((self.s3.parity)))
+        self.s3.failures.zdb_down(count=self.s3.parity)
 
-        self.logger.info(' Start {} zdb'.format((self.parity)))
-        self.s3.failures.zdb_up(count=self.parity)
+        self.logger.info(' Start {} zdb'.format((self.s3.parity)))
+        self.s3.failures.zdb_up(count=self.s3.parity)
 
         md5_after = self.s3.download_file(file_name, bucket_name)
         self.assertEqual(md5_after, md5_before)
@@ -91,13 +91,13 @@ class ZDBFailures(BaseTest):
         - Start n+ zdb
         """
         self.s3.upload_file()
-        zdb_turn_down = self.parity + randint(1, self.shards)
+        zdb_turn_down = self.s3.parity + randint(1, self.s3.shards)
         self.logger.info(' Stop {} zdb'.format(zdb_turn_down))
         self.s3.failures.zdb_down(count=zdb_turn_down)
 
         self.logger.info('Uploading should raise an error')
         with self.assertRaises(RuntimeError):
-            self.upload_file()
+            self.s3.upload_file()
 
         self.logger.info(' Start {} zdb'.format(zdb_turn_down))
         self.s3.failures.zdb_up(count=zdb_turn_down)
