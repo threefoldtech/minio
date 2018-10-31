@@ -100,15 +100,16 @@ class S3Manager:
         else:
             resource(*args, **kwargs)
 
-    def download_file(self, file_name, bucket_name, timeout=300):
+    def download_file(self, file_name, bucket_name, timeout=300, delete_bucket=True):
         try:
             logger.info("Download a file")
             d_file = self.call_timeout(timeout, self.client.get_object, bucket_name, file_name)
         except:
             logger.warning("Can't download {} file".format(file_name))
-            raise RuntimeError
+            raise
         finally:
-            self.client.remove_bucket(bucket_name)
+            if delete_bucket:
+                self.client.remove_bucket(bucket_name)
         d_file_md5 = hashlib.md5(d_file.data).hexdigest()
         return d_file_md5
 
@@ -177,7 +178,7 @@ class S3Manager:
     @property
     def minio_container(self):
         if self._container_client is None:
-            container = self.vm_node.client.container.find('minio_%s'.format(self.service.guid))
+            container = self.vm_node.client.container.find('minio_{}'.format(self.service.guid))
             self._container_client = self.vm_node.client.container.client(list(container.keys())[0])
         return self._container_client
 

@@ -115,7 +115,7 @@ class FailureGenenator:
                     return True
             return False
 
-    def zdb_down(self, count=1):
+    def zdb_down(self, count=1, except_namespaces=[]):
         """
         ensure that count zdb are turned off
         """
@@ -125,6 +125,8 @@ class FailureGenenator:
 
         n = 0
         for namespace in s3.service.data['data']['namespaces']:
+            if namespace['name'] in except_namespaces:
+                continue
             if n >= count:
                 break
             robot = j.clients.zrobot.robots[namespace['node']]
@@ -160,7 +162,7 @@ class FailureGenenator:
         s3.vm_host.client.bash('echo 1 > /sys/block/{}/device/delete'.format(disk)).get()
         return disk
 
-    def zdb_up(self, count=1):
+    def zdb_up(self, count=1, except_namespaces=[]):
         """
         ensure that count zdb are turned on
         """
@@ -170,6 +172,8 @@ class FailureGenenator:
 
         n = 0
         for namespace in s3.service.data['data']['namespaces']:
+            if namespace['name'] in except_namespaces:
+                continue
             if n >= count:
                 break
             robot = j.clients.zrobot.robots[namespace['node']]
