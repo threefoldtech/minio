@@ -1,0 +1,20 @@
+robot:
+  url: http://localhost:6600
+  client: demo
+
+zerotier:
+  id: af78bf9436fae600
+  token:
+
+s3:
+  deploy: True # True > deploy, false > use
+  instance:
+    farm: 'kristof-farm'
+    size: 10000
+    shards: 4
+    parity: 2
+    nsName: 'namespace'
+  use:
+    s3_service_name: 's3_demo_0'
+    s3_active_service_name: ''
+    s3_passive_service_name: ''
