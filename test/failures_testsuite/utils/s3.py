@@ -29,6 +29,7 @@ class S3Manager:
         self._vm_node = None
         self._vm_robot = None
         self._vm_host_robot = None
+        self._vm_host = None
         self._container_client = None
         try:
             self._service = self.dm_robot.services.get(name=name)
@@ -207,9 +208,11 @@ class S3Manager:
         """
         zos machine that host the vm_node
         """
-
-        vm = self.dm_robot.services.get(template_name='dm_vm', name=self.service.guid)
-        return j.clients.zos.get(vm.data['data']['nodeId'])
+        if self._vm_host is None:
+            vm = self.dm_robot.services.get(template_name='dm_vm', name=self.service.guid)
+            result = vm.schedule_action('info').wait(die=True).result
+            self._vm_host = j.clients.zos.get(result['node_id'], data={'host': result['host']['public_addr']})
+        return self._vm_host
 
     @property
     def robot_host(self):
