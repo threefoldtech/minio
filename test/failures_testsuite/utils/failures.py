@@ -147,17 +147,17 @@ class FailureGenenator:
         dm_vm = s3.dm_robot.services.get(template_name='dm_vm', name=s3.service.guid)
         vdisk = s3.vm_host_robot.services.get(template_name='vdisk', name='%s_s3vm' % dm_vm.guid)
         zerodb = s3.vm_host_robot.services.get(name=vdisk.data['data']['zerodb'])
-
-        storagepools = s3.vm_host.storagepools.list()
+        storagepools = s3.tlog_node.storagepools.list()
         device = None
         for sp in storagepools:
             for filesystem in sp.list():
                 if filesystem.path == zerodb.data['data']['path']:
                     device = sp.device.split('/')[-1]
                     break
+            if device:
+                break
         else:
             return
-
         disk = ''.join([i for i in device if not i.isdigit()])
         s3.vm_host.client.bash('echo 1 > /sys/block/{}/device/delete'.format(disk)).get()
         return disk
@@ -172,7 +172,6 @@ class FailureGenenator:
         robot = robot_god_token(robot)
         ns = robot.services.get(name=tlog['name'])
         zerodb = robot.services.get(name=ns.data['data']['zerodb'])
-
         storagepools = s3.vm_host.storagepools.list()
         device = None
         for sp in storagepools:
@@ -180,9 +179,10 @@ class FailureGenenator:
                 if filesystem.path == zerodb.data['data']['path']:
                     device = sp.device.split('/')[-1]
                     break
+            if device:
+                break
         else:
             return
-
         disk = ''.join([i for i in device if not i.isdigit()])
         s3.vm_host.client.bash('echo 1 > /sys/block/{}/device/delete'.format(disk)).get()
         return disk
@@ -412,3 +412,12 @@ def robot_god_token(robot):
     finally:
         j.clients.zos.delete('godtoken')
     return robot
+
+
+for k in range(1):
+    for i in range(10):
+        if i == 10:
+            print('john')
+            break
+else:
+    print('else')

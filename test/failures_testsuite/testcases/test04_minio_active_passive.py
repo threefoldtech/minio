@@ -167,6 +167,7 @@ class TestActivePassive(BaseTest):
         # make sure it is the same host used
         self.s3_passive.vm_host.client.bash('echo "- - -" | tee /sys/class/scsi_host/host*/scan').get()
 
+    @unittest.skip('skip till the flow of active and passive is done')
     def test005_active_minio_tlog_ssd_failure(self):
         """
         - Upload file (F1) to the active minio.
@@ -204,6 +205,7 @@ class TestActivePassive(BaseTest):
                 self.logger.info('Enable the ssd')
                 self.s3_passive.vm_host.client.bash('echo "- - -" | tee /sys/class/scsi_host/host*/scan').get()
 
+    @unittest.skip('skip till the flow of active and passive is done')
     def test006_passive_minio_tlog_ssd_failure(self):
         """
         - Upload a file (F1) to the active minio.
