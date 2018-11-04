@@ -412,12 +412,3 @@ def robot_god_token(robot):
     finally:
         j.clients.zos.delete('godtoken')
     return robot
-
-
-for k in range(1):
-    for i in range(10):
-        if i == 10:
-            print('john')
-            break
-else:
-    print('else')
