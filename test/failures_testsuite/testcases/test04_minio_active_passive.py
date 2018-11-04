@@ -166,3 +166,70 @@ class TestActivePassive(BaseTest):
         self.logger.info('Enable the ssd')
         # make sure it is the same host used
         self.s3_passive.vm_host.client.bash('echo "- - -" | tee /sys/class/scsi_host/host*/scan').get()
+
+    def test005_active_minio_tlog_ssd_failure(self):
+        """
+        - Upload file (F1) to the active minio.
+        - Disable ssd of the active minio tlog, should succeed.
+        - Wait till the configuration of the passive minio get updated to become the active one.
+        - Make sure the passive vm is now serving the requests which becomes an active.
+        - Download F1  and check on its md5sum
+        - Check that a new tlog namespace has been deployed and has the same info as other tlog
+        - Enable the ssd.
+        """
+
+        self.logger.info('Upload file (F1) to the active minio')
+        file_name, bucket_name, md5_before = self.s3_active.upload_file()
+
+        try:
+            self.logger.info('Disable ssd of the active minio tlog, should succeed.')
+            flag = False
+            flag = self.s3_active.failures.disable_minio_tlog_ssd()
+            self.assertTrue(flag, "ssd hasn't been disabled")
+
+            self.logger.info('Wait till the configuration of the passive minio get updated to become the active one.')
+
+            self.logger.info('Make sure the passive vm is now serving the requests which becomes an active.')
+
+            self.logger.info('Download F1  and check on its md5sum')
+            md5_after = self.s3_active.download_file(file_name, bucket_name)
+            self.assertEqual(md5_before, md5_after)
+
+            self.logger.info('Check that a new tlog namespace has been deployed and has the same info as other tlog')
+
+        except:
+            raise
+        finally:
+            if flag:
+                self.logger.info('Enable the ssd')
+                self.s3_passive.vm_host.client.bash('echo "- - -" | tee /sys/class/scsi_host/host*/scan').get()
+
+    def test006_passive_minio_tlog_ssd_failure(self):
+        """
+        - Upload a file (F1) to the active minio.
+        - Disable ssd of the passive minio tlog, should succeed.
+        - Check that a new tlog namespace has been deployed and has the same info as other tlog.
+        - Download F1 from the passive minio, should succeed
+        - Enable the ssd.
+        """
+
+        self.logger.info('Upload a file (F1) to the active minio.')
+        file_name, bucket_name, md5_before = self.s3_active.upload_file()
+
+        try:
+            self.logger.info('Disable ssd of the passive minio tlog, should succeed.')
+            flag = False
+            flag = self.s3_passive.failures.disable_minio_tlog_ssd()
+            self.assertTrue(flag, "ssd hasn't been disabled")
+
+            self.logger.info('Check that a new tlog namespace has been deployed and has the same info as other tlog.')
+
+            self.logger.info('Download F1 from the passive minio, should succeed ')
+            md5_after = self.s3_active.download_file(file_name, bucket_name)
+            self.assertEqual(md5_before, md5_after)
+        except:
+            raise
+        finally:
+            if flag:
+                self.logger.info('Enable the ssd')
+                self.s3_passive.vm_host.client.bash('echo "- - -" | tee /sys/class/scsi_host/host*/scan').get()

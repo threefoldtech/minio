@@ -162,6 +162,32 @@ class FailureGenenator:
         s3.vm_host.client.bash('echo 1 > /sys/block/{}/device/delete'.format(disk)).get()
         return disk
 
+    def minio_process_down(self, timeout):
+        """
+        turn off the minio process, then count how much times it takes to restart
+        """
+        s3 = self._parent
+        url = s3.url['public']
+        cont = s3.minio_container
+
+        logger.info('killing minio process')
+        job_id = 'minio.%s' % s3.service.guid
+        cont.client.job.kill(job_id, signal=signal.SIGINT)
+        logger.info('minio process killed')
+
+        logger.info("wait for minio to restart")
+        start = time.time()
+        while (start + timeout) > time.time():
+            try:
+                requests.get(url, timeout=0.2)
+                end = time.time()
+                duration = end - start
+                logger.info("minio took %s sec to restart" % duration)
+                return True
+            except ConnectionError:
+                continue
+        return False
+
     def zdb_up(self, count=1, except_namespaces=[]):
         """
         ensure that count zdb are turned on
