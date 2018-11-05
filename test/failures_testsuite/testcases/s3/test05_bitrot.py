@@ -1,5 +1,4 @@
 from base_test import BaseTest
-import unittest
 from utils.failures import robot_god_token
 from jumpscale import j
 from urllib3.exceptions import MaxRetryError
