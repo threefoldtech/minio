@@ -163,6 +163,7 @@ class S3Manager:
         try:
             logger.info("create bucket")
             self.client.make_bucket(bucket_name)
+            logger.info("bucket : {}".format(bucket_name))
         except BucketAlreadyExists:
             logger.warning('Bucket already exists')
         except BucketAlreadyOwnedByYou:
@@ -205,13 +206,14 @@ class S3Manager:
         try:
             logger.info("Download a file")
             d_file = self.call_timeout(timeout, self.client.get_object, bucket_name, file_name)
+            data = d_file.data
         except:
             logger.warning("Can't download {} file".format(file_name))
             raise
         finally:
             if delete_bucket:
                 self.client.remove_bucket(bucket_name)
-        d_file_md5 = hashlib.md5(d_file.data).hexdigest()
+        d_file_md5 = hashlib.md5(data).hexdigest()
         return d_file_md5
 
     def execute_all_nodes(self, func, nodes=None):
