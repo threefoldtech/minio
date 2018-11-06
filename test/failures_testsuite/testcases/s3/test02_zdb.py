@@ -3,11 +3,10 @@ from base_test import BaseTest
 
 
 class ZDBFailures(BaseTest):
-    def tearDown(self):
-        super().tearDown()
-
     def test001_zdb_kill(self):
         """
+
+        test001_zdb_kill
         - upload file, should pass
         - kill zdb process  and make sure it will restart automatically.
         - download uploaded file, should pass
@@ -24,6 +23,8 @@ class ZDBFailures(BaseTest):
 
     def test002_upload_stop_parity_zdb_download(self):
         """
+
+        test002_upload_stop_parity_zdb_download
         - upload 2M, should succeed.
         - Download file, should succeed
         - Deleted the downloaded file
@@ -48,6 +49,8 @@ class ZDBFailures(BaseTest):
 
     def test003_stop_parity_zdb_upload_download_start(self):
         """
+
+        test003_stop_parity_zdb_upload_download_start
         - Stop n zdb, n <= parity
         - upload file, should pass
         - download file, should pass
@@ -66,6 +69,8 @@ class ZDBFailures(BaseTest):
 
     def test004_stop_parity_zdb_upload_start_download(self):
         """
+
+        test004_stop_parity_zdb_upload_start_download
         - Stop n zdb, n <= parity
         - upload file, should pass
         - start n zdb, should pass
@@ -84,6 +89,8 @@ class ZDBFailures(BaseTest):
 
     def test005_stop_greater_parity_zdb_upload(self):
         """
+
+        test005_stop_greater_parity_zdb_upload
         - Upload file, should succeed
         - Stop n+ zdb, n = parity, should succeed
         - Upload file, should fail

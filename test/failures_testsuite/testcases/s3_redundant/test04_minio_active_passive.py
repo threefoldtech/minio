@@ -34,6 +34,8 @@ class TestActivePassive(BaseTest):
     @unittest.skip('to do .. wait till passive minio is updated .. passive minio vm is created')
     def test001_kill_active_minio_vm(self):
         """
+
+        test001_kill_active_minio_vm
         - Get the active minio vm (VM1)
         - Upload file (F1) to the active minio
         - kill VM1
@@ -79,6 +81,8 @@ class TestActivePassive(BaseTest):
     @unittest.skip('Wait for redploying passive vm')
     def test002_kill_passive_minio_vm(self):
         """
+
+        test002_kill_passive_minio_vm
         - Get the passive minio vm (VM1)
         - kill VM1
         - Check if a new VM has been redployed and functions as passive minio.
@@ -106,6 +110,8 @@ class TestActivePassive(BaseTest):
     @unittest.skip('same as test001 + enable ssd')
     def test003_ssd_failure_active_minio_vm(self):
         """
+
+        test003_ssd_failure_active_minio_vm
         - Upload file (F1) to the active minio
         - Disable ssd of the active minio vdisk, should succeed
         - Wait till the configuration of the passive minio get updated to become the active one.
@@ -147,6 +153,8 @@ class TestActivePassive(BaseTest):
     @unittest.skip('same as test002 + enable ssd')
     def test004_ssd_failure_passive_minio_vm(self):
         """
+
+        test004_ssd_failure_passive_minio_vm
         - Disable ssd of the passive minio vdisk, should succeed.
         -  Check if a new VM has been redployed and functions as passive minio.
         - Enable the ssd.
@@ -170,6 +178,8 @@ class TestActivePassive(BaseTest):
     @unittest.skip('skip till the flow of active and passive is done')
     def test005_active_minio_tlog_ssd_failure(self):
         """
+
+        test005_active_minio_tlog_ssd_failure
         - Upload file (F1) to the active minio.
         - Disable ssd of the active minio tlog, should succeed.
         - Wait till the configuration of the passive minio get updated to become the active one.
@@ -208,6 +218,8 @@ class TestActivePassive(BaseTest):
     @unittest.skip('skip till the flow of active and passive is done')
     def test006_passive_minio_tlog_ssd_failure(self):
         """
+
+        test006_passive_minio_tlog_ssd_failure
         - Upload a file (F1) to the active minio.
         - Disable ssd of the passive minio tlog, should succeed.
         - Check that a new tlog namespace has been deployed and has the same info as other tlog.

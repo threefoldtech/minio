@@ -71,9 +71,7 @@ class BaseTest(TestCase):
                                                                                         cls.config['robot']['client']))
                     raise Exception("cant find {} s3 service under {} robot client".format(cls.s3_service_name,
                                                                                            cls.config['robot']['client']))
-
         cls.s3 = cls.s3_controller.s3[cls.s3_service_name]
-
 
     @classmethod
     def tearDownClass(cls):
@@ -87,6 +85,6 @@ class BaseTest(TestCase):
     def setUp(self):
         self.s3 = self.s3_controller.s3[self.s3_service_name]
 
-
     def tearDown(self):
         pass
+

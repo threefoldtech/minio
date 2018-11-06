@@ -18,8 +18,7 @@ class S3Manager:
 
         self._parent = parent
         self.name = name
-        j.clients.zrobot.get('demo', data={'url': self._parent.config['robot']['url']})
-        self.dm_robot = j.clients.zrobot.robots['demo']
+        self.dm_robot = self._parent.dm_robot
 
         self._zt_id = self._parent.config['zerotier']['id']
         self._zt_token = self._parent.config['zerotier']['token']
@@ -39,101 +38,12 @@ class S3Manager:
     @property
     def client(self):
         if self._client is None:
-            s3 = self.service
-            if not s3:
-                raise RuntimeError("s3 services not found")
-
-            url = s3.schedule_action('url').wait(die=True).result
-            u = urlparse(url[self._client_type])
-
-            self._client = Minio(u.netloc,
-                                 access_key=s3.data['data']['minioLogin'],
-                                 secret_key=s3.data['data']['minioPassword'],
+            url = urlparse(self.data['minioUrls'][self._client_type])
+            self._client = Minio(url.netloc,
+                                 access_key=self.data['minioLogin'],
+                                 secret_key=self.data['minioPassword'],
                                  secure=False)
         return self._client
-
-    def _create_file(self, file_name, size, directory='/tmp'):
-        file_path = '{}/{}'.format(directory, file_name)
-        with open('{}/{}'.format(directory, file_name), 'wb') as f:
-            f.write(os.urandom(size))
-        return file_path
-
-    def _create_bucket(self):
-        bucket_name = j.data.idgenerator.generateXCharID(16)
-        try:
-            logger.info("create bucket")
-            self.client.make_bucket(bucket_name)
-        except BucketAlreadyExists:
-            logger.warning('Bucket already exists')
-        except BucketAlreadyOwnedByYou:
-            logger.warning('Bucket already owned by you')
-        except:
-            logger.warning("Can't create bucket!")
-            raise RuntimeError
-        return bucket_name
-
-    def upload_file(self, size=1024 * 1024):
-        bucket_name = self._create_bucket()
-        if not bucket_name:
-            raise RuntimeError
-        file_name = j.data.idgenerator.generateXCharID(16)
-        file_path = self._create_file(file_name, size)
-        file_md5 = hashlib.md5(open(file_path, 'rb').read()).hexdigest()
-        logger.info("Upload a file")
-        try:
-            self.client.fput_object(bucket_name, file_name, file_path)
-        except:
-            logger.warning("Can't upload {} file".format(file_name))
-            raise RuntimeError
-        os.remove(file_path)
-        return file_name, bucket_name, file_md5
-
-    @staticmethod
-    def call_timeout(timeout, resource, *args, **kwargs):
-        now = time.time()
-        while now + timeout > time.time():
-            try:
-                result = resource(*args, **kwargs)
-                return result
-            except:
-                time.sleep(1)
-                continue
-        else:
-            resource(*args, **kwargs)
-
-    def download_file(self, file_name, bucket_name, timeout=300, delete_bucket=True):
-        try:
-            logger.info("Download a file")
-            d_file = self.call_timeout(timeout, self.client.get_object, bucket_name, file_name)
-        except:
-            logger.warning("Can't download {} file".format(file_name))
-            raise
-        finally:
-            if delete_bucket:
-                self.client.remove_bucket(bucket_name)
-        d_file_md5 = hashlib.md5(d_file.data).hexdigest()
-        return d_file_md5
-
-    def execute_all_nodes(self, func, nodes=None):
-        """
-        execute func on all the nodes
-
-        if nodes is None, func is execute on all the nodes that play a role with the minio
-        deployement, if nodes is not None, it needs to be an iterable containing a node object
-
-        :param func: function to execute, func needs to accept one argument, a node object
-        :type func: function
-        :param nodes: list of node on whic to execute func, defaults to None
-        :param nodes: iterable, optional
-        """
-
-        if nodes is None:
-            nodes = set([self.vm_node, self.vm_host])
-            nodes.update(self.zerodb_nodes)
-
-        g = Group()
-        g.map(func, nodes)
-        g.join()
 
     @property
     def service(self):
@@ -223,6 +133,108 @@ class S3Manager:
         vm = self.dm_robot.services.get(template_name='dm_vm', name=self.service.guid)
         return j.clients.zrobot.robots[vm.data['data']['nodeId']]
 
+    @property
+    def url(self):
+        """
+        return the urls of the s3 once it's deployed
+        """
+        return self.service.schedule_action('url').wait(die=True).result
+
+    @property
+    def data(self):
+        return self.service.data['data']
+
+    @property
+    def parity(self):
+        return self.data['parityShards']
+
+    @property
+    def shards(self):
+        return self.data['dataShards']
+
+    def _create_file(self, file_name, size, directory='/tmp'):
+        file_path = '{}/{}'.format(directory, file_name)
+        with open('{}/{}'.format(directory, file_name), 'wb') as f:
+            f.write(os.urandom(size))
+        return file_path
+
+    def _create_bucket(self):
+        bucket_name = j.data.idgenerator.generateXCharID(16)
+        try:
+            logger.info("create bucket")
+            self.client.make_bucket(bucket_name)
+        except BucketAlreadyExists:
+            logger.warning('Bucket already exists')
+        except BucketAlreadyOwnedByYou:
+            logger.warning('Bucket already owned by you')
+        except:
+            logger.warning("Can't create bucket!")
+            raise RuntimeError
+        return bucket_name
+
+    def upload_file(self, size=1024 * 1024):
+        bucket_name = self._create_bucket()
+        if not bucket_name:
+            raise RuntimeError
+        file_name = j.data.idgenerator.generateXCharID(16)
+        file_path = self._create_file(file_name, size)
+        file_md5 = hashlib.md5(open(file_path, 'rb').read()).hexdigest()
+        logger.info("Upload a file")
+        try:
+            self.client.fput_object(bucket_name, file_name, file_path)
+        except:
+            logger.warning("Can't upload {} file".format(file_name))
+            raise RuntimeError
+        os.remove(file_path)
+        return file_name, bucket_name, file_md5
+
+    @staticmethod
+    def call_timeout(timeout, resource, *args, **kwargs):
+        now = time.time()
+        while now + timeout > time.time():
+            try:
+                result = resource(*args, **kwargs)
+                return result
+            except:
+                time.sleep(1)
+                continue
+        else:
+            resource(*args, **kwargs)
+
+    def download_file(self, file_name, bucket_name, timeout=300, delete_bucket=True):
+        try:
+            logger.info("Download a file")
+            d_file = self.call_timeout(timeout, self.client.get_object, bucket_name, file_name)
+        except:
+            logger.warning("Can't download {} file".format(file_name))
+            raise
+        finally:
+            if delete_bucket:
+                self.client.remove_bucket(bucket_name)
+        d_file_md5 = hashlib.md5(d_file.data).hexdigest()
+        return d_file_md5
+
+    def execute_all_nodes(self, func, nodes=None):
+        """
+        execute func on all the nodes
+
+        if nodes is None, func is execute on all the nodes that play a role with the minio
+        deployement, if nodes is not None, it needs to be an iterable containing a node object
+
+        :param func: function to execute, func needs to accept one argument, a node object
+        :type func: function
+        :param nodes: list of node on whic to execute func, defaults to None
+        :param nodes: iterable, optional
+        """
+
+        if nodes is None:
+            nodes = set([self.vm_node, self.vm_host])
+            nodes.update(self.zerodb_nodes)
+
+        g = Group()
+        g.map(func, nodes)
+        g.join()
+
     def deploy(self, farm, size=20000, data=4, parity=2, nsName='namespace', login='admin', password='adminadmin'):
         """
         deploy an s3 environment
@@ -248,9 +260,3 @@ class S3Manager:
         self._service = self.dm_robot.services.find_or_create('s3', self.name, data=s3_data)
         return self._service.schedule_action('install')
 
-    @property
-    def url(self):
-        """
-        return the urls of the s3 once it's deployed
-        """
-        return self.service.schedule_action('url').wait(die=True).result

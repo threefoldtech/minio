@@ -14,9 +14,9 @@ class Controller:
                                                                        'god_token_': god_token})
         else:
             j.clients.zrobot.get(self.config['robot']['client'], data={'url': config['robot']['url']})
-        dm_robot = j.clients.zrobot.robots[self.config['robot']['client']]
+        self.dm_robot = j.clients.zrobot.robots[self.config['robot']['client']]
         self.s3 = {}
-        for service in dm_robot.services.find(template_name='s3'):
+        for service in self.dm_robot.services.find(template_name='s3'):
             self.s3[service.name] = S3Manager(self, service.name)
 
     def deploy(self, name, farm, size=20000, data=4, parity=2, nsName='namespace', login='admin', password='adminadmin'):
