@@ -7,6 +7,7 @@ from utils.failures import FailureGenenator
 from urllib.parse import urlparse
 from minio import Minio
 from minio.error import BucketAlreadyExists, BucketAlreadyOwnedByYou
+from urllib3.exceptions import ProtocolError
 
 logger = j.logger.get('s3demo')
 
@@ -189,27 +190,24 @@ class S3Manager:
         os.remove(file_path)
         return file_name, bucket_name, file_md5
 
-    @staticmethod
-    def call_timeout(timeout, resource, *args, **kwargs):
-        now = time.time()
-        while now + timeout > time.time():
-            try:
-                result = resource(*args, **kwargs)
-                return result
-            except:
-                time.sleep(1)
-                continue
-        else:
-            resource(*args, **kwargs)
-
-    def download_file(self, file_name, bucket_name, timeout=300, delete_bucket=False):
+    def download_file(self, file_name, bucket_name, delete_bucket=False, die=False):
         try:
             logger.info("Download a file")
-            d_file = self.call_timeout(timeout, self.client.get_object, bucket_name, file_name)
-            data = d_file.data
+            data = self.client.get_object(bucket_name, file_name).data
+        except ProtocolError:
+            if die:
+                for _ in range(60):
+                    try:
+                        data = self.client.get_object(bucket_name, file_name).data
+                    except:
+                        time.sleep(5)
+                else:
+                    raise RuntimeError("Can't download {} file from {}".format(file_name, bucket_name))
+            else:
+                raise RuntimeError("Can't download {} file from {}".format(file_name, bucket_name))
         except:
             logger.warning("Can't download {} file".format(file_name))
-            raise
+            raise RuntimeError("Can't download {} file from {}".format(file_name, bucket_name))
         finally:
             if delete_bucket:
                 logger.info("delete {} bucket".format(bucket_name))
