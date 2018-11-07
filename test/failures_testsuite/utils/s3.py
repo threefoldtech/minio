@@ -202,7 +202,7 @@ class S3Manager:
         else:
             resource(*args, **kwargs)
 
-    def download_file(self, file_name, bucket_name, timeout=300, delete_bucket=True):
+    def download_file(self, file_name, bucket_name, timeout=300, delete_bucket=False):
         try:
             logger.info("Download a file")
             d_file = self.call_timeout(timeout, self.client.get_object, bucket_name, file_name)
@@ -212,6 +212,7 @@ class S3Manager:
             raise
         finally:
             if delete_bucket:
+                logger.info("delete {} bucket".format(bucket_name))
                 self.client.remove_bucket(bucket_name)
         d_file_md5 = hashlib.md5(data).hexdigest()
         return d_file_md5
