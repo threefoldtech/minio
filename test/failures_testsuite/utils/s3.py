@@ -40,6 +40,7 @@ class S3Manager:
     def client(self):
         if self._client is None:
             url = urlparse(self.data['minioUrls'][self._client_type])
+            logger.info('Get s3 client : {}'.format(url))
             self._client = Minio(url.netloc,
                                  access_key=self.data['minioLogin'],
                                  secret_key=self.data['minioPassword'],
