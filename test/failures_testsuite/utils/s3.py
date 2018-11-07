@@ -171,7 +171,7 @@ class S3Manager:
             logger.warning('Bucket already owned by you')
         except:
             logger.warning("Can't create bucket!")
-            raise RuntimeError
+            raise RuntimeError("Can't create bucket!")
         return bucket_name
 
     def upload_file(self, size=1024 * 1024):
@@ -190,7 +190,7 @@ class S3Manager:
         os.remove(file_path)
         return file_name, bucket_name, file_md5
 
-    def download_file(self, file_name, bucket_name, delete_bucket=False, die=False):
+    def download_file(self, file_name, bucket_name, delete_bucket=False, die=True):
         try:
             logger.info("Download a file")
             data = self.client.get_object(bucket_name, file_name).data
@@ -202,12 +202,15 @@ class S3Manager:
                     except:
                         time.sleep(5)
                 else:
-                    raise RuntimeError("Can't download {} file from {}".format(file_name, bucket_name))
+                    #raise RuntimeError("Can't download {} file from {}".format(file_name, bucket_name))
+                    data = self.client.get_object(bucket_name, file_name).data
             else:
-                raise RuntimeError("Can't download {} file from {}".format(file_name, bucket_name))
+                #raise RuntimeError("Can't download {} file from {}".format(file_name, bucket_name))
+                data = self.client.get_object(bucket_name, file_name).data
         except:
             logger.warning("Can't download {} file".format(file_name))
-            raise RuntimeError("Can't download {} file from {}".format(file_name, bucket_name))
+            #raise RuntimeError("Can't download {} file from {}".format(file_name, bucket_name))
+            data = self.client.get_object(bucket_name, file_name).data
         finally:
             if delete_bucket:
                 logger.info("delete {} bucket".format(bucket_name))
