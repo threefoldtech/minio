@@ -50,6 +50,9 @@ class BaseTest(TestCase):
                 except:
                     time.sleep(5 * 60)
                     logger.info("wait for 5 mins")
+            else:
+                state.check('actions', 'install', 'ok')
+            time.sleep(120)
         else:
             sub = Popen('zrobot godtoken get', stdout=PIPE, stderr=PIPE, shell=True)
             out, err = sub.communicate()
@@ -72,6 +75,7 @@ class BaseTest(TestCase):
                     raise Exception("cant find {} s3 service under {} robot client".format(cls.s3_service_name,
                                                                                            cls.config['robot']['client']))
         cls.s3 = cls.s3_controller.s3[cls.s3_service_name]
+        cls.s3.failures.zdb_start_all()
 
     @classmethod
     def tearDownClass(cls):

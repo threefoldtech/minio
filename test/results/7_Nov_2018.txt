@@ -1,0 +1,225 @@
+nosetests-3.4 -vs --logging-level=WARNING --progressive-with-bar --rednose testcases/s3
+test001_upload_stop_tlog_start_download ... skipped
+test002_stop_tlog_upload_download ... skipped
+test003_upload_kill_tlog_download ... [Wed07 14:59] - test01_tlog.py    :80  :j.s3_failures        - INFO     - Upload file
+[Wed07 14:59] - s3.py             :43  :j.s3demo             - INFO     - get s3 client : ParseResult(scheme='http', netloc='172.27.17.112:1024', path='', params='', query='', fragment='')
+[Wed07 14:59] - s3.py             :167 :j.s3demo             - INFO     - create bucket
+[Wed07 14:59] - s3.py             :168 :j.s3demo             - INFO     - bucket : 41bv5c1ll4ohgshu
+[Wed07 14:59] - s3.py             :186 :j.s3demo             - INFO     - upload eeqn8kra0qv7rull file to 41bv5c1ll4ohgshu bucket
+[Wed07 15:00] - failures.py       :305 :j.<module>           - INFO     - kill Tlog zdb process, zrobot will bring it back
+[Wed07 15:00] - failures.py       :315 :j.<module>           - INFO     - kill 166cfd77-b7a3-418a-bbda-21773ec089cd Tlog zdb
+[Wed07 15:01] - test01_tlog.py    :86  :j.s3_failures        - INFO     - Download file, should succeed
+[Wed07 15:01] - s3.py             :197 :j.s3demo             - INFO     - Download eeqn8kra0qv7rull file form 41bv5c1ll4ohgshu bucket
+passed
+test004_kill_tlog_upload_download ... [Wed07 15:01] - failures.py       :305 :j.<module>           - INFO     - kill Tlog zdb process, zrobot will bring it back
+[Wed07 15:01] - failures.py       :315 :j.<module>           - INFO     - kill 166cfd77-b7a3-418a-bbda-21773ec089cd Tlog zdb
+[Wed07 15:02] - s3.py             :167 :j.s3demo             - INFO     - create bucket
+[Wed07 15:02] - s3.py             :168 :j.s3demo             - INFO     - bucket : eou4lcdv079jihlp
+[Wed07 15:02] - s3.py             :186 :j.s3demo             - INFO     - upload em8qg3nde3drkyc8 file to eou4lcdv079jihlp bucket
+[Wed07 15:03] - s3.py             :197 :j.s3demo             - INFO     - Download em8qg3nde3drkyc8 file form eou4lcdv079jihlp bucket
+passed
+test005_upload_tlog_die_forever_download ... skipped
+- Make tlog die forever ... skipped
+test001_zdb_kill ... [Wed07 15:03] - s3.py             :43  :j.s3demo             - INFO     - get s3 client : ParseResult(scheme='http', netloc='172.27.17.112:1024', path='', params='', query='', fragment='')
+[Wed07 15:03] - s3.py             :167 :j.s3demo             - INFO     - create bucket
+[Wed07 15:03] - s3.py             :168 :j.s3demo             - INFO     - bucket : j8prkdtctthzhxc4
+[Wed07 15:03] - s3.py             :186 :j.s3demo             - INFO     - upload 00glp29l5fev1d31 file to j8prkdtctthzhxc4 bucket
+[Wed07 15:04] - test02_zdb.py     :16  :j.s3_failures        - INFO     - kill zdb process and make sure it will restart automatically
+[Wed07 15:04] - failures.py       :108 :j.<module>           - INFO     - kill ace3d773-b4ef-45c6-a68c-3a0e85c56ae5 zdb process on node ac1f6b457488
+[Wed07 15:04] - failures.py       :117 :j.<module>           - INFO     - wait zdb process to restart. 
+[Wed07 15:04] - failures.py       :124 :j.<module>           - INFO     - zdb took 4.947740793228149 sec to restart
+[Wed07 15:04] - s3.py             :197 :j.s3demo             - INFO     - Download 00glp29l5fev1d31 file form j8prkdtctthzhxc4 bucket
+passed
+test002_upload_stop_parity_zdb_download ... [Wed07 15:04] - s3.py             :167 :j.s3demo             - INFO     - create bucket
+[Wed07 15:04] - s3.py             :168 :j.s3demo             - INFO     - bucket : nd7law9ibfzosvvr
+[Wed07 15:04] - s3.py             :186 :j.s3demo             - INFO     - upload 691p2zsipyx2ho84 file to nd7law9ibfzosvvr bucket
+[Wed07 15:05] - s3.py             :197 :j.s3demo             - INFO     - Download 691p2zsipyx2ho84 file form nd7law9ibfzosvvr bucket
+[Wed07 15:05] - test02_zdb.py     :40  :j.s3_failures        - INFO     - Stop 1 zdb
+[Wed07 15:05] - failures.py       :149 :j.<module>           - INFO     - stop ace3d773-b4ef-45c6-a68c-3a0e85c56ae5 on node ac1f6b457488
+[Wed07 15:05] - s3.py             :197 :j.s3demo             - INFO     - Download 691p2zsipyx2ho84 file form nd7law9ibfzosvvr bucket
+[Wed07 15:05] - test02_zdb.py     :46  :j.s3_failures        - INFO     - Start 1 zdb
+[Wed07 15:06] - failures.py       :178 :j.<module>           - INFO     - start ace3d773-b4ef-45c6-a68c-3a0e85c56ae5 on node ac1f6b457488
+passed
+test003_stop_parity_zdb_upload_download_start ... [Wed07 15:06] - s3.py             :167 :j.s3demo             - INFO     - create bucket
+[Wed07 15:06] - s3.py             :168 :j.s3demo             - INFO     - bucket : 1oppd4y1wqbcpg8x
+[Wed07 15:06] - s3.py             :186 :j.s3demo             - INFO     - upload vmyb5unuqpylk0li file to 1oppd4y1wqbcpg8x bucket
+[Wed07 15:06] - test02_zdb.py     :60  :j.s3_failures        - INFO     - stop 1 zdb
+[Wed07 15:06] - failures.py       :149 :j.<module>           - INFO     - stop ace3d773-b4ef-45c6-a68c-3a0e85c56ae5 on node ac1f6b457488
+[Wed07 15:06] - s3.py             :197 :j.s3demo             - INFO     - Download vmyb5unuqpylk0li file form 1oppd4y1wqbcpg8x bucket
+[Wed07 15:06] - test02_zdb.py     :66  :j.s3_failures        - INFO     - start 1 zdb
+[Wed07 15:07] - failures.py       :178 :j.<module>           - INFO     - start ace3d773-b4ef-45c6-a68c-3a0e85c56ae5 on node ac1f6b457488
+passed
+test004_stop_parity_zdb_upload_start_download ... [Wed07 15:07] - s3.py             :167 :j.s3demo             - INFO     - create bucket
+[Wed07 15:07] - s3.py             :168 :j.s3demo             - INFO     - bucket : 2ybrlkghwn0tl5w2
+[Wed07 15:07] - s3.py             :186 :j.s3demo             - INFO     - upload lajubsn6q2v0ov6n file to 2ybrlkghwn0tl5w2 bucket
+[Wed07 15:07] - test02_zdb.py     :80  :j.s3_failures        - INFO     - stop 1 zdb
+[Wed07 15:07] - failures.py       :149 :j.<module>           - INFO     - stop ace3d773-b4ef-45c6-a68c-3a0e85c56ae5 on node ac1f6b457488
+[Wed07 15:07] - test02_zdb.py     :83  :j.s3_failures        - INFO     - start 1 zdb
+[Wed07 15:07] - failures.py       :178 :j.<module>           - INFO     - start ace3d773-b4ef-45c6-a68c-3a0e85c56ae5 on node ac1f6b457488
+[Wed07 15:07] - s3.py             :197 :j.s3demo             - INFO     - Download lajubsn6q2v0ov6n file form 2ybrlkghwn0tl5w2 bucket
+passed
+test005_stop_greater_parity_zdb_upload ... [Wed07 15:08] - s3.py             :167 :j.s3demo             - INFO     - create bucket
+[Wed07 15:08] - s3.py             :168 :j.s3demo             - INFO     - bucket : 95mihy1cuq0gwsen
+[Wed07 15:08] - s3.py             :186 :j.s3demo             - INFO     - upload 2zarnit4nrt16ktg file to 95mihy1cuq0gwsen bucket
+[Wed07 15:08] - test02_zdb.py     :101 :j.s3_failures        - INFO     - stop 2 zdb
+[Wed07 15:08] - failures.py       :149 :j.<module>           - INFO     - stop ace3d773-b4ef-45c6-a68c-3a0e85c56ae5 on node ac1f6b457488
+[Wed07 15:09] - failures.py       :149 :j.<module>           - INFO     - stop 37cfde05-95ae-4caa-a1c6-a926daadd7df on node ac1f6b4575a8
+[Wed07 15:09] - test02_zdb.py     :104 :j.s3_failures        - INFO     - uploading should raise an error
+[Wed07 15:09] - s3.py             :167 :j.s3demo             - INFO     - create bucket
+[Wed07 15:09] - s3.py             :168 :j.s3demo             - INFO     - bucket : o6kxwuvwz3e6r0ot
+[Wed07 15:09] - s3.py             :186 :j.s3demo             - INFO     - upload pxt9kuo4ptjc9qpm file to o6kxwuvwz3e6r0ot bucket
+[Wed07 15:13] - s3.py             :190 :j.s3demo             - WARNING  - Can't upload pxt9kuo4ptjc9qpm file
+[Wed07 15:13] - test02_zdb.py     :108 :j.s3_failures        - INFO     - start 2 zdb
+[Wed07 15:13] - failures.py       :178 :j.<module>           - INFO     - start ace3d773-b4ef-45c6-a68c-3a0e85c56ae5 on node ac1f6b457488
+[Wed07 15:13] - failures.py       :178 :j.<module>           - INFO     - start 37cfde05-95ae-4caa-a1c6-a926daadd7df on node ac1f6b4575a8
+passed
+test001_zrobot_kill ... [Wed07 15:14] - s3.py             :43  :j.s3demo             - INFO     - get s3 client : ParseResult(scheme='http', netloc='172.27.17.112:1024', path='', params='', query='', fragment='')
+[Wed07 15:14] - s3.py             :167 :j.s3demo             - INFO     - create bucket
+[Wed07 15:14] - s3.py             :168 :j.s3demo             - INFO     - bucket : 2nl21nk3kv8kw31n
+[Wed07 15:14] - s3.py             :186 :j.s3demo             - INFO     - upload sdm4htwhpleke0yt file to 2nl21nk3kv8kw31n bucket
+[Wed07 15:14] - test03_zrobot.py  :18  :j.s3_failures        - INFO     - kill zrobot process and make sure it will restart automatically
+
+
+^CKeyboardInterrupt
+2018-11-07T15:43:45Z
+======================================================================
+1) SKIP: test001_upload_stop_tlog_start_download
+----------------------------------------------------------------------
+   No Traceback
+   SkipTest: https://github.com/threefoldtech/0-templates/issues/179
+======================================================================
+2) SKIP: test002_stop_tlog_upload_download
+----------------------------------------------------------------------
+   No Traceback
+   SkipTest: https://github.com/threefoldtech/0-templates/issues/179
+======================================================================
+3) SKIP: test005_upload_tlog_die_forever_download
+----------------------------------------------------------------------
+   No Traceback
+   SkipTest: https://github.com/threefoldtech/0-templates/issues/186
+======================================================================
+4) SKIP: - Make tlog die forever
+----------------------------------------------------------------------
+   No Traceback
+   SkipTest: https://github.com/threefoldtech/0-templates/issues/186
+
+-----------------------------------------------------------------------------
+11 tests run in 2672.836 seconds. 
+4 skipped (7 tests passed)
+
+
+root@ubuntu:/opt/code/github/threefoldtech/minio/test/failures_testsuite# nosetests-3.4 -vs --logging-level=WARNING testcases/s3/test05_bitrot.py:TestS3Failures.test002_kill_minio_process
+- kill minio process and make sure it will restart automatically. ... [Wed07 16:22] - test05_bitrot.py  :12  :j.s3_failures        - INFO     - Make sure all zdbs are up
+[Wed07 16:22] - test05_bitrot.py  :99  :j.s3_failures        - INFO     - kill minio process and make sure it will restart automatically
+[Wed07 16:23] - failures.py       :59  :j.<module>           - INFO     - killing minio process
+[Wed07 16:23] - failures.py       :62  :j.<module>           - INFO     - minio process killed
+[Wed07 16:23] - failures.py       :64  :j.<module>           - INFO     - wait for minio to restart
+[Wed07 16:23] - failures.py       :71  :j.<module>           - INFO     - minio took 10.666725873947144 sec to restart
+[Wed07 16:23] - test05_bitrot.py  :17  :j.s3_failures        - INFO     - Make sure all zdbs are up
+ok
+
+----------------------------------------------------------------------
+Ran 1 test in 61.096s
+
+OK
+
+
+root@ubuntu:/opt/code/github/threefoldtech/minio/test/failures_testsuite# nosetests-3.4 -vs --logging-level=WARNING testcases/s3/test05_bitrot.py:TestS3Failures.test001_bitrot
+test001_bitrot ... [Wed07 16:25] - test05_bitrot.py  :12  :j.s3_failures        - INFO     - Make sure all zdbs are up
+[Wed07 16:25] - test05_bitrot.py  :56  :j.s3_failures        - INFO     - Get the minio namespaces and get the zdbs location
+[Wed07 16:25] - test05_bitrot.py  :60  :j.s3_failures        - INFO     - Get the extra 25% namespaces down
+[Wed07 16:25] - failures.py       :139 :j.<module>           - INFO     - stop c625c5d2-73fb-4da5-bdb1-c732e5d2dd76 on node ac1f6b457338
+[Wed07 16:25] - failures.py       :139 :j.<module>           - INFO     - stop 8ba19147-5949-4641-b9d7-08c44da45911 on node ac1f6b457630
+[Wed07 16:25] - test05_bitrot.py  :66  :j.s3_failures        - INFO     - Upload a file and get its md5sum, should succeed.
+[Wed07 16:25] - s3.py             :165 :j.s3demo             - INFO     - create bucket
+[Wed07 16:25] - s3.py             :167 :j.s3demo             - INFO     - bucket : n6xj02px96f26fvs
+[Wed07 16:25] - s3.py             :184 :j.s3demo             - INFO     - Upload a file
+[Wed07 16:26] - test05_bitrot.py  :69  :j.s3_failures        - INFO     - Corrupt all data in any zdb location
+[Wed07 16:26] - test05_bitrot.py  :74  :j.s3_failures        - INFO     - Get parity zdbs down excluding the corrupted namespace
+[Wed07 16:26] - failures.py       :139 :j.<module>           - INFO     - stop 44462500-9c9f-46e7-af41-3bce41863dd5 on node ac1f6b4571c8
+[Wed07 16:26] - failures.py       :139 :j.<module>           - INFO     - stop a22e2528-e288-425b-a8dc-fe72cbaf1c3b on node ac1f6b457488
+[Wed07 16:26] - test05_bitrot.py  :78  :j.s3_failures        - INFO     - Try to download F1, should give wrong md5
+[Wed07 16:26] - s3.py             :195 :j.s3demo             - INFO     - Download a file
+[Wed07 16:26] - s3.py             :211 :j.s3demo             - WARNING  - Can't download q4vof3li7jh79cin file
+[Wed07 16:26] - test05_bitrot.py  :82  :j.s3_failures        - INFO     - Get parity zdbs up exculding extra_namespaces zdbs
+[Wed07 16:26] - failures.py       :213 :j.<module>           - INFO     - start 44462500-9c9f-46e7-af41-3bce41863dd5 on node ac1f6b4571c8
+[Wed07 16:26] - failures.py       :213 :j.<module>           - INFO     - start a22e2528-e288-425b-a8dc-fe72cbaf1c3b on node ac1f6b457488
+[Wed07 16:26] - test05_bitrot.py  :85  :j.s3_failures        - INFO     - Run the bitrot protection, should succeed
+[Wed07 16:26] - test05_bitrot.py  :88  :j.s3_failures        - INFO     - Get parity zdbs down again excluding corrupted namespace zdb
+[Wed07 16:27] - failures.py       :139 :j.<module>           - INFO     - stop 44462500-9c9f-46e7-af41-3bce41863dd5 on node ac1f6b4571c8
+[Wed07 16:27] - failures.py       :139 :j.<module>           - INFO     - stop a22e2528-e288-425b-a8dc-fe72cbaf1c3b on node ac1f6b457488
+[Wed07 16:27] - test05_bitrot.py  :91  :j.s3_failures        - INFO     - Download F1 again , should have same md5 as the uploaded file
+[Wed07 16:27] - s3.py             :195 :j.s3demo             - INFO     - Download a file
+[Wed07 16:27] - s3.py             :211 :j.s3demo             - WARNING  - Can't download q4vof3li7jh79cin file
+[Wed07 16:27] - test05_bitrot.py  :17  :j.s3_failures        - INFO     - Make sure all zdbs are up
+[Wed07 16:27] - failures.py       :213 :j.<module>           - INFO     - start c625c5d2-73fb-4da5-bdb1-c732e5d2dd76 on node ac1f6b457338
+[Wed07 16:27] - failures.py       :213 :j.<module>           - INFO     - start 8ba19147-5949-4641-b9d7-08c44da45911 on node ac1f6b457630
+[Wed07 16:27] - failures.py       :213 :j.<module>           - INFO     - start 44462500-9c9f-46e7-af41-3bce41863dd5 on node ac1f6b4571c8
+[Wed07 16:27] - failures.py       :213 :j.<module>           - INFO     - start a22e2528-e288-425b-a8dc-fe72cbaf1c3b on node ac1f6b457488
+ERROR
+
+======================================================================
+ERROR: test001_bitrot
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/opt/code/github/threefoldtech/minio/test/failures_testsuite/utils/s3.py", line 196, in download_file
+    data = self.client.get_object(bucket_name, file_name).data
+  File "/usr/local/lib/python3.5/dist-packages/minio/api.py", line 646, in get_object
+    sse=sse)
+  File "/usr/local/lib/python3.5/dist-packages/minio/api.py", line 1418, in _get_partial_object
+    preload_content=False)
+  File "/usr/local/lib/python3.5/dist-packages/minio/api.py", line 1794, in _url_open
+    preload_content=preload_content)
+  File "/usr/local/lib/python3.5/dist-packages/urllib3/poolmanager.py", line 323, in urlopen
+    response = conn.urlopen(method, u.request_uri, **kw)
+  File "/usr/local/lib/python3.5/dist-packages/urllib3/connectionpool.py", line 731, in urlopen
+    body_pos=body_pos, **response_kw)
+  File "/usr/local/lib/python3.5/dist-packages/urllib3/connectionpool.py", line 731, in urlopen
+    body_pos=body_pos, **response_kw)
+  File "/usr/local/lib/python3.5/dist-packages/urllib3/connectionpool.py", line 731, in urlopen
+    body_pos=body_pos, **response_kw)
+  File "/usr/local/lib/python3.5/dist-packages/urllib3/connectionpool.py", line 731, in urlopen
+    body_pos=body_pos, **response_kw)
+  File "/usr/local/lib/python3.5/dist-packages/urllib3/connectionpool.py", line 731, in urlopen
+    body_pos=body_pos, **response_kw)
+  File "/usr/local/lib/python3.5/dist-packages/urllib3/connectionpool.py", line 711, in urlopen
+    retries = retries.increment(method, url, response=response, _pool=self)
+  File "/usr/local/lib/python3.5/dist-packages/urllib3/util/retry.py", line 398, in increment
+    raise MaxRetryError(_pool, url, error or ResponseError(cause))
+urllib3.exceptions.MaxRetryError: HTTPConnectionPool(host='172.29.131.71', port=1024): Max retries exceeded with url: /n6xj02px96f26fvs/q4vof3li7jh79cin (Caused by ResponseError('too many 500 error responses',))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/code/github/threefoldtech/minio/test/failures_testsuite/testcases/s3/test05_bitrot.py", line 92, in test001_bitrot
+    md5_after = self.s3.download_file(file_name, bucket_name)
+  File "/opt/code/github/threefoldtech/minio/test/failures_testsuite/utils/s3.py", line 213, in download_file
+    data = self.client.get_object(bucket_name, file_name).data
+  File "/usr/local/lib/python3.5/dist-packages/minio/api.py", line 646, in get_object
+    sse=sse)
+  File "/usr/local/lib/python3.5/dist-packages/minio/api.py", line 1418, in _get_partial_object
+    preload_content=False)
+  File "/usr/local/lib/python3.5/dist-packages/minio/api.py", line 1794, in _url_open
+    preload_content=preload_content)
+  File "/usr/local/lib/python3.5/dist-packages/urllib3/poolmanager.py", line 323, in urlopen
+    response = conn.urlopen(method, u.request_uri, **kw)
+  File "/usr/local/lib/python3.5/dist-packages/urllib3/connectionpool.py", line 731, in urlopen
+    body_pos=body_pos, **response_kw)
+  File "/usr/local/lib/python3.5/dist-packages/urllib3/connectionpool.py", line 731, in urlopen
+    body_pos=body_pos, **response_kw)
+  File "/usr/local/lib/python3.5/dist-packages/urllib3/connectionpool.py", line 731, in urlopen
+    body_pos=body_pos, **response_kw)
+  File "/usr/local/lib/python3.5/dist-packages/urllib3/connectionpool.py", line 731, in urlopen
+    body_pos=body_pos, **response_kw)
+  File "/usr/local/lib/python3.5/dist-packages/urllib3/connectionpool.py", line 731, in urlopen
+    body_pos=body_pos, **response_kw)
+  File "/usr/local/lib/python3.5/dist-packages/urllib3/connectionpool.py", line 711, in urlopen
+    retries = retries.increment(method, url, response=response, _pool=self)
+  File "/usr/local/lib/python3.5/dist-packages/urllib3/util/retry.py", line 398, in increment
+    raise MaxRetryError(_pool, url, error or ResponseError(cause))
+urllib3.exceptions.MaxRetryError: HTTPConnectionPool(host='172.29.131.71', port=1024): Max retries exceeded with url: /n6xj02px96f26fvs/q4vof3li7jh79cin (Caused by ResponseError('too many 500 error responses',))
+
+----------------------------------------------------------------------
+Ran 1 test in 142.615s
+
+FAILED (errors=1)

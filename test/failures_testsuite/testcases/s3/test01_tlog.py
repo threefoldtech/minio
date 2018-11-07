@@ -80,7 +80,7 @@ class TestTlog(BaseTest):
         self.logger.info('Upload file')
         file_name, bucket_name, md5_before = self.s3.upload_file()
 
-        self.assertFalse(self.s3.failures.kill_tlog())
+        self.s3.failures.kill_tlog()
         time.sleep(60)
 
         self.logger.info('Download file, should succeed')

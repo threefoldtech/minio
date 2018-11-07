@@ -20,15 +20,21 @@ class FailureGenenator:
         """
         start all the zerodb services used by minio
         """
-
         s3 = self._parent
+        if not s3:
+            logger.warning('There is no s3')
+            return
 
         def do(namespace):
             robot = j.clients.zrobot.robots[namespace['node']]
             robot = robot_god_token(robot)
-            for zdb in robot.services.find(template_name='zerodb'):
-                logger.info('start zerodb %s on node %s', zdb.name, namespace['node'])
-                zdb.schedule_action('start')
+            ns = robot.services.get(name=namespace['name'])
+            zdb = robot.services.get(name=ns.data['data']['zerodb'])
+            try:
+                zdb.state.check('status', 'running', 'ok')
+            except StateCheckError:
+                logger.info('start %s on node %s', zdb.name, namespace['node'])
+                zdb.schedule_action('start').wait(die=True)
 
         self._parent.execute_all_nodes(do, nodes=s3.service.data['data']['namespaces'])
 
@@ -36,15 +42,22 @@ class FailureGenenator:
         """
         stop all the zerodb services used by minio
         """
-
         s3 = self._parent
+        if not s3:
+            logger.warning('There is no s3')
+            return
 
         def do(namespace):
             robot = j.clients.zrobot.robots[namespace['node']]
             robot = robot_god_token(robot)
-            for zdb in robot.services.find(template_name='zerodb'):
-                logger.info('stop zerodb %s on node %s', zdb.name, namespace['node'])
-                zdb.schedule_action('stop')
+            ns = robot.services.get(name=namespace['name'])
+            zdb = robot.services.get(name=ns.data['data']['zerodb'])
+            try:
+                zdb.state.check('status', 'running', 'ok')
+                logger.info('stop %s on node %s', zdb.name, namespace['node'])
+                zdb.schedule_action('stop').wait(die=True)
+            except StateCheckError:
+                pass
 
         self._parent.execute_all_nodes(do, nodes=s3.service.data['data']['namespaces'])
 
@@ -58,7 +71,7 @@ class FailureGenenator:
 
         logger.info('killing minio process')
         job_id = 'minio.%s' % s3.service.guid
-        cont.client.job.kill(job_id, signal=signal.SIGINT)
+        cont.job.kill(job_id, signal=signal.SIGINT)
         logger.info('minio process killed')
 
         logger.info("wait for minio to restart")
@@ -74,12 +87,13 @@ class FailureGenenator:
                 continue
         return False
 
-    def zdb_process_down(self, count=1,timeout=100):
+    def zdb_process_down(self, count=1, timeout=100):
         """
         turn off zdb process , check it will be restart.
         """
         s3 = self._parent
         if not s3:
+            logger.warning('There is no s3')
             return
         n = 0
         for namespace in s3.service.data['data']['namespaces']:
@@ -91,23 +105,22 @@ class FailureGenenator:
             zdb = robot.services.get(name=ns.data['data']['zerodb'])
             try:
                 zdb.state.check('status', 'running', 'ok')
-                n +=1
+                n += 1
             except StateCheckError:
                 continue
-            logger.info('stop %s  process on node %s', zdb.name, namespace['node'])
-            zdb_node = j.clients.zos.get(zdb.name,data={"host": namespace['url'][7:-5]})
+            logger.info('kill %s zdb process on node %s', zdb.name, namespace['node'])
+            zdb_node = j.clients.zos.get(zdb.name, data={"host": namespace['url'][7:-5]})
             zdb_cont_client = zdb_node.containers.get("zerodb_{}".format(zdb.name))
             job_id = "zerodb.{}".format(zdb.name)
             result = zdb_cont_client.client.job.kill(job_id, signal=signal.SIGINT)
             if not result:
-                logger.info("zerodb job not exist")
+                logger.info("zerodb job not exist, retun false")
                 return False
-            logger.info('zdb process has been killed')
 
             logger.info("wait zdb process to restart. ")
             start = time.time()
             while (start + timeout) > time.time():
-                zdb_job = [job for job in zdb_cont_client.client.job.list() if job['cmd']["id"]==job_id]
+                zdb_job = [job for job in zdb_cont_client.client.job.list() if job['cmd']["id"] == job_id]
                 if zdb_job:
                     end = time.time()
                     duration = end - start
@@ -121,6 +134,7 @@ class FailureGenenator:
         """
         s3 = self._parent
         if not s3:
+            logger.warning('There is no s3')
             return
 
         n = 0
@@ -142,8 +156,40 @@ class FailureGenenator:
             except StateCheckError:
                 pass
 
+    def zdb_up(self, count=1, except_namespaces=[]):
+        """
+        ensure that count zdb are turned on
+        """
+        s3 = self._parent
+        if not s3:
+            logger.warning('There is no s3')
+            return
+
+        n = 0
+        for namespace in s3.service.data['data']['namespaces']:
+            if namespace['name'] in except_namespaces:
+                continue
+            if n >= count:
+                break
+            robot = j.clients.zrobot.robots[namespace['node']]
+            robot = robot_god_token(robot)
+            ns = robot.services.get(name=namespace['name'])
+            zdb = robot.services.get(name=ns.data['data']['zerodb'])
+
+            try:
+                zdb.state.check('status', 'running', 'ok')
+                continue
+            except StateCheckError:
+                logger.info('start %s on node %s', zdb.name, namespace['node'])
+                zdb.schedule_action('start').wait(die=True)
+                n += 1
+
     def disable_minio_vdisk_ssd(self):
         s3 = self._parent
+        if not s3:
+            logger.warning('There is no s3')
+            return
+
         dm_vm = s3.dm_robot.services.get(template_name='dm_vm', name=s3.service.guid)
         vdisk = s3.vm_host_robot.services.get(template_name='vdisk', name='%s_s3vm' % dm_vm.guid)
         zerodb = s3.vm_host_robot.services.get(name=vdisk.data['data']['zerodb'])
@@ -165,6 +211,7 @@ class FailureGenenator:
     def disable_minio_tlog_ssd(self):
         s3 = self._parent
         if not s3:
+            logger.warning('There is no s3')
             return
 
         tlog = s3.service.data['data']['tlog']
@@ -187,39 +234,13 @@ class FailureGenenator:
         s3.vm_host.client.bash('echo 1 > /sys/block/{}/device/delete'.format(disk)).get()
         return disk
 
-    def zdb_up(self, count=1, except_namespaces=[]):
-        """
-        ensure that count zdb are turned on
-        """
-        s3 = self._parent
-        if not s3:
-            return
-
-        n = 0
-        for namespace in s3.service.data['data']['namespaces']:
-            if namespace['name'] in except_namespaces:
-                continue
-            if n >= count:
-                break
-            robot = j.clients.zrobot.robots[namespace['node']]
-            robot = robot_god_token(robot)
-            ns = robot.services.get(name=namespace['name'])
-            zdb = robot.services.get(name=ns.data['data']['zerodb'])
-
-            try:
-                zdb.state.check('status', 'running', 'ok')
-                continue
-            except StateCheckError:
-                logger.info('start %s on node %s', zdb.name, namespace['node'])
-                zdb.schedule_action('start').wait(die=True)
-                n += 1
-
     def tlog_down(self):
         """
             Turn down tlog
         """
         s3 = self._parent
         if not s3:
+            logger.warning('There is no s3')
             return
 
         tlog = s3.service.data['data']['tlog']
@@ -242,6 +263,7 @@ class FailureGenenator:
         """
         s3 = self._parent
         if not s3:
+            logger.warning('There is no s3')
             return
 
         tlog = s3.service.data['data']['tlog']
@@ -265,6 +287,7 @@ class FailureGenenator:
         """
         s3 = self._parent
         if not s3:
+            logger.warning('There is no s3')
             return
 
         tlog = s3.service.data['data']['tlog']
@@ -291,8 +314,9 @@ class FailureGenenator:
         """
         s3 = self._parent
         if not s3:
+            logger.warning('There is no s3')
             return
-        logger.info('kill Tlog')
+        logger.info('kill Tlog zdb process, zrobot will bring it back')
         tlog = s3.service.data['data']['tlog']
         robot = j.clients.zrobot.robots[tlog['node']]
         robot = robot_god_token(robot)
@@ -302,6 +326,7 @@ class FailureGenenator:
 
         tlog_node = s3.tlog_node
         zdb_cont = tlog_node.containers.get(name='zerodb_{}'.format(zdb_name))
+        logger.info('kill {} Tlog zdb'.format(zdb_name))
         zdb_cont.stop()
         return zdb_cont.is_running()
 
@@ -312,6 +337,7 @@ class FailureGenenator:
         """
         s3 = self._parent
         if not s3:
+            logger.warning('There is no s3')
             return
 
         tlog = s3.service.data['data']['tlog']
@@ -334,31 +360,16 @@ class FailureGenenator:
         zdb_cont.stop()
         return zdb_cont.is_running()
 
-    def Kill_node_robot_process(self, node_addr=None, timeout=100):
+    def Kill_node_robot_process(self, node_addr, timeout=100):
         """
         kill robot process.
         """
         s3 = self._parent
         if not s3:
+            logger.warning('There is no s3')
             return
-        if not node_addr:
-            farm_name = s3.service.data['data']['farmerIyoOrg']
-            capacity = j.clients.threefold_directory.get(interactive=False)
-            nodes_data = capacity.api.ListCapacity(query_params={'farmer': farm_name})[1].json()
-            for _ in range(len(nodes_data)):
-                node_addr = random.choice(nodes_data)["robot_address"][7:-5]
-                node = j.clients.zos.get("zrobot", data={"host":node_addr})
-                try:
-                    node.client.ping()
-                    break
-                except:
-                    logger.error(" can't reach %s skipping", node.addr)
-                    continue
-            else:
-                node.client.ping()
-        else:
-            node = j.clients.zos.get("zrobot", data={"host":node_addr})
 
+        node = j.clients.zos.get("zrobot", data={"host": node_addr})
         logger.info("kill the robot on node{}".format(node_addr))
         zrobot_cl = node.containers.get('zrobot')
         job_id = 'zrobot'
@@ -366,23 +377,27 @@ class FailureGenenator:
         if not result:
             logger.info("zrobot job not exist")
             return False
-        logger.info('the robot process killed')
+        logger.info('the robot process has been killed')
 
         logger.info("wait for the robot to restart")
         start = time.time()
         while (start + timeout) > time.time():
-            zrobot_job = [job for job in zrobot_cl.client.job.list() if job['cmd']["id"]=="zrobot"]
+            zrobot_job = [job for job in zrobot_cl.client.job.list() if job['cmd']["id"] == "zrobot"]
             if zrobot_job:
                 end = time.time()
                 duration = end - start
                 logger.info("zrobot took %s sec to restart" % duration)
                 return True
+            else:
+                time.sleep(5)
+        logger.warning("zrobot didnt start after {} ".format(timeout))
         return False
 
     def get_tlog_info(self):
         self.tlog = {}
         s3 = self._parent
         if not s3:
+            logger.warning('There is no s3')
             return
 
         minio_config = s3.minio_config.split('\n')
