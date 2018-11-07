@@ -40,7 +40,7 @@ class S3Manager:
     def client(self):
         if self._client is None:
             url = urlparse(self.data['minioUrls'][self._client_type])
-            logger.info('Get s3 client : {}'.format(url))
+            logger.info('get s3 client : {}'.format(url))
             self._client = Minio(url.netloc,
                                  access_key=self.data['minioLogin'],
                                  secret_key=self.data['minioPassword'],
@@ -163,15 +163,16 @@ class S3Manager:
     def _create_bucket(self):
         bucket_name = j.data.idgenerator.generateXCharID(16)
         try:
-            logger.info("create bucket")
             self.client.make_bucket(bucket_name)
+            logger.info("create bucket")
             logger.info("bucket : {}".format(bucket_name))
         except BucketAlreadyExists:
             logger.warning('Bucket already exists')
         except BucketAlreadyOwnedByYou:
             logger.warning('Bucket already owned by you')
-        except:
-            logger.warning("Can't create bucket!")
+        except Exception as e:
+            logger.error("can't create bucket!")
+            logger.error(e)
             raise RuntimeError("Can't create bucket!")
         return bucket_name
 
@@ -182,7 +183,7 @@ class S3Manager:
         file_name = j.data.idgenerator.generateXCharID(16)
         file_path = self._create_file(file_name, size)
         file_md5 = hashlib.md5(open(file_path, 'rb').read()).hexdigest()
-        logger.info("Upload a file")
+        logger.info("upload {} file to {} bucket".format(file_name, bucket_name))
         try:
             self.client.fput_object(bucket_name, file_name, file_path)
         except:
@@ -200,16 +201,17 @@ class S3Manager:
                 for _ in range(60):
                     try:
                         data = self.client.get_object(bucket_name, file_name).data
-                    except:
+                    except Exception as error:
                         logger.warning('There is an error in downloading the file, we will try again!')
+                        logger.warning(error)
                         time.sleep(5)
                 else:
                     data = self.client.get_object(bucket_name, file_name).data
             else:
                 data = self.client.get_object(bucket_name, file_name).data
-        except:
-            logger.warning("Can't download {} file".format(file_name))
-            data = self.client.get_object(bucket_name, file_name).data
+        except Exception as e:
+            logger.warning("can't download {} file".format(file_name))
+            logger.error(e)
         finally:
             if delete_bucket:
                 logger.info("delete {} bucket".format(bucket_name))

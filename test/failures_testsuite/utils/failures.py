@@ -302,7 +302,7 @@ class FailureGenenator:
         s3 = self._parent
         if not s3:
             return
-        logger.info('kill Tlog')
+        logger.info('kill Tlog zdb process, zrobot will bring it back')
         tlog = s3.service.data['data']['tlog']
         robot = j.clients.zrobot.robots[tlog['node']]
         robot = robot_god_token(robot)
@@ -312,6 +312,7 @@ class FailureGenenator:
 
         tlog_node = s3.tlog_node
         zdb_cont = tlog_node.containers.get(name='zerodb_{}'.format(zdb_name))
+        logger.info('kill {} Tlog zdb'.format(zdb_name))
         zdb_cont.stop()
         return zdb_cont.is_running()
 
