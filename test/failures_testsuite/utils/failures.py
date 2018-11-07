@@ -22,6 +22,7 @@ class FailureGenenator:
         """
         s3 = self._parent
         if not s3:
+            logger.warning('There is no s3')
             return
 
         def do(namespace):
@@ -43,6 +44,7 @@ class FailureGenenator:
         """
         s3 = self._parent
         if not s3:
+            logger.warning('There is no s3')
             return
 
         def do(namespace):
@@ -91,6 +93,7 @@ class FailureGenenator:
         """
         s3 = self._parent
         if not s3:
+            logger.warning('There is no s3')
             return
         n = 0
         for namespace in s3.service.data['data']['namespaces']:
@@ -131,6 +134,7 @@ class FailureGenenator:
         """
         s3 = self._parent
         if not s3:
+            logger.warning('There is no s3')
             return
 
         n = 0
@@ -158,6 +162,7 @@ class FailureGenenator:
         """
         s3 = self._parent
         if not s3:
+            logger.warning('There is no s3')
             return
 
         n = 0
@@ -181,6 +186,10 @@ class FailureGenenator:
 
     def disable_minio_vdisk_ssd(self):
         s3 = self._parent
+        if not s3:
+            logger.warning('There is no s3')
+            return
+
         dm_vm = s3.dm_robot.services.get(template_name='dm_vm', name=s3.service.guid)
         vdisk = s3.vm_host_robot.services.get(template_name='vdisk', name='%s_s3vm' % dm_vm.guid)
         zerodb = s3.vm_host_robot.services.get(name=vdisk.data['data']['zerodb'])
@@ -202,6 +211,7 @@ class FailureGenenator:
     def disable_minio_tlog_ssd(self):
         s3 = self._parent
         if not s3:
+            logger.warning('There is no s3')
             return
 
         tlog = s3.service.data['data']['tlog']
@@ -230,6 +240,7 @@ class FailureGenenator:
         """
         s3 = self._parent
         if not s3:
+            logger.warning('There is no s3')
             return
 
         tlog = s3.service.data['data']['tlog']
@@ -252,6 +263,7 @@ class FailureGenenator:
         """
         s3 = self._parent
         if not s3:
+            logger.warning('There is no s3')
             return
 
         tlog = s3.service.data['data']['tlog']
@@ -275,6 +287,7 @@ class FailureGenenator:
         """
         s3 = self._parent
         if not s3:
+            logger.warning('There is no s3')
             return
 
         tlog = s3.service.data['data']['tlog']
@@ -301,6 +314,7 @@ class FailureGenenator:
         """
         s3 = self._parent
         if not s3:
+            logger.warning('There is no s3')
             return
         logger.info('kill Tlog zdb process, zrobot will bring it back')
         tlog = s3.service.data['data']['tlog']
@@ -323,6 +337,7 @@ class FailureGenenator:
         """
         s3 = self._parent
         if not s3:
+            logger.warning('There is no s3')
             return
 
         tlog = s3.service.data['data']['tlog']
@@ -351,6 +366,7 @@ class FailureGenenator:
         """
         s3 = self._parent
         if not s3:
+            logger.warning('There is no s3')
             return
         if not node_addr:
             farm_name = s3.service.data['data']['farmerIyoOrg']
@@ -394,6 +410,7 @@ class FailureGenenator:
         self.tlog = {}
         s3 = self._parent
         if not s3:
+            logger.warning('There is no s3')
             return
 
         minio_config = s3.minio_config.split('\n')
