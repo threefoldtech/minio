@@ -192,7 +192,7 @@ class S3Manager:
 
     def download_file(self, file_name, bucket_name, delete_bucket=False, die=True):
         try:
-            logger.info("Download a file")
+            logger.info("Download {} file form {} bucket".format(file_name, bucket_name))
             data = self.client.get_object(bucket_name, file_name).data
         except ProtocolError:
             if die:
@@ -202,14 +202,11 @@ class S3Manager:
                     except:
                         time.sleep(5)
                 else:
-                    #raise RuntimeError("Can't download {} file from {}".format(file_name, bucket_name))
                     data = self.client.get_object(bucket_name, file_name).data
             else:
-                #raise RuntimeError("Can't download {} file from {}".format(file_name, bucket_name))
                 data = self.client.get_object(bucket_name, file_name).data
         except:
             logger.warning("Can't download {} file".format(file_name))
-            #raise RuntimeError("Can't download {} file from {}".format(file_name, bucket_name))
             data = self.client.get_object(bucket_name, file_name).data
         finally:
             if delete_bucket:
