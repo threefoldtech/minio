@@ -1,15 +1,15 @@
 from unittest import TestCase
 from utils.controller import Controller
-from uuid import uuid4
 from jumpscale import j
 from subprocess import Popen, PIPE
-import time, os, hashlib
+import time, socket
 
 logger = j.logger.get('s3_failures')
 
 
 class BaseTest(TestCase):
     file_name = None
+    socket.setdefaulttimeout(120) # Minio use _GLOBAL_DEFAULT_TIMEOUT which is None by default
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
