@@ -72,6 +72,7 @@ class BaseTest(TestCase):
                     raise Exception("cant find {} s3 service under {} robot client".format(cls.s3_service_name,
                                                                                            cls.config['robot']['client']))
         cls.s3 = cls.s3_controller.s3[cls.s3_service_name]
+        cls.s3.failures.zdb_start_all()
 
     @classmethod
     def tearDownClass(cls):
