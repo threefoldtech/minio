@@ -71,7 +71,7 @@ class FailureGenenator:
 
         logger.info('killing minio process')
         job_id = 'minio.%s' % s3.service.guid
-        cont.client.job.kill(job_id, signal=signal.SIGINT)
+        cont.job.kill(job_id, signal=signal.SIGINT)
         logger.info('minio process killed')
 
         logger.info("wait for minio to restart")
