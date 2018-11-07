@@ -87,7 +87,7 @@ class FailureGenenator:
                 continue
         return False
 
-    def zdb_process_down(self, count=1,timeout=100):
+    def zdb_process_down(self, count=1, timeout=100):
         """
         turn off zdb process , check it will be restart.
         """
@@ -105,11 +105,11 @@ class FailureGenenator:
             zdb = robot.services.get(name=ns.data['data']['zerodb'])
             try:
                 zdb.state.check('status', 'running', 'ok')
-                n +=1
+                n += 1
             except StateCheckError:
                 continue
             logger.info('kill %s zdb process on node %s', zdb.name, namespace['node'])
-            zdb_node = j.clients.zos.get(zdb.name,data={"host": namespace['url'][7:-5]})
+            zdb_node = j.clients.zos.get(zdb.name, data={"host": namespace['url'][7:-5]})
             zdb_cont_client = zdb_node.containers.get("zerodb_{}".format(zdb.name))
             job_id = "zerodb.{}".format(zdb.name)
             result = zdb_cont_client.client.job.kill(job_id, signal=signal.SIGINT)
@@ -120,7 +120,7 @@ class FailureGenenator:
             logger.info("wait zdb process to restart. ")
             start = time.time()
             while (start + timeout) > time.time():
-                zdb_job = [job for job in zdb_cont_client.client.job.list() if job['cmd']["id"]==job_id]
+                zdb_job = [job for job in zdb_cont_client.client.job.list() if job['cmd']["id"] == job_id]
                 if zdb_job:
                     end = time.time()
                     duration = end - start
@@ -360,7 +360,7 @@ class FailureGenenator:
         zdb_cont.stop()
         return zdb_cont.is_running()
 
-    def Kill_node_robot_process(self, node_addr=None, timeout=100):
+    def Kill_node_robot_process(self, node_addr, timeout=100):
         """
         kill robot process.
         """
@@ -368,24 +368,8 @@ class FailureGenenator:
         if not s3:
             logger.warning('There is no s3')
             return
-        if not node_addr:
-            farm_name = s3.service.data['data']['farmerIyoOrg']
-            capacity = j.clients.threefold_directory.get(interactive=False)
-            nodes_data = capacity.api.ListCapacity(query_params={'farmer': farm_name})[1].json()
-            for _ in range(len(nodes_data)):
-                node_addr = random.choice(nodes_data)["robot_address"][7:-5]
-                node = j.clients.zos.get("zrobot", data={"host":node_addr})
-                try:
-                    node.client.ping()
-                    break
-                except:
-                    logger.error(" can't reach %s skipping", node.addr)
-                    continue
-            else:
-                node.client.ping()
-        else:
-            node = j.clients.zos.get("zrobot", data={"host":node_addr})
 
+        node = j.clients.zos.get("zrobot", data={"host": node_addr})
         logger.info("kill the robot on node{}".format(node_addr))
         zrobot_cl = node.containers.get('zrobot')
         job_id = 'zrobot'
@@ -393,17 +377,20 @@ class FailureGenenator:
         if not result:
             logger.info("zrobot job not exist")
             return False
-        logger.info('the robot process killed')
+        logger.info('the robot process has been killed')
 
         logger.info("wait for the robot to restart")
         start = time.time()
         while (start + timeout) > time.time():
-            zrobot_job = [job for job in zrobot_cl.client.job.list() if job['cmd']["id"]=="zrobot"]
+            zrobot_job = [job for job in zrobot_cl.client.job.list() if job['cmd']["id"] == "zrobot"]
             if zrobot_job:
                 end = time.time()
                 duration = end - start
                 logger.info("zrobot took %s sec to restart" % duration)
                 return True
+            else:
+                time.sleep(5)
+        logger.warning("zrobot didnt start after {} ".format(timeout))
         return False
 
     def get_tlog_info(self):

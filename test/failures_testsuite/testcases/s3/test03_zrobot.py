@@ -1,10 +1,7 @@
 from base_test import BaseTest
 
 
-class ZROBOTFailures(BaseTest):
-    def tearDown(self):
-        super().tearDown()
-
+class ZrobotFailures(BaseTest):
     def test001_zrobot_kill(self):
         """
 
@@ -17,6 +14,7 @@ class ZROBOTFailures(BaseTest):
 
         self.logger.info('kill zrobot process and make sure it will restart automatically')
         minio_node_adder = self.s3.vm_node.addr
+        self.logger.info('minio node adder : {}'.format(minio_node_adder))
         flag = self.s3.failures.Kill_node_robot_process(node_addr=minio_node_adder)
         self.assertTrue(flag, "zrobot didn't restart")
 
