@@ -37,6 +37,8 @@ class TestS3Failures(BaseTest):
 
     def test001_bitrot(self):
         """
+
+        test001_bitrot
         - Get the minio namespaces and get the zdbs location.
         - Make sure all zdbs are up.
         - Get the extra 25% namespaces down.

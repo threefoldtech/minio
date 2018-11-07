@@ -48,6 +48,7 @@ class TestTlog(BaseTest):
         """
         self.s3.failures.tlog_down()
         time.sleep(60)
+        self.logger.info('Upload file, should fail')
         with self.assertRaises(RuntimeError):
             self.s3.upload_file()
 
@@ -61,8 +62,10 @@ class TestTlog(BaseTest):
         else:
             self.assertTrue(self.s3.failures.tlog_status())
 
+        self.logger.info('Upload file, should success')
         file_name, bucket_name, md5_before = self.s3.upload_file()
-        md5_after = self.s3.download_file(file_name, bucket_name, timeout=250)
+        self.logger.info('Download file, should success')
+        md5_after = self.s3.download_file(file_name, bucket_name)
         self.assertEqual(md5_after, md5_before)
 
     def test003_upload_kill_tlog_download(self):
@@ -74,12 +77,14 @@ class TestTlog(BaseTest):
          - wait 60 sec, tlog should be returned
          - Download file, should succeed
         """
+        self.logger.info('Upload file')
         file_name, bucket_name, md5_before = self.s3.upload_file()
 
         self.assertFalse(self.s3.failures.kill_tlog())
         time.sleep(60)
 
-        md5_after = self.s3.download_file(file_name, bucket_name, timeout=250)
+        self.logger.info('Download file, should succeed')
+        md5_after = self.s3.download_file(file_name, bucket_name)
         self.assertEqual(md5_after, md5_before)
 
     def test004_kill_tlog_upload_download(self):
@@ -96,7 +101,7 @@ class TestTlog(BaseTest):
 
         file_name, bucket_name, md5_before = self.s3.upload_file()
 
-        md5_after = self.s3.download_file(file_name, bucket_name, timeout=250)
+        md5_after = self.s3.download_file(file_name, bucket_name)
         self.assertEqual(md5_after, md5_before)
 
     @skip('https://github.com/threefoldtech/0-templates/issues/186')

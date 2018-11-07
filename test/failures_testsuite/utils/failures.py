@@ -292,7 +292,7 @@ class FailureGenenator:
         s3 = self._parent
         if not s3:
             return
-
+        logger.info('kill Tlog')
         tlog = s3.service.data['data']['tlog']
         robot = j.clients.zrobot.robots[tlog['node']]
         robot = robot_god_token(robot)
