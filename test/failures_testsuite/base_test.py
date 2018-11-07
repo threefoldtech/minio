@@ -50,6 +50,9 @@ class BaseTest(TestCase):
                 except:
                     time.sleep(5 * 60)
                     logger.info("wait for 5 mins")
+            else:
+                state.check('actions', 'install', 'ok')
+            time.sleep(120)
         else:
             sub = Popen('zrobot godtoken get', stdout=PIPE, stderr=PIPE, shell=True)
             out, err = sub.communicate()

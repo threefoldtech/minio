@@ -186,7 +186,7 @@ class S3Manager:
             self.client.fput_object(bucket_name, file_name, file_path)
         except:
             logger.warning("Can't upload {} file".format(file_name))
-            raise RuntimeError
+            raise RuntimeError("Can't upload {} file".format(file_name))
         os.remove(file_path)
         return file_name, bucket_name, file_md5
 
@@ -200,6 +200,7 @@ class S3Manager:
                     try:
                         data = self.client.get_object(bucket_name, file_name).data
                     except:
+                        logger.warning('There is an error in downloading the file, we will try again!')
                         time.sleep(5)
                 else:
                     data = self.client.get_object(bucket_name, file_name).data
