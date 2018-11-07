@@ -20,15 +20,20 @@ class FailureGenenator:
         """
         start all the zerodb services used by minio
         """
-
         s3 = self._parent
+        if not s3:
+            return
 
         def do(namespace):
             robot = j.clients.zrobot.robots[namespace['node']]
             robot = robot_god_token(robot)
-            for zdb in robot.services.find(template_name='zerodb'):
-                logger.info('start zerodb %s on node %s', zdb.name, namespace['node'])
-                zdb.schedule_action('start')
+            ns = robot.services.get(name=namespace['name'])
+            zdb = robot.services.get(name=ns.data['data']['zerodb'])
+            try:
+                zdb.state.check('status', 'running', 'ok')
+            except StateCheckError:
+                logger.info('start %s on node %s', zdb.name, namespace['node'])
+                zdb.schedule_action('start').wait(die=True)
 
         self._parent.execute_all_nodes(do, nodes=s3.service.data['data']['namespaces'])
 
@@ -36,15 +41,21 @@ class FailureGenenator:
         """
         stop all the zerodb services used by minio
         """
-
         s3 = self._parent
+        if not s3:
+            return
 
         def do(namespace):
             robot = j.clients.zrobot.robots[namespace['node']]
             robot = robot_god_token(robot)
-            for zdb in robot.services.find(template_name='zerodb'):
-                logger.info('stop zerodb %s on node %s', zdb.name, namespace['node'])
-                zdb.schedule_action('stop')
+            ns = robot.services.get(name=namespace['name'])
+            zdb = robot.services.get(name=ns.data['data']['zerodb'])
+            try:
+                zdb.state.check('status', 'running', 'ok')
+                logger.info('stop %s on node %s', zdb.name, namespace['node'])
+                zdb.schedule_action('stop').wait(die=True)
+            except StateCheckError:
+                pass
 
         self._parent.execute_all_nodes(do, nodes=s3.service.data['data']['namespaces'])
 
