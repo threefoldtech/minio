@@ -31,6 +31,7 @@ class FailureGenenator:
             ns = robot.services.get(name=namespace['name'])
             zdb = robot.services.get(name=ns.data['data']['zerodb'])
             try:
+                logger.info('check %s on node %s status', zdb.name, namespace['node'])
                 zdb.state.check('status', 'running', 'ok')
             except StateCheckError:
                 logger.info('start %s on node %s', zdb.name, namespace['node'])

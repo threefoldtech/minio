@@ -193,6 +193,7 @@ class S3Manager:
         return file_name, bucket_name, file_md5
 
     def download_file(self, file_name, bucket_name, delete_bucket=False, die=True):
+        data = None
         try:
             logger.info("Download {} file form {} bucket".format(file_name, bucket_name))
             data = self.client.get_object(bucket_name, file_name).data
@@ -216,8 +217,9 @@ class S3Manager:
             if delete_bucket:
                 logger.info("delete {} bucket".format(bucket_name))
                 self.client.remove_bucket(bucket_name)
-        d_file_md5 = hashlib.md5(data).hexdigest()
-        return d_file_md5
+        if data:
+            d_file_md5 = hashlib.md5(data).hexdigest()
+            return d_file_md5
 
     def execute_all_nodes(self, func, nodes=None):
         """
