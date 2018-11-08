@@ -32,7 +32,7 @@ class S3Manager:
         self._vm_host = None
         self._container_client = None
         try:
-            self._service = self.dm_robot.services.get(name=name)
+            self._service = self.dm_robot.services.get(name=name, template_name='s3')
         except ServiceNotFoundError:
             self._service = None
 
@@ -55,7 +55,7 @@ class S3Manager:
 
     @property
     def service_vm(self):
-        return self.dm_robot.services.get(name=self.service.guid)
+        return self.dm_robot.services.get(name=self.service.guid, template_name='dm_vm')
 
     @property
     def vm_node(self):
@@ -63,7 +63,7 @@ class S3Manager:
         zos client on the zos VM that host the minio container
         """
         if self._vm_node is None:
-            dm_vm = self.dm_robot.services.get(name=self.service.guid)
+            dm_vm = self.dm_robot.services.get(name=self.service.guid, template_name='dm_vm')
             ip = dm_vm.schedule_action('info').wait(die=True).result['zerotier']['ip']
             self._vm_node = j.clients.zos.get('demo_vm_node', data={'host': ip})
         return self._vm_node
@@ -264,4 +264,3 @@ class S3Manager:
             'nsName': nsName}
         self._service = self.dm_robot.services.find_or_create('s3', self.name, data=s3_data)
         return self._service.schedule_action('install')
-
