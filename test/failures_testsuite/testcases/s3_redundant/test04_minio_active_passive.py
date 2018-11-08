@@ -78,34 +78,48 @@ class TestActivePassive(BaseTest):
         self.assertTrue(duration, "New minio vm acting as a passive minio didn't start")
         self.logger.info("Active minio vm took %s sec to restart" % duration)
 
-    @unittest.skip('Wait for redploying passive vm')
     def test002_kill_passive_minio_vm(self):
         """
 
         test002_kill_passive_minio_vm
+        - Upload file (F1) to the active minio
+        - Download F1 from the passive minio, should succeed
         - Get the passive minio vm (VM1)
         - kill VM1
         - Check if a new VM has been redployed and functions as passive minio.
+        - Download F1 again from the passive minio, should succeed
         """
+
+        self.logger.info('upload file to the active minio')
+        file_name, bucket_name, md5_before = self.s3_active.upload_file()
+        time.sleep(10)
+
+        self.logger.info(' Download F1 from the passive minio, should succeed')
+        md5_after = self.s3_passive.download_file(file_name, bucket_name,  delete_bucket=False)
+        self.assertEqual(md5_after, md5_before, "md5s doesn't match")
 
         self.logger.info('Get the active minio vm (VM1)')
         vm_host = self.s3_passive.vm_host
         vms = vm_host.client.kvm.list()
         for vm in vms:
-            if vm['name'] == '%s_vm' % self.s3_passive.dm_vm.guid:
+            if vm['name'] == '%s_vm' % self.s3_passive.service_vm.guid:
                 break
-            else:
-                raise Exception("can't find vm with name: %s_vm" % self.s3.dm_vm.guid)
+        else:
+            raise Exception("can't find vm with name: %s_vm" % self.s3.service_vm.guid)
 
         self.logger.info('kill VM1')
         vm_host.client.kvm.destroy(vm['uuid'])
 
-        self.logger.info(' Check if a new VM has been redployed and functions as passive minio')
-        # wait till passive vm get started .. to do
+        self.logger.info('Check if a new VM has been redployed and functions as passive minio')
         url = self.s3_passive.url['public']
-        duration = self.ping_minio(url, timeout=200)
+        duration = self.ping_minio(url, timeout=300)
         self.assertTrue(duration, "Passive minio vm didn't start")
         self.logger.info("passive minio vm took %s sec to restart" % duration)
+
+        self.logger.info('Download the file again from the passive minio, should succeed')
+        md5_after2 = self.s3_passive.download_file(file_name, bucket_name, delete_bucket=False)
+        self.assertEqual(md5_after2, md5_before, "md5s doesn't match")
+
 
     @unittest.skip('same as test001 + enable ssd')
     def test003_ssd_failure_active_minio_vm(self):
