@@ -21,3 +21,11 @@ class ZrobotFailures(BaseTest):
         self.logger.info("Download uploaded file, and check that both are same.")
         md5_after = self.s3.download_file(file_name, bucket_name)
         self.assertEqual(md5_after, md5_before)
+
+    def test002_kill_minio_process(self):
+        """
+        - kill minio process and make sure it will restart automatically.
+        """
+        self.logger.info('kill minio process and make sure it will restart automatically')
+        flag = self.s3.failures.minio_process_down(timeout=200)
+        self.assertTrue(flag, "minio didn't restart")

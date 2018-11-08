@@ -210,9 +210,6 @@ class S3Manager:
                     data = self.client.get_object(bucket_name, file_name).data
             else:
                 data = self.client.get_object(bucket_name, file_name).data
-        except Exception as e:
-            logger.warning("can't download {} file".format(file_name))
-            logger.error(e)
         finally:
             if delete_bucket:
                 logger.info("delete {} bucket".format(bucket_name))
