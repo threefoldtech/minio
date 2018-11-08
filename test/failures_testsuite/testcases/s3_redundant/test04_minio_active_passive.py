@@ -31,7 +31,6 @@ class TestActivePassive(BaseTest):
                 continue
         return False
 
-    @unittest.skip('Not tested yet')
     def test001_kill_active_minio_vm(self):
         """
         test001_kill_active_minio_vm
