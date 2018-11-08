@@ -13,7 +13,7 @@ class ZrobotFailures(BaseTest):
         file_name, bucket_name, md5_before = self.s3.upload_file()
 
         self.logger.info('kill zrobot process and make sure it will restart automatically')
-        minio_node_adder = self.s3.vm_node.addr
+        minio_node_adder = self.s3.data['minioUrls'][self.s3._client_type][7:-5]
         self.logger.info('minio node adder : {}'.format(minio_node_adder))
         flag = self.s3.failures.Kill_node_robot_process(node_addr=minio_node_adder)
         self.assertTrue(flag, "zrobot didn't restart")
