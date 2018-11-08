@@ -78,7 +78,6 @@ class TestActivePassive(BaseTest):
         self.assertTrue(duration, "New minio vm acting as a passive minio didn't start")
         self.logger.info("Active minio vm took %s sec to restart" % duration)
 
-    @unittest.skip('waiting on s3_redandant installation')
     def test002_kill_passive_minio_vm(self):
         """
 
