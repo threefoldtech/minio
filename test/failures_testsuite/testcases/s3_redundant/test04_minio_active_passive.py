@@ -43,22 +43,23 @@ class TestActivePassive(BaseTest):
         """
 
         self.logger.info('Get the active minio vm (VM1)')
+        url = self.s3_active.url['public']
         vm_host = self.s3_active.vm_host
         vms = vm_host.client.kvm.list()
         for vm in vms:
-            if vm['name'] == '%s_vm' % self.s3_active.dm_vm.guid:
+            if vm['name'] == '%s_vm' % self.s3_active.service_vm.guid:
                 break
         else:
-            raise Exception("can't find vm with name: %s_vm" % self.s3.dm_vm.guid)
+            raise Exception("can't find vm with name: %s_vm" % self.s3_active.service_vm.guid)
 
         self.logger.info('upload file (F1)to the active minio')
         file_name, bucket_name, file_md5 = self.s3_active.upload_file()
 
         self.logger.info('kill VM1')
         vm_host.client.kvm.destroy(vm['uuid'])
+        time.sleep(20)
 
         self.logger.info('Check that a new vm has been deployed and acting as active vm')
-        url = self.s3_active.url['public']
         duration = self.ping_minio(url, timeout=300)
         self.assertTrue(duration, "Active minio vm didn't start")
         self.logger.info("Active minio vm took %s sec to restart" % duration)
