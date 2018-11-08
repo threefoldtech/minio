@@ -158,3 +158,50 @@ ERROR
 -----------------------------------------------------------------------------
 14 tests run in 1459.479 seconds. 
 1 error, 4 skipped (9 tests passed)
+
+=========================================================================================================
+##s3_redundant:
+
+nosetests -s -v testcases/s3_redundant/test04_minio_active_passive.py:TestActivePassive.test001_kill_active_minio_vm
+test001_kill_active_minio_vm ... [Thu08 14:28] - test04_minio_active_passive.py:46 :j.s3_failures - INFO - Get the active minio vm (VM1)
+[Thu08 14:29] - test04_minio_active_passive.py:55 :j.s3_failures - INFO - upload file (F1)to the active minio
+[Thu08 14:29] - s3.py :45 :j.s3demo - INFO - get s3 client : ParseResult(scheme='http', netloc='172.28.144.76:1024', path='', params='', query='', fragment='')
+[Thu08 14:29] - s3.py :169 :j.s3demo - INFO - create bucket
+[Thu08 14:29] - s3.py :170 :j.s3demo - INFO - bucket : ntw4jcyqnwa9fd4m
+[Thu08 14:29] - s3.py :188 :j.s3demo - INFO - upload 09va30awltczbiyf file to ntw4jcyqnwa9fd4m bucket
+[Thu08 14:29] - test04_minio_active_passive.py:58 :j.s3_failures - INFO - kill VM1
+[Thu08 14:29] - test04_minio_active_passive.py:61 :j.s3_failures - INFO - Check that a new vm has been deployed and acting as active vm
+[Thu08 14:29] - test04_minio_active_passive.py:120 :j.s3_failures - INFO - Download the file again from the passive minio, should succeed
+[Thu08 14:30] - s3.py :199 :j.s3demo - INFO - Download x995wjvaur9mrqo1 file form 9zjkci86q0kj9baj bucket
+
+Ran 1 test in 298.639s
+
+OK
+===================================================
+
+
+root@js:~/minio/test/failures_testsuite# nosetests -v -s testcases/s3_redundant/test04_minio_active_passive.py
+test001_kill_active_minio_vm ... SKIP: to do .. wait till passive minio is updated .. passive minio vm is created
+test002_kill_passive_minio_vm ... [Thu08 09:41] - test04_minio_active_passive.py:94 :j.s3_failures - INFO - upload file to the active minio
+[Thu08 09:41] - s3.py :45 :j.s3demo - INFO - get s3 client : ParseResult(scheme='http', netloc='172.28.48.63:1024', path='', params='', query='', fragment='')
+[Thu08 09:41] - s3.py :169 :j.s3demo - INFO - create bucket
+[Thu08 09:41] - s3.py :170 :j.s3demo - INFO - bucket : 9zjkci86q0kj9baj
+[Thu08 09:41] - s3.py :188 :j.s3demo - INFO - upload x995wjvaur9mrqo1 file to 9zjkci86q0kj9baj bucket
+[Thu08 09:41] - test04_minio_active_passive.py:98 :j.s3_failures - INFO - Download F1 from the passive minio, should succeed
+[Thu08 09:41] - s3.py :199 :j.s3demo - INFO - Download x995wjvaur9mrqo1 file form 9zjkci86q0kj9baj bucket
+[Thu08 09:41] - s3.py :45 :j.s3demo - INFO - get s3 client : ParseResult(scheme='http', netloc='172.28.255.24:1024', path='', params='', query='', fragment='')
+[Thu08 09:42] - test04_minio_active_passive.py:102 :j.s3_failures - INFO - Get the active minio vm (VM1)
+[Thu08 09:42] - test04_minio_active_passive.py:111 :j.s3_failures - INFO - kill VM1
+[Thu08 09:42] - test04_minio_active_passive.py:114 :j.s3_failures - INFO - Check if a new VM has been redployed and functions as passive minio
+[Thu08 09:46] - test04_minio_active_passive.py:118 :j.s3_failures - INFO - passive minio vm took 254.02269458770752 sec to restart
+[Thu08 09:46] - test04_minio_active_passive.py:120 :j.s3_failures - INFO - Download the file again from the passive minio, should succeed
+[Thu08 09:46] - s3.py :199 :j.s3demo - INFO - Download x995wjvaur9mrqo1 file form 9zjkci86q0kj9baj bucket
+ok
+test003_ssd_failure_active_minio_vm ... SKIP: same as test001 + enable ssd
+test004_ssd_failure_passive_minio_vm ... SKIP: same as test002 + enable ssd
+test005_active_minio_tlog_ssd_failure ... SKIP: skip till the flow of active and passive is done
+test006_passive_minio_tlog_ssd_failure ... SKIP: skip till the flow of active and passive is done
+
+Ran 6 tests in 333.639s
+
+OK (SKIP=5)
