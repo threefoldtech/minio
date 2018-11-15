@@ -108,11 +108,9 @@ class TestActivePassive(BaseTest):
         md5_after2 = self.s3_passive.download_file(file_name, bucket_name, delete_bucket=False)
         self.assertEqual(md5_after2, md5_before, "md5s doesn't match")
 
-
-    @unittest.skip('same as test001 + enable ssd')
+    @unittest.skip('https://github.com/threefoldtech/minio/issues/49 ')
     def test003_ssd_failure_active_minio_vm(self):
         """
-
         test003_ssd_failure_active_minio_vm
         - Upload file (F1) to the active minio
         - Disable ssd of the active minio vdisk, should succeed
@@ -126,58 +124,79 @@ class TestActivePassive(BaseTest):
         self.logger.info('upload file to the active minio')
         file_name, bucket_name, file_md5 = self.s3_active.upload_file()
 
-        self.logger.info('Disable ssd of the active minio vdisk, should succeed')
-        flag = self.s3_active.failures.disable_minio_vdisk_ssd()
-        self.assertTrue(flag, "ssd hasn't been disabled")
+        try:
+            self.logger.info('Disable ssd of the active minio vdisk, should succeed')
+            flag = self.s3_active.failures.disable_minio_vdisk_ssd()
+            self.assertTrue(flag, "ssd hasn't been disabled")
 
-        self.logger.info('Wait till the configuration of the passive minio get updated to become the active one')
+            self.logger.info('Wait till the configuration of the passive minio get updated to become the active one')
 
-        self.logger.info('Make sure the passive vm is now serving the requests which becomes an active.')
-        url = self.s3_active.url['public']
-        duration = self.ping_minio(url, timeout=200)
-        self.assertTrue(duration, "Active minio vm didn't start")
-        self.logger.info("Active minio vm took %s sec to restart" % duration)
+            self.logger.info('Make sure the passive vm is now serving the requests which becomes an active.')
+            url = self.s3_active.url['public']
+            duration = self.ping_minio(url, timeout=200)
+            self.assertTrue(duration, "Active minio vm didn't start")
+            self.logger.info("Active minio vm took %s sec to restart" % duration)
 
-        self.logger.info('Download the file and check on its md5sum')
-        self.s3_active.download_file(file_name, bucket_name, file_md5)
+            self.logger.info('Download the file and check on its md5sum')
+            self.s3_active.download_file(file_name, bucket_name, file_md5)
 
-        self.logger.info('Check that a new vm has been deployed (instead of VM1) and now acting as a passive minio.')
-        #wait till u make sure new passive vm has been created
-        url = self.s3_passive.url['public']
-        duration = self.ping_minio(url, timeout=200)
-        self.assertTrue(duration, "New minio vm acting as a passive minio didn't start")
-        self.logger.info("Active minio vm took %s sec to restart" % duration)
+            self.logger.info('Check that a new vm has been deployed (instead of VM1) and now acting as a passive minio.')
+            #wait till u make sure new passive vm has been created
+            url = self.s3_passive.url['public']
+            duration = self.ping_minio(url, timeout=200)
+            self.assertTrue(duration, "New minio vm acting as a passive minio didn't start")
+            self.logger.info("Active minio vm took %s sec to restart" % duration)
+        except:
+            raise
+        finally:
+            self.logger.info('Enable the ssd')
+            # make sure it is the same host used
+            self.s3_active.vm_host.client.bash('echo "- - -" | tee /sys/class/scsi_host/host*/scan').get()
 
-        self.logger.info('Enable the ssd')
-        # make sure it is the same host used
-        self.s3_active.vm_host.client.bash('echo "- - -" | tee /sys/class/scsi_host/host*/scan').get()
-
-    @unittest.skip('same as test002 + enable ssd')
+    @unittest.skip('https://github.com/threefoldtech/minio/issues/49 ')
     def test004_ssd_failure_passive_minio_vm(self):
         """
-
         test004_ssd_failure_passive_minio_vm
+        - Upload file (F1) to the active minio
+        - Download F1 from the passive minio, should succeed
         - Disable ssd of the passive minio vdisk, should succeed.
-        -  Check if a new VM has been redployed and functions as passive minio.
+        - Check if a new VM has been redployed and functions as passive minio.
+        - Download F1 from the passive minio, should succeed
         - Enable the ssd.
         """
 
-        self.logger.info('Disable ssd of the passive minio vdisk, should succeed')
-        flag = self.s3_passive.failures.disable_minio_vdisk_ssd()
-        self.assertTrue(flag, "ssd hasn't been disabled")
+        self.logger.info('Upload a file (F1) to the active minio.')
+        file_name, bucket_name, md5_before = self.s3_active.upload_file()
+        time.sleep(10)
 
-        self.logger.info(' Check if a new VM has been redployed and functions as passive minio')
-        # wait till passive vm get started .. to do
-        url = self.s3_passive.url['public']
-        duration = self.ping_minio(url, timeout=200)
-        self.assertTrue(duration, "Passive minio vm didn't start")
-        self.logger.info("passive minio vm took %s sec to restart" % duration)
+        self.logger.info(' Download F1 from the passive minio, should succeed')
+        md5_after = self.s3_passive.download_file(file_name, bucket_name, delete_bucket=False)
+        self.assertEqual(md5_after, md5_before, "md5s doesn't match")
 
-        self.logger.info('Enable the ssd')
-        # make sure it is the same host used
-        self.s3_passive.vm_host.client.bash('echo "- - -" | tee /sys/class/scsi_host/host*/scan').get()
+        try:
+            self.logger.info('Disable ssd of the passive minio vdisk, should succeed')
+            flag = False
+            flag = self.s3_passive.failures.disable_minio_vdisk_ssd()
+            self.assertTrue(flag, "ssd hasn't been disabled")
 
-    @unittest.skip('skip till the flow of active and passive is done')
+            self.logger.info(' Check if a new VM has been redployed and functions as passive minio')
+            # wait till passive vm get started .. to do
+            url = self.s3_passive.url['public']
+            duration = self.ping_minio(url, timeout=200)
+            self.assertTrue(duration, "Passive minio vm didn't start")
+            self.logger.info("passive minio vm took %s sec to restart" % duration)
+
+            self.logger.info("Download F1 from the passive minio, should succeed")
+            md5_after2 = self.s3_passive.download_file(file_name, bucket_name)
+            self.assertEqual(md5_after2, md5_before, "md5s doesn't match")
+        except:
+            raise
+        finally:
+            self.logger.info('Enable the ssd')
+            # make sure it is the same host used
+            self.s3_passive.vm_host.client.bash('echo "- - -" | tee /sys/class/scsi_host/host*/scan').get()
+
+    @unittest.skip('https://github.com/threefoldtech/minio/issues/49 ')
     def test005_active_minio_tlog_ssd_failure(self):
         """
 
@@ -186,8 +205,8 @@ class TestActivePassive(BaseTest):
         - Disable ssd of the active minio tlog, should succeed.
         - Wait till the configuration of the passive minio get updated to become the active one.
         - Make sure the passive vm is now serving the requests which becomes an active.
-        - Download F1  and check on its md5sum
         - Check that a new tlog namespace has been deployed and has the same info as other tlog
+        - Download F1  and check on its md5sum
         - Enable the ssd.
         """
 
@@ -204,12 +223,11 @@ class TestActivePassive(BaseTest):
 
             self.logger.info('Make sure the passive vm is now serving the requests which becomes an active.')
 
+            self.logger.info('Check that a new tlog namespace has been deployed and has the same info as other tlog')
+
             self.logger.info('Download F1  and check on its md5sum')
             md5_after = self.s3_active.download_file(file_name, bucket_name)
             self.assertEqual(md5_before, md5_after)
-
-            self.logger.info('Check that a new tlog namespace has been deployed and has the same info as other tlog')
-
         except:
             raise
         finally:
@@ -217,12 +235,13 @@ class TestActivePassive(BaseTest):
                 self.logger.info('Enable the ssd')
                 self.s3_passive.vm_host.client.bash('echo "- - -" | tee /sys/class/scsi_host/host*/scan').get()
 
-    @unittest.skip('skip till the flow of active and passive is done')
+    @unittest.skip('https://github.com/threefoldtech/minio/issues/49 ')
     def test006_passive_minio_tlog_ssd_failure(self):
         """
 
         test006_passive_minio_tlog_ssd_failure
         - Upload a file (F1) to the active minio.
+        - Download F1 from the passive minio, should succeed.
         - Disable ssd of the passive minio tlog, should succeed.
         - Check that a new tlog namespace has been deployed and has the same info as other tlog.
         - Download F1 from the passive minio, should succeed
@@ -231,6 +250,11 @@ class TestActivePassive(BaseTest):
 
         self.logger.info('Upload a file (F1) to the active minio.')
         file_name, bucket_name, md5_before = self.s3_active.upload_file()
+        time.sleep(10)
+
+        self.logger.info(' Download F1 from the passive minio, should succeed')
+        md5_after = self.s3_passive.download_file(file_name, bucket_name, delete_bucket=False)
+        self.assertEqual(md5_after, md5_before, "md5s doesn't match")
 
         try:
             self.logger.info('Disable ssd of the passive minio tlog, should succeed.')
