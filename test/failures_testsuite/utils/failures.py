@@ -204,7 +204,7 @@ class FailureGenenator:
             if device:
                 break
         else:
-            return
+            return False
         disk = ''.join([i for i in device if not i.isdigit()])
         s3.vm_host.client.bash('echo 1 > /sys/block/{}/device/delete'.format(disk)).get()
         return disk
@@ -230,7 +230,7 @@ class FailureGenenator:
             if device:
                 break
         else:
-            return
+            return False
         disk = ''.join([i for i in device if not i.isdigit()])
         s3.vm_host.client.bash('echo 1 > /sys/block/{}/device/delete'.format(disk)).get()
         return disk
