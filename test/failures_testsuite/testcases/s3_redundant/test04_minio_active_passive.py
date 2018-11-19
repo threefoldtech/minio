@@ -40,8 +40,8 @@ class TestActivePassive(BaseTest):
                     cls.logger.info('delete {} service'.format(cls.s3_redundant_service_name))
                     s3_redundant_object.delete()
             else:
-                raise TimeoutError("can't install s3 redundant .. gone quit!")
-                    
+                raise TimeoutError("can't install s3 redundant .. gonna quit!")
+
             cls.logger.info('wait for {} state to be okay'.format(cls.s3_redundant_service_name))
             for _ in range(10):
                 cls.s3_redundant_object = cls.s3_redundant_controller.s3_redundant[cls.s3_redundant_service_name]
