@@ -61,17 +61,22 @@ def restore_nft_table():
     logger.info("restoring all nft ports")
     execute_cmd("ssh {addr} 'nft flush ruleset && nft -f /backup.nft' ".format(addr=node_ip))
 
-# the next two functions are commented because if you run it on a node you will not be able to reach it again and need to reboot it from ipmi
+# the next function , if you run it on a node you will not be able to reach it again and need to reboot it from ipmi
 
-# def drop_management_interface():
-#     logger.info("deactivating management interface eno1")
-#     node_client.client.bash('ip lin set eno1 down')
-#     node_client.client.bash("ip a | grep eno1 ").get()
-
-# def restore_management_interface():
-#     logger.info("restoring management interface")
-#     node_client.client.bash('ip lin set eno1 down')
-#     node_client.client.bash("ip a | grep eno1 ").get()
+def drop_management_interface():
+    logger.info("deactivating management interface eno1")
+    logger.warning("if you run it on a node you will not be able to reach it again and need to reboot it from ipmi")
+    x= input("please enter y to continue or n to quit: ")
+    if x = "y"
+        node_client.client.bash('ip lin set eno1 down')
+        node_client.client.bash("ip a | grep eno1 ").get()
+    else 
+        break 
+   
+def restore_management_interface():
+    logger.info("restoring management interface")
+    node_client.client.bash('ip lin set eno1 down')
+    node_client.client.bash("ip a | grep eno1 ").get()
 
 def drop_single_backend_interface():
     logger.info("deactivating first backend interface")
