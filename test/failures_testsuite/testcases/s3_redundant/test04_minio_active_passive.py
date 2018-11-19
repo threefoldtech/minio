@@ -7,9 +7,6 @@ from subprocess import Popen, PIPE
 
 
 class TestActivePassive(BaseTest):
-    s3_active_name = None
-    s3_passive_name = None
-
     @classmethod
     def setUpClass(cls):
         """
@@ -21,25 +18,37 @@ class TestActivePassive(BaseTest):
         cls.config = j.data.serializer.yaml.load('./config.yaml')
         if cls.config['s3_redundant']['deploy']:
             cls.s3_redundant_controller = Controller(cls.config)
-            cls.s3_redundant_service_name = 's3_redundant_{}'.format(str(time.time()).split('.')[0])
-            cls.logger.info("s3 redundant service name : {}".format(cls.s3_redundant_service_name))
 
             data = [cls.config['s3_redundant']['instance']['farm'], cls.config['s3_redundant']['instance']['size'],
                     cls.config['s3_redundant']['instance']['shards'], cls.config['s3_redundant']['instance']['parity']]
-            instance = cls.s3_redundant_controller.deploy_s3_redundant(cls.s3_redundant_service_name, *data)
-            cls.logger.info("wait for deploying {} s3 redundant service".format(cls.s3_redundant_service_name))
-            try:
-                instance.wait(die=True)
-            except:
-                cls.logger.error("may be there is an error while installing s3!")
 
-            cls.logger.info('wait for s3 redundant state to be okay')
+            for _ in range(5):
+                cls.s3_redundant_service_name = 's3_redundant_{}'.format(str(time.time()).split('.')[0])
+                cls.logger.info("s3 redundant service name : {}".format(cls.s3_redundant_service_name))
+
+                instance = cls.s3_redundant_controller.deploy_s3_redundant(cls.s3_redundant_service_name, *data)
+                try:
+                    cls.logger.info("wait for deploying {} service".format(cls.s3_redundant_service_name))
+                    instance.wait(die=True)
+                    break
+                except Exception as e:
+                    cls.logger.error("There is an error while installing s3 .. we will re-install it!")
+                    cls.logger.error(e)
+                    cls.logger.info('uninstall {} service'.format(cls.s3_redundant_service_name))
+                    s3_redundant_object = cls.s3_redundant_controller.s3_redundant[cls.s3_redundant_service_name]
+                    s3_redundant_object.uninstall()
+                    cls.logger.info('delete {} service'.format(cls.s3_redundant_service_name))
+                    s3_redundant_object.delete()
+            else:
+                raise TimeoutError("can't install s3 redundant .. gone quit!")
+                    
+            cls.logger.info('wait for {} state to be okay'.format(cls.s3_redundant_service_name))
             for _ in range(10):
                 cls.s3_redundant_object = cls.s3_redundant_controller.s3_redundant[cls.s3_redundant_service_name]
                 state = cls.s3_redundant_object.service.state
-                cls.logger.info(" s3 redundant state : {}".format(state))
+                cls.logger.info(" {} state : {}".format(cls.s3_redundant_service_name, state))
                 try:
-                    cls.logger.info("waiting s3 redundant state to be ok ... ")
+                    cls.logger.info("waiting {} state to be ok ... ".format(cls.s3_redundant_service_name))
                     state.check('actions', 'install', 'ok')
                     break
                 except:

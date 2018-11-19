@@ -110,3 +110,5 @@ class S3RedundantManager:
     def update_reverse_proxy(self):
         return self.service.schedule_action('update_reverse_proxy')
 
+    def delete(self):
+        self.service.delete()
