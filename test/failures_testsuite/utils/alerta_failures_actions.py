@@ -71,7 +71,7 @@ def drop_management_interface():
         node_client.client.bash('ip lin set eno1 down')
         node_client.client.bash("ip a | grep eno1 ").get()
     else 
-        break 
+        exit
    
 def restore_management_interface():
     logger.info("restoring management interface")
