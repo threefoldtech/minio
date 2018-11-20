@@ -39,7 +39,6 @@ class BaseTest(TestCase):
                             cls.config['s3']['instance']['shards'], cls.config['s3']['instance']['parity'],
                             cls.config['s3']['instance']['nsName']]
                     instance = cls.s3_controller.deploy(cls.s3_service_name, *data)
-                    cls.logger.info("wait for deploying {} s3 service".format(cls.s3_service_name))
                     try:
                         cls.logger.info("wait for deploying {} service".format(cls.s3_service_name))
                         instance.wait(die=True)
@@ -74,7 +73,7 @@ class BaseTest(TestCase):
                     try:
                         cls.logger('try to create bucket ... ')
                         cls.s3._create_bucket()
-                        cls.logger('minio is working well ... fire test cases')
+                        cls.logger.info('minio is working well ... fire test cases')
                         break
                     except RuntimeError:
                         cls.logger.error('wait for 3 mins and try again')
