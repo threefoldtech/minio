@@ -49,11 +49,11 @@ class S3RedundantManager:
 
     @property
     def active_s3(self):
-        return self.service.data['activeS3']
+        return self.data['activeS3']
 
     @property
     def passive_s3(self):
-        return self.service.data['passiveS3']
+        return self.data['passiveS3']
 
     def deploy(self, farm, size=1000, data=1, parity=1, login='admin', password='adminadmin', wait=False):
         """

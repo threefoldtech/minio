@@ -46,7 +46,7 @@ class TestActivePassive(BaseTest):
             for _ in range(10):
                 cls.s3_redundant_object = cls.s3_redundant_controller.s3_redundant[cls.s3_redundant_service_name]
                 state = cls.s3_redundant_object.service.state
-                cls.logger.info(" {} state : {}".format(cls.s3_redundant_service_name, state))
+                cls.logger.info("{} state : {}".format(cls.s3_redundant_service_name, state))
                 try:
                     cls.logger.info("waiting {} state to be ok ... ".format(cls.s3_redundant_service_name))
                     state.check('actions', 'install', 'ok')
