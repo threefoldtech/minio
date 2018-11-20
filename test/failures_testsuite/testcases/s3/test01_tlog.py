@@ -4,7 +4,7 @@ import time
 
 
 class TestTlog(BaseTest):
-    @skip('https://github.com/threefoldtech/0-templates/issues/179')
+    #@skip('https://github.com/threefoldtech/0-templates/issues/179')
     def test001_upload_stop_tlog_start_download(self):
         """
 
@@ -35,7 +35,7 @@ class TestTlog(BaseTest):
         md5_after = self.s3.download_file(file_name, bucket_name)
         self.assertEqual(md5_after, md5_before)
 
-    @skip('https://github.com/threefoldtech/0-templates/issues/179')
+    #@skip('https://github.com/threefoldtech/0-templates/issues/179')
     def test002_stop_tlog_upload_download(self):
         """
 
@@ -104,7 +104,7 @@ class TestTlog(BaseTest):
         md5_after = self.s3.download_file(file_name, bucket_name)
         self.assertEqual(md5_after, md5_before)
 
-    @skip('https://github.com/threefoldtech/0-templates/issues/186')
+    #@skip('https://github.com/threefoldtech/0-templates/issues/186')
     def test005_upload_tlog_die_forever_download(self):
         """
 
@@ -123,7 +123,7 @@ class TestTlog(BaseTest):
         md5_after = self.s3.download_file(file_name, bucket_name)
         self.assertEqual(md5_after, md5_before)
 
-    @skip('https://github.com/threefoldtech/0-templates/issues/186')
+    #@skip('https://github.com/threefoldtech/0-templates/issues/186')
     def test006_tlog_die_forever_upload_download(self):
         """
 
