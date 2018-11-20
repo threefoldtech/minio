@@ -143,7 +143,7 @@ class S3Manager:
         return self.service.schedule_action('url').wait(die=True).result
 
     @property
-    def data(self):
+    def datac(self):
         return self.service.data['data']
 
     @property
