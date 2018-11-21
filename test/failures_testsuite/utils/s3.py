@@ -48,6 +48,10 @@ class S3Manager:
         return self._client
 
     @property
+    def data(self):
+        return self.service.data['data']
+
+    @property
     def service(self):
         if self._service is None:
             raise RuntimeError("s3 service doesn't exist yet, call deploy to create it")
