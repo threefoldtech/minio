@@ -1,0 +1,193 @@
+➜  failures_testsuite git:(s3_redundant_controller) ✗ nosetests-3.4 -vs --logging-level=WARNING --progressive-with-bar --rednose testcases/s3
+[Wed21 00:36] - base_test.py      :36  :j.s3_failures        - INFO     - s3 service name : s3_1542760617
+[Wed21 00:36] - s3.py             :250 :j.s3demo             - INFO     - install zerotier client
+[Wed21 00:36] - s3.py             :253 :j.s3demo             - INFO     - install s3 service
+[Wed21 00:36] - base_test.py      :43  :j.s3_failures        - INFO     - wait for deploying s3_1542760617 service
+[Wed21 00:43] - base_test.py      :60  :j.s3_failures        - INFO     -  s3 state : {'actions': {'install': 'ok'}, 'vm': {'running': 'ok'}}
+[Wed21 00:43] - base_test.py      :62  :j.s3_failures        - INFO     - waiting s3_1542760617 state to be ok ... 
+[Wed21 00:43] - base_test.py      :64  :j.s3_failures        - INFO     - s3_1542760617 install : ok
+[Wed21 00:43] - base_test.py      :74  :j.s3_failures        - INFO     - try to create bucket ... 
+[Wed21 00:43] - s3.py             :174 :j.s3demo             - ERROR    - can't create bucket!
+[Wed21 00:43] - s3.py             :175 :j.s3demo             - ERROR    - 'S3Manager' object has no attribute 'data'
+[Wed21 00:43] - base_test.py      :79  :j.s3_failures        - ERROR    - wait for 3 mins and try again
+[Wed21 00:46] - base_test.py      :74  :j.s3_failures        - INFO     - try to create bucket ... 
+[Wed21 00:46] - s3.py             :174 :j.s3demo             - ERROR    - can't create bucket!
+[Wed21 00:46] - s3.py             :175 :j.s3demo             - ERROR    - 'S3Manager' object has no attribute 'data'
+[Wed21 00:46] - base_test.py      :79  :j.s3_failures        - ERROR    - wait for 3 mins and try again
+[Wed21 00:49] - base_test.py      :74  :j.s3_failures        - INFO     - try to create bucket ... 
+[Wed21 00:49] - s3.py             :174 :j.s3demo             - ERROR    - can't create bucket!
+[Wed21 00:49] - s3.py             :175 :j.s3demo             - ERROR    - 'S3Manager' object has no attribute 'data'
+[Wed21 00:49] - base_test.py      :79  :j.s3_failures        - ERROR    - wait for 3 mins and try again
+[Wed21 00:52] - base_test.py      :74  :j.s3_failures        - INFO     - try to create bucket ... 
+[Wed21 00:52] - s3.py             :174 :j.s3demo             - ERROR    - can't create bucket!
+[Wed21 00:52] - s3.py             :175 :j.s3demo             - ERROR    - 'S3Manager' object has no attribute 'data'
+[Wed21 00:52] - base_test.py      :79  :j.s3_failures        - ERROR    - wait for 3 mins and try again
+[Wed21 00:55] - base_test.py      :74  :j.s3_failures        - INFO     - try to create bucket ... 
+[Wed21 00:55] - s3.py             :174 :j.s3demo             - ERROR    - can't create bucket!
+[Wed21 00:55] - s3.py             :175 :j.s3demo             - ERROR    - 'S3Manager' object has no attribute 'data'
+[Wed21 00:55] - base_test.py      :79  :j.s3_failures        - ERROR    - wait for 3 mins and try again
+[Wed21 00:58] - s3.py             :174 :j.s3demo             - ERROR    - can't create bucket!
+[Wed21 00:58] - s3.py             :175 :j.s3demo             - ERROR    - 'S3Manager' object has no attribute 'data'
+ERROR
+[Wed21 00:58] - base_test.py      :36  :j.s3_failures        - INFO     - s3 service name : s3_1542761921
+[Wed21 00:58] - s3.py             :250 :j.s3demo             - INFO     - install zerotier client
+[Wed21 00:58] - s3.py             :253 :j.s3demo             - INFO     - install s3 service
+[Wed21 00:58] - base_test.py      :43  :j.s3_failures        - INFO     - wait for deploying s3_1542761921 service
+[Wed21 01:05] - base_test.py      :60  :j.s3_failures        - INFO     -  s3 state : {'actions': {'install': 'ok'}, 'vm': {'running': 'ok'}}
+[Wed21 01:05] - base_test.py      :62  :j.s3_failures        - INFO     - waiting s3_1542761921 state to be ok ... 
+[Wed21 01:05] - base_test.py      :64  :j.s3_failures        - INFO     - s3_1542761921 install : ok
+[Wed21 01:05] - base_test.py      :74  :j.s3_failures        - INFO     - try to create bucket ... 
+[Wed21 01:05] - s3.py             :174 :j.s3demo             - ERROR    - can't create bucket!
+[Wed21 01:05] - s3.py             :175 :j.s3demo             - ERROR    - 'S3Manager' object has no attribute 'data'
+[Wed21 01:05] - base_test.py      :79  :j.s3_failures        - ERROR    - wait for 3 mins and try again
+[Wed21 01:08] - base_test.py      :74  :j.s3_failures        - INFO     - try to create bucket ... 
+[Wed21 01:08] - s3.py             :174 :j.s3demo             - ERROR    - can't create bucket!
+[Wed21 01:08] - s3.py             :175 :j.s3demo             - ERROR    - 'S3Manager' object has no attribute 'data'
+[Wed21 01:08] - base_test.py      :79  :j.s3_failures        - ERROR    - wait for 3 mins and try again
+[Wed21 01:11] - base_test.py      :74  :j.s3_failures        - INFO     - try to create bucket ... 
+[Wed21 01:11] - s3.py             :174 :j.s3demo             - ERROR    - can't create bucket!
+[Wed21 01:11] - s3.py             :175 :j.s3demo             - ERROR    - 'S3Manager' object has no attribute 'data'
+[Wed21 01:11] - base_test.py      :79  :j.s3_failures        - ERROR    - wait for 3 mins and try again
+[Wed21 01:14] - base_test.py      :74  :j.s3_failures        - INFO     - try to create bucket ... 
+[Wed21 01:14] - s3.py             :174 :j.s3demo             - ERROR    - can't create bucket!
+[Wed21 01:14] - s3.py             :175 :j.s3demo             - ERROR    - 'S3Manager' object has no attribute 'data'
+[Wed21 01:14] - base_test.py      :79  :j.s3_failures        - ERROR    - wait for 3 mins and try again
+[Wed21 01:17] - base_test.py      :74  :j.s3_failures        - INFO     - try to create bucket ... 
+[Wed21 01:17] - s3.py             :174 :j.s3demo             - ERROR    - can't create bucket!
+[Wed21 01:17] - s3.py             :175 :j.s3demo             - ERROR    - 'S3Manager' object has no attribute 'data'
+[Wed21 01:17] - base_test.py      :79  :j.s3_failures        - ERROR    - wait for 3 mins and try again
+[Wed21 01:20] - s3.py             :174 :j.s3demo             - ERROR    - can't create bucket!
+[Wed21 01:20] - s3.py             :175 :j.s3demo             - ERROR    - 'S3Manager' object has no attribute 'data'
+ERROR
+[Wed21 01:20] - base_test.py      :36  :j.s3_failures        - INFO     - s3 service name : s3_1542763227
+[Wed21 01:20] - s3.py             :250 :j.s3demo             - INFO     - install zerotier client
+[Wed21 01:20] - s3.py             :253 :j.s3demo             - INFO     - install s3 service
+[Wed21 01:20] - base_test.py      :43  :j.s3_failures        - INFO     - wait for deploying s3_1542763227 service
+[Wed21 01:27] - base_test.py      :60  :j.s3_failures        - INFO     -  s3 state : {'actions': {'install': 'ok'}}
+[Wed21 01:27] - base_test.py      :62  :j.s3_failures        - INFO     - waiting s3_1542763227 state to be ok ... 
+[Wed21 01:27] - base_test.py      :64  :j.s3_failures        - INFO     - s3_1542763227 install : ok
+[Wed21 01:27] - base_test.py      :74  :j.s3_failures        - INFO     - try to create bucket ... 
+[Wed21 01:27] - s3.py             :174 :j.s3demo             - ERROR    - can't create bucket!
+[Wed21 01:27] - s3.py             :175 :j.s3demo             - ERROR    - 'S3Manager' object has no attribute 'data'
+[Wed21 01:27] - base_test.py      :79  :j.s3_failures        - ERROR    - wait for 3 mins and try again
+[Wed21 01:30] - base_test.py      :74  :j.s3_failures        - INFO     - try to create bucket ... 
+[Wed21 01:30] - s3.py             :174 :j.s3demo             - ERROR    - can't create bucket!
+[Wed21 01:30] - s3.py             :175 :j.s3demo             - ERROR    - 'S3Manager' object has no attribute 'data'
+[Wed21 01:30] - base_test.py      :79  :j.s3_failures        - ERROR    - wait for 3 mins and try again
+[Wed21 01:33] - base_test.py      :74  :j.s3_failures        - INFO     - try to create bucket ... 
+[Wed21 01:33] - s3.py             :174 :j.s3demo             - ERROR    - can't create bucket!
+[Wed21 01:33] - s3.py             :175 :j.s3demo             - ERROR    - 'S3Manager' object has no attribute 'data'
+[Wed21 01:33] - base_test.py      :79  :j.s3_failures        - ERROR    - wait for 3 mins and try again
+[Wed21 01:36] - base_test.py      :74  :j.s3_failures        - INFO     - try to create bucket ... 
+[Wed21 01:36] - s3.py             :174 :j.s3demo             - ERROR    - can't create bucket!
+[Wed21 01:36] - s3.py             :175 :j.s3demo             - ERROR    - 'S3Manager' object has no attribute 'data'
+[Wed21 01:36] - base_test.py      :79  :j.s3_failures        - ERROR    - wait for 3 mins and try again
+[Wed21 01:39] - base_test.py      :74  :j.s3_failures        - INFO     - try to create bucket ... 
+[Wed21 01:39] - s3.py             :174 :j.s3demo             - ERROR    - can't create bucket!
+[Wed21 01:39] - s3.py             :175 :j.s3demo             - ERROR    - 'S3Manager' object has no attribute 'data'
+[Wed21 01:39] - base_test.py      :79  :j.s3_failures        - ERROR    - wait for 3 mins and try again
+[Wed21 01:42] - s3.py             :174 :j.s3demo             - ERROR    - can't create bucket!
+[Wed21 01:42] - s3.py             :175 :j.s3demo             - ERROR    - 'S3Manager' object has no attribute 'data'
+ERROR
+[Wed21 01:42] - base_test.py      :36  :j.s3_failures        - INFO     - s3 service name : s3_1542764533
+[Wed21 01:42] - s3.py             :250 :j.s3demo             - INFO     - install zerotier client
+[Wed21 01:42] - s3.py             :253 :j.s3demo             - INFO     - install s3 service
+[Wed21 01:42] - base_test.py      :43  :j.s3_failures        - INFO     - wait for deploying s3_1542764533 service
+[Wed21 01:49] - base_test.py      :60  :j.s3_failures        - INFO     -  s3 state : {'actions': {'install': 'ok'}, 'vm': {'running': 'ok'}}
+[Wed21 01:49] - base_test.py      :62  :j.s3_failures        - INFO     - waiting s3_1542764533 state to be ok ... 
+[Wed21 01:49] - base_test.py      :64  :j.s3_failures        - INFO     - s3_1542764533 install : ok
+[Wed21 01:49] - base_test.py      :74  :j.s3_failures        - INFO     - try to create bucket ... 
+[Wed21 01:49] - s3.py             :174 :j.s3demo             - ERROR    - can't create bucket!
+[Wed21 01:49] - s3.py             :175 :j.s3demo             - ERROR    - 'S3Manager' object has no attribute 'data'
+[Wed21 01:49] - base_test.py      :79  :j.s3_failures        - ERROR    - wait for 3 mins and try again
+[Wed21 01:52] - base_test.py      :74  :j.s3_failures        - INFO     - try to create bucket ... 
+[Wed21 01:52] - s3.py             :174 :j.s3demo             - ERROR    - can't create bucket!
+[Wed21 01:52] - s3.py             :175 :j.s3demo             - ERROR    - 'S3Manager' object has no attribute 'data'
+[Wed21 01:52] - base_test.py      :79  :j.s3_failures        - ERROR    - wait for 3 mins and try again
+[Wed21 01:55] - base_test.py      :74  :j.s3_failures        - INFO     - try to create bucket ... 
+[Wed21 01:55] - s3.py             :174 :j.s3demo             - ERROR    - can't create bucket!
+[Wed21 01:55] - s3.py             :175 :j.s3demo             - ERROR    - 'S3Manager' object has no attribute 'data'
+[Wed21 01:55] - base_test.py      :79  :j.s3_failures        - ERROR    - wait for 3 mins and try again
+[Wed21 01:58] - base_test.py      :74  :j.s3_failures        - INFO     - try to create bucket ... 
+[Wed21 01:58] - s3.py             :174 :j.s3demo             - ERROR    - can't create bucket!
+[Wed21 01:58] - s3.py             :175 :j.s3demo             - ERROR    - 'S3Manager' object has no attribute 'data'
+[Wed21 01:58] - base_test.py      :79  :j.s3_failures        - ERROR    - wait for 3 mins and try again
+[Wed21 02:01] - base_test.py      :74  :j.s3_failures        - INFO     - try to create bucket ... 
+[Wed21 02:01] - s3.py             :174 :j.s3demo             - ERROR    - can't create bucket!
+[Wed21 02:01] - s3.py             :175 :j.s3demo             - ERROR    - 'S3Manager' object has no attribute 'data'
+[Wed21 02:01] - base_test.py      :79  :j.s3_failures        - ERROR    - wait for 3 mins and try again
+[Wed21 02:04] - s3.py             :174 :j.s3demo             - ERROR    - can't create bucket!
+[Wed21 02:04] - s3.py             :175 :j.s3demo             - ERROR    - 'S3Manager' object has no attribute 'data'
+ERROR
+======================================================================
+1) ERROR: test suite for <class 'testcases.s3.test01_tlog.TestTlog'>
+----------------------------------------------------------------------
+   Traceback (most recent call last):
+    /usr/local/lib/python3.6/dist-packages/nose/suite.py line 210 in run
+      self.setUp()
+    /usr/local/lib/python3.6/dist-packages/nose/suite.py line 293 in setUp
+      self.setupContext(ancestor)
+    /usr/local/lib/python3.6/dist-packages/nose/suite.py line 316 in setupContext
+      try_run(context, names)
+    /usr/local/lib/python3.6/dist-packages/nose/util.py line 471 in try_run
+      return func()
+    base_test.py line 82 in setUpClass
+      cls.s3._create_bucket()
+    utils/s3.py line 176 in _create_bucket
+      raise RuntimeError("Can't create bucket!")
+   RuntimeError: Can't create bucket!
+======================================================================
+2) ERROR: test suite for <class 'testcases.s3.test02_zdb.ZDBFailures'>
+----------------------------------------------------------------------
+   Traceback (most recent call last):
+    /usr/local/lib/python3.6/dist-packages/nose/suite.py line 210 in run
+      self.setUp()
+    /usr/local/lib/python3.6/dist-packages/nose/suite.py line 293 in setUp
+      self.setupContext(ancestor)
+    /usr/local/lib/python3.6/dist-packages/nose/suite.py line 316 in setupContext
+      try_run(context, names)
+    /usr/local/lib/python3.6/dist-packages/nose/util.py line 471 in try_run
+      return func()
+    base_test.py line 82 in setUpClass
+      cls.s3._create_bucket()
+    utils/s3.py line 176 in _create_bucket
+      raise RuntimeError("Can't create bucket!")
+   RuntimeError: Can't create bucket!
+======================================================================
+3) ERROR: test suite for <class 'testcases.s3.test03_zrobot.ZrobotFailures'>
+----------------------------------------------------------------------
+   Traceback (most recent call last):
+    /usr/local/lib/python3.6/dist-packages/nose/suite.py line 210 in run
+      self.setUp()
+    /usr/local/lib/python3.6/dist-packages/nose/suite.py line 293 in setUp
+      self.setupContext(ancestor)
+    /usr/local/lib/python3.6/dist-packages/nose/suite.py line 316 in setupContext
+      try_run(context, names)
+    /usr/local/lib/python3.6/dist-packages/nose/util.py line 471 in try_run
+      return func()
+    base_test.py line 82 in setUpClass
+      cls.s3._create_bucket()
+    utils/s3.py line 176 in _create_bucket
+      raise RuntimeError("Can't create bucket!")
+   RuntimeError: Can't create bucket!
+======================================================================
+4) ERROR: test suite for <class 'testcases.s3.test05_bitrot.TestS3Failures'>
+----------------------------------------------------------------------
+   Traceback (most recent call last):
+    /usr/local/lib/python3.6/dist-packages/nose/suite.py line 210 in run
+      self.setUp()
+    /usr/local/lib/python3.6/dist-packages/nose/suite.py line 293 in setUp
+      self.setupContext(ancestor)
+    /usr/local/lib/python3.6/dist-packages/nose/suite.py line 316 in setupContext
+      try_run(context, names)
+    /usr/local/lib/python3.6/dist-packages/nose/util.py line 471 in try_run
+      return func()
+    base_test.py line 82 in setUpClass
+      cls.s3._create_bucket()
+    utils/s3.py line 176 in _create_bucket
+      raise RuntimeError("Can't create bucket!")
+   RuntimeError: Can't create bucket!
+
+-----------------------------------------------------------------------------
+4 tests run in 5244.973 seconds. 
+4 errors (0 tests passed)
