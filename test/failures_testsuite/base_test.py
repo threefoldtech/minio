@@ -89,7 +89,9 @@ class BaseTest(TestCase):
             cls.s3_service_name = cls.config['s3']['use']['s3_service_name']
 
         cls.s3 = cls.s3_controller.s3[cls.s3_service_name]
+        cls.logger.info('{} url : {}'.format(cls.s3_service_name, cls.s3.url))
         cls.s3.failures.zdb_start_all()
+        cls.s3.failures.tlog_up()
 
     @classmethod
     def tearDownClass(cls):
