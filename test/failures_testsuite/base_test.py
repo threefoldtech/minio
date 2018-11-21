@@ -44,7 +44,7 @@ class BaseTest(TestCase):
                         instance.wait(die=True)
                         break
                     except Exception as e:
-                        cls.logger.error("There is an error while installing s3 .. we will re-install it!")
+                        cls.logger.error("there is an error while installing s3 .. we will re-install it!")
                         cls.logger.error(e)
                         cls.logger.info('uninstall {} service'.format(cls.s3_service_name))
                         s3_redundant_object = cls.s3_controller.s3[cls.s3_service_name]
@@ -57,29 +57,42 @@ class BaseTest(TestCase):
                 for _ in range(10):
                     cls.s3 = cls.s3_controller.s3[cls.s3_service_name]
                     state = cls.s3.service.state
-                    cls.logger.info(" s3 state : {}".format(state))
+                    cls.logger.info("s3 state : {}".format(state))
                     try:
-                        cls.logger.info("waiting {} state to be ok ... ".format(cls.s3_service_name))
                         state.check('actions', 'install', 'ok')
                         cls.logger.info('{} install : ok'.format(cls.s3_service_name))
                         break
                     except:
+                        cls.logger.info("waiting {} state to be ok ... ".format(cls.s3_service_name))
                         time.sleep(5 * 60)
                         cls.logger.info("wait for 5 mins .. then we try again!")
                 else:
                     state.check('actions', 'install', 'ok')
 
+                # for _ in range(5):
+                #     try:
+                #         cls.logger.info('try to create bucket ... ')
+                #         cls.s3._create_bucket()
+                #         cls.logger.info('minio is working well ... fire test cases')
+                #         break
+                #     except RuntimeError:
+                #         cls.logger.error('wait for 3 mins and try again')
+                #         time.sleep(3*60)
+                # else:
+                #     cls.s3._create_bucket()
+
                 for _ in range(5):
                     try:
-                        cls.logger.info('try to create bucket ... ')
-                        cls.s3._create_bucket()
-                        cls.logger.info('minio is working well ... fire test cases')
-                        break
-                    except RuntimeError:
-                        cls.logger.error('wait for 3 mins and try again')
-                        time.sleep(3*60)
+                        url = cls.s3.url
+                        if 'http' in url['public'] and 'http' in url['storage']:
+                            cls.logger.info('s3 has a public and storage ip')
+                            break
+                        cls.logger.info('wait till s3 get the url')
+                        time.sleep(120)
+                    except:
+                        time.sleep(120)
                 else:
-                    cls.s3._create_bucket()
+                    raise TimeoutError("There is no ip for the s3 ... gonna quit!")
                 cls.general_s3 = cls.s3_service_name
         else:
             sub = Popen('zrobot godtoken get', stdout=PIPE, stderr=PIPE, shell=True)
