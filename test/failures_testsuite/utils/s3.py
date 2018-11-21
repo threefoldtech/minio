@@ -197,17 +197,17 @@ class S3Manager:
         return file_name, bucket_name, file_md5
 
     def download_file(self, file_name, bucket_name, delete_bucket=False, die=True):
-        data = None
         try:
-            logger.info("Download {} file form {} bucket".format(file_name, bucket_name))
+            logger.info("download {} file form {} bucket".format(file_name, bucket_name))
             data = self.client.get_object(bucket_name, file_name).data
         except ProtocolError:
             if die:
                 for _ in range(60):
                     try:
                         data = self.client.get_object(bucket_name, file_name).data
+                        break
                     except Exception as error:
-                        logger.warning('There is an error in downloading the file, we will try again!')
+                        logger.warning('there is an error in downloading the file, we will try again!')
                         logger.warning(error)
                         time.sleep(5)
                 else:
