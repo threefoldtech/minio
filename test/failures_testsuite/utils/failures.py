@@ -175,8 +175,8 @@ class FailureGenenator:
                 break
             robot = j.clients.zrobot.robots[namespace['node']]
             robot = robot_god_token(robot)
-            ns = robot.services.get(name=namespace['name'])
-            zdb = robot.services.get(name=ns.data['data']['zerodb'])
+            ns = robot.services.get(name=namespace['name'], template_name='namespace')
+            zdb = robot.services.get(name=ns.data['data']['zerodb'], template_name='zerodb')
 
             try:
                 zdb.state.check('status', 'running', 'ok')
@@ -220,8 +220,8 @@ class FailureGenenator:
         tlog = s3.service.data['data']['tlog']
         robot = j.clients.zrobot.robots[tlog['node']]
         robot = robot_god_token(robot)
-        ns = robot.services.get(name=tlog['name'])
-        zerodb = robot.services.get(name=ns.data['data']['zerodb'])
+        ns = robot.services.get(name=tlog['name'], template_name='namespace')
+        zerodb = robot.services.get(name=ns.data['data']['zerodb'], template_name='zerodb')
         storagepools = s3.vm_host.storagepools.list()
         device = None
         for sp in storagepools:
@@ -250,8 +250,8 @@ class FailureGenenator:
         robot = j.clients.zrobot.robots[tlog['node']]
         robot = robot_god_token(robot)
 
-        ns = robot.services.get(name=tlog['name'])
-        zdb = robot.services.get(name=ns.data['data']['zerodb'])
+        ns = robot.services.get(name=tlog['name'], template_name='namespace')
+        zdb = robot.services.get(name=ns.data['data']['zerodb'], template_name='zerodb')
 
         try:
             logger.info('tlog zdb {} on {} node'.format(zdb.name, tlog['name']))
@@ -277,8 +277,8 @@ class FailureGenenator:
         robot = j.clients.zrobot.robots[tlog['node']]
         robot = robot_god_token(robot)
 
-        ns = robot.services.get(name=tlog['name'])
-        zdb = robot.services.get(name=ns.data['data']['zerodb'])
+        ns = robot.services.get(name=tlog['name'], template_name='namespace')
+        zdb = robot.services.get(name=ns.data['data']['zerodb'], template_name='zerodb')
 
         try:
             logger.info('check status tlog zdb %s on node %s', zdb.name, tlog['node'])
@@ -305,8 +305,8 @@ class FailureGenenator:
         robot = robot_god_token(robot)
 
         try:
-            ns = robot.services.get(name=tlog['name'])
-            zdb = robot.services.get(name=ns.data['data']['zerodb'])
+            ns = robot.services.get(name=tlog['name'], template_name='namespace')
+            zdb = robot.services.get(name=ns.data['data']['zerodb'], template_name='zerodb')
         except ServiceNotFoundError:
             logger.warning("Seems that there is no tlog namespace nor zdb")
             return False
@@ -331,7 +331,7 @@ class FailureGenenator:
         robot = j.clients.zrobot.robots[tlog['node']]
         robot = robot_god_token(robot)
 
-        ns = robot.services.get(name=tlog['name'])
+        ns = robot.services.get(name=tlog['name'], template_name='namespace')
         zdb_name = ns.data['data']['zerodb']
 
         tlog_node = s3.tlog_node
@@ -355,7 +355,7 @@ class FailureGenenator:
         robot = robot_god_token(robot)
 
         try:
-            ns = robot.services.get(name=tlog['name'])
+            ns = robot.services.get(name=tlog['name'], template_name='namespace')
             zdb_name = ns.data['data']['zerodb']
             zdb = robot.services.get(name=zdb_name)
         except ServiceNotFoundError:
