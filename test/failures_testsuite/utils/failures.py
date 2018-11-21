@@ -33,6 +33,7 @@ class FailureGenenator:
             try:
                 logger.info('check %s on node %s status', zdb.name, namespace['node'])
                 zdb.state.check('status', 'running', 'ok')
+                logger.info('status : ok')
             except StateCheckError:
                 logger.info('start %s on node %s', zdb.name, namespace['node'])
                 zdb.schedule_action('start').wait(die=True)
@@ -252,11 +253,13 @@ class FailureGenenator:
         zdb = robot.services.get(name=ns.data['data']['zerodb'])
 
         try:
+            logger.info('check status Tlog %s on node %s', zdb.name, tlog['node'])
             zdb.state.check('status', 'running', 'ok')
+            logger.info('status : running ok')
             logger.info('stop Tlog %s on node %s', zdb.name, tlog['node'])
             zdb.schedule_action('stop').wait(die=True)
-        except StateCheckError:
-            logger.error("tlog zdb status isn't running")
+        except StateCheckError as e:
+            logger.error(e)
 
     def tlog_up(self):
         """
@@ -275,8 +278,11 @@ class FailureGenenator:
         zdb = robot.services.get(name=ns.data['data']['zerodb'])
 
         try:
+            logger.info('check status Tlog %s on node %s', zdb.name, tlog['node'])
             zdb.state.check('status', 'running', 'ok')
+            logger.info('status : running ok')
         except StateCheckError:
+            logger.info('status : not running')
             logger.info('start Tlog %s on node %s', zdb.name, tlog['node'])
             zdb.schedule_action('start').wait(die=True)
 
