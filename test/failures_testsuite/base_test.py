@@ -71,7 +71,7 @@ class BaseTest(TestCase):
 
                 for _ in range(5):
                     try:
-                        cls.logger('try to create bucket ... ')
+                        cls.logger.info('try to create bucket ... ')
                         cls.s3._create_bucket()
                         cls.logger.info('minio is working well ... fire test cases')
                         break
