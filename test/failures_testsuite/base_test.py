@@ -81,6 +81,7 @@ class BaseTest(TestCase):
                 # else:
                 #     cls.s3._create_bucket()
 
+                time.sleep(60)
                 for _ in range(5):
                     try:
                         url = cls.s3.url
