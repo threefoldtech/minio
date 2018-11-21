@@ -190,8 +190,9 @@ class S3Manager:
         logger.info("upload {} file to {} bucket".format(file_name, bucket_name))
         try:
             self.client.fput_object(bucket_name, file_name, file_path)
-        except:
+        except Exception as e:
             logger.warning("Can't upload {} file".format(file_name))
+            logger.error(e)
             raise RuntimeError("Can't upload {} file".format(file_name))
         os.remove(file_path)
         return file_name, bucket_name, file_md5
