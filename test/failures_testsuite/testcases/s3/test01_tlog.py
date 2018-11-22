@@ -104,4 +104,3 @@ class TestTlog(BaseTest):
         md5_after = self.s3.download_file(file_name, bucket_name)
         self.assertEqual(md5_after, md5_before)
 
-

@@ -92,7 +92,7 @@ class ZDBFailures(BaseTest):
         test005_stop_greater_parity_zdb_upload
         - Upload file, should succeed
         - Stop n+ zdb, n = parity, should succeed
-        - Upload file, should fail
+        - Upload file, should succeed, cause monitor namespace will create the namespace in a new zdb
         - Start n+ zdb
         - Download the uploaded file, should succeed
         """
@@ -101,9 +101,8 @@ class ZDBFailures(BaseTest):
         self.logger.info('stop {} zdb'.format(zdb_turn_down))
         self.s3.failures.zdb_down(count=zdb_turn_down)
 
-        self.logger.info('uploading should raise an error')
-        with self.assertRaises(RuntimeError):
-            self.s3.upload_file()
+        self.logger.info('uploading should pass')
+        self.s3.upload_file()
 
         self.logger.info('start {} zdb'.format(zdb_turn_down))
         self.s3.failures.zdb_up(count=zdb_turn_down)
