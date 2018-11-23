@@ -1,3 +1,10 @@
+| test bitrot | passed |
+| testkill zrobot process and make sure it will restart automatically| passed |
+| test kill minio process and make sure it will restart automatically | passed |
+
+
+
+
 root@ubuntu:/opt/code/github/threefoldtech/minio/test/failures_testsuite# nosetests-3.4 -vs --logging-level=WARNING --progressive-with-bar --rednose testcases/s3/test05_bitrot.py
 [Fri23 14:12] - failures.py       :34  :j.<module>           - INFO     - check 626d72f9-8c3a-4e3e-af82-1a4d1f05f3dd on node ac1f6b457630 status
 [Fri23 14:12] - failures.py       :34  :j.<module>           - INFO     - check 7981431a-625f-4d59-ad0e-701d567a0b66 on node ac1f6b457630 status
@@ -41,3 +48,51 @@ passed
 
 -----------------------------------------------------------------------------
 1 test run in 223.738 seconds (1 test passed)
+
+
+
+root@ubuntu:/opt/code/github/threefoldtech/minio/test/failures_testsuite# nosetests-3.4 -vs --logging-level=WARNING --progressive-with-bar --rednose testcases/s3/test03_zrobot.py:ZrobotFailures.test001_zrobot_kill
+[Fri23 14:39] - failures.py       :34  :j.<module>           - INFO     - check 5bf8cee2-7f85-4fd5-a78f-427039e3d777 on node ac1f6b272328 status
+[Fri23 14:39] - failures.py       :34  :j.<module>           - INFO     - check 684180c7-085a-4216-a230-48695e78c253 on node ac1f6b457630 status
+[Fri23 14:39] - failures.py       :34  :j.<module>           - INFO     - check 03f3aa5d-cb17-4d09-b36d-9bf82ebccfd6 on node ac1f6b457630 status
+[Fri23 14:39] - failures.py       :34  :j.<module>           - INFO     - check 3ca04009-8204-46cb-8b18-507e945a272b on node ac1f6b457338 status
+[Fri23 14:39] - failures.py       :34  :j.<module>           - INFO     - check caac124a-9605-4d57-a179-c1279423cb29 on node ac1f6b457338 status
+[Fri23 14:39] - failures.py       :34  :j.<module>           - INFO     - check 55f8434f-1f82-40ba-9e09-ae3ef753b266 on node ac1f6b457344 status
+[Fri23 14:39] - failures.py       :34  :j.<module>           - INFO     - check 054f9be6-5462-4afb-a39c-3c343332f354 on node ac1f6b457344 status
+[Fri23 14:39] - failures.py       :34  :j.<module>           - INFO     - check 98fa2cba-dc95-4a1e-98e0-e183f2339ee5 on node ac1f6b457344 status
+test001_zrobot_kill ... [Fri23 14:39] - s3.py             :43  :j.s3demo             - INFO     - get s3 client : ParseResult(scheme='http', netloc='172.29.134.218:1024', path='', params='', query='', fragment='')
+[Fri23 14:39] - s3.py             :167 :j.s3demo             - INFO     - create bucket
+[Fri23 14:39] - s3.py             :168 :j.s3demo             - INFO     - bucket : ffid9omy6n59zg4v
+[Fri23 14:39] - s3.py             :186 :j.s3demo             - INFO     - upload bzmvgqjp5ftzmt9t file to ffid9omy6n59zg4v bucket
+[Fri23 14:39] - test03_zrobot.py  :15  :j.s3_failures        - INFO     - kill zrobot process and make sure it will restart automatically
+[Fri23 14:39] - test03_zrobot.py  :17  :j.s3_failures        - INFO     - minio node adder : 172.29.134.218
+[Fri23 14:39] - failures.py       :374 :j.<module>           - INFO     - kill the robot on node172.29.134.218
+[Fri23 14:39] - failures.py       :381 :j.<module>           - INFO     - the robot process has been killed
+[Fri23 14:39] - failures.py       :383 :j.<module>           - INFO     - wait for the robot to restart
+[Fri23 14:39] - failures.py       :390 :j.<module>           - INFO     - zrobot took 0.2398073673248291 sec to restart
+[Fri23 14:39] - test03_zrobot.py  :21  :j.s3_failures        - INFO     - Download uploaded file, and check that both are same.
+[Fri23 14:39] - s3.py             :198 :j.s3demo             - INFO     - Download bzmvgqjp5ftzmt9t file form ffid9omy6n59zg4v bucket
+passed
+
+-----------------------------------------------------------------------------
+1 test run in 22.322 seconds (1 test passed)
+
+root@ubuntu:/opt/code/github/threefoldtech/minio/test/failures_testsuite# nosetests-3.4 -vs --logging-level=WARNING --progressive-with-bar --rednose testcases/s3/test03_zrobot.py:ZrobotFailures.test002_kill_minio_process
+[Fri23 14:42] - failures.py       :34  :j.<module>           - INFO     - check 5bf8cee2-7f85-4fd5-a78f-427039e3d777 on node ac1f6b272328 status
+[Fri23 14:42] - failures.py       :34  :j.<module>           - INFO     - check 684180c7-085a-4216-a230-48695e78c253 on node ac1f6b457630 status
+[Fri23 14:42] - failures.py       :34  :j.<module>           - INFO     - check 03f3aa5d-cb17-4d09-b36d-9bf82ebccfd6 on node ac1f6b457630 status
+[Fri23 14:42] - failures.py       :34  :j.<module>           - INFO     - check 3ca04009-8204-46cb-8b18-507e945a272b on node ac1f6b457338 status
+[Fri23 14:42] - failures.py       :34  :j.<module>           - INFO     - check 054f9be6-5462-4afb-a39c-3c343332f354 on node ac1f6b457344 status
+[Fri23 14:42] - failures.py       :34  :j.<module>           - INFO     - check caac124a-9605-4d57-a179-c1279423cb29 on node ac1f6b457338 status
+[Fri23 14:42] - failures.py       :34  :j.<module>           - INFO     - check 98fa2cba-dc95-4a1e-98e0-e183f2339ee5 on node ac1f6b457344 status
+[Fri23 14:42] - failures.py       :34  :j.<module>           - INFO     - check 55f8434f-1f82-40ba-9e09-ae3ef753b266 on node ac1f6b457344 status
+- kill minio process and make sure it will restart automatically. ... [Fri23 14:42] - test03_zrobot.py  :29  :j.s3_failures        - INFO     - kill minio process and make sure it will restart automatically
+[Fri23 14:42] - failures.py       :73  :j.<module>           - INFO     - killing minio process
+[Fri23 14:42] - failures.py       :76  :j.<module>           - INFO     - minio process killed
+[Fri23 14:42] - failures.py       :78  :j.<module>           - INFO     - wait for minio to restart
+[Fri23 14:42] - failures.py       :85  :j.<module>           - INFO     - minio took 10.639236688613892 sec to restart
+passed
+
+-----------------------------------------------------------------------------
+1 test run in 31.468 seconds (1 test passed)
+
