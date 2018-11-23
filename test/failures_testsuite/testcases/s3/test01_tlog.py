@@ -4,7 +4,6 @@ import time
 
 
 class TestTlog(BaseTest):
-    @skip('https://github.com/threefoldtech/0-templates/issues/186')
     def test001_upload_stop_tlog_start_download(self):
         """
 
@@ -35,7 +34,6 @@ class TestTlog(BaseTest):
         md5_after = self.s3.download_file(file_name, bucket_name)
         self.assertEqual(md5_after, md5_before)
 
-    @skip('https://github.com/threefoldtech/0-templates/issues/186')
     def test002_stop_tlog_upload_download(self):
         """
 
@@ -73,8 +71,8 @@ class TestTlog(BaseTest):
 
         test003_upload_kill_tlog_download
          - Upload file
-         - kill tlog
-         - wait 60 sec, tlog should be returned
+         - kill tlog zt container
+         - wait 60 sec, tlog container should be returned
          - Download file, should succeed
         """
         self.logger.info('Upload file')

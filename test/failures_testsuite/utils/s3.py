@@ -244,7 +244,7 @@ class S3Manager:
         g.map(func, nodes)
         g.join()
 
-    def deploy(self, farm, size=20000, data=4, parity=2, nsName='namespace', login='admin', password='adminadmin'):
+    def deploy(self, farm, size=1000, data=1, parity=1, nsName='namespace', login='admin', password='adminadmin'):
         """
         deploy an s3 environment
 

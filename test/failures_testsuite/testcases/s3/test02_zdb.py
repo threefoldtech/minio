@@ -24,7 +24,7 @@ class ZDBFailures(BaseTest):
         """
 
         test002_upload_stop_parity_zdb_download
-        - upload 2M, should succeed.
+        - upload 1M, should succeed.
         - Download file, should succeed
         - Deleted the downloaded file
         - assert md5 checksum is matching
@@ -92,7 +92,7 @@ class ZDBFailures(BaseTest):
         test005_stop_greater_parity_zdb_upload
         - Upload file, should succeed
         - Stop n+ zdb, n = parity, should succeed
-        - Upload file, should succeed, cause monitor namespace will create the namespace in a new zdb
+        - Upload file, should fail
         - Start n+ zdb
         - Download the uploaded file, should succeed
         """
@@ -101,8 +101,9 @@ class ZDBFailures(BaseTest):
         self.logger.info('stop {} zdb'.format(zdb_turn_down))
         self.s3.failures.zdb_down(count=zdb_turn_down)
 
-        self.logger.info('uploading should pass')
-        self.s3.upload_file()
+        self.logger.info('uploading should fail')
+        with self.assertRaises(RuntimeError):
+            self.s3.upload_file()
 
         self.logger.info('start {} zdb'.format(zdb_turn_down))
         self.s3.failures.zdb_up(count=zdb_turn_down)
