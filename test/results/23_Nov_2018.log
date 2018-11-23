@@ -6,8 +6,9 @@
 - test003_stop_parity_zdb_upload_download_start --> passed
 - test004_stop_parity_zdb_upload_start_download --> paased
 - test005_stop_greater_parity_zdb_upload --> passed
-
-
+- test001_upload_stop_tlog_start_download --> passed
+- test003_upload_kill_tlog_download --> passed
+- 
 
 
 root@ubuntu:/opt/code/github/threefoldtech/minio/test/failures_testsuite# nosetests-3.4 -vs --logging-level=WARNING --progressive-with-bar --rednose testcases/s3/test05_bitrot.py
@@ -175,3 +176,49 @@ passed
 
 -----------------------------------------------------------------------------
 5 tests run in 242.388 seconds (5 tests passed)
+
+
+root@ubuntu:/opt/code/github/threefoldtech/minio/test/failures_testsuite# nosetests-3.4 -vs --logging-level=WARNING --progressive-with-bar --rednose testcases/s3/test01_tlog.py:TestTlog.test003_upload_kill_tlog_download
+[Fri23 16:51] - failures.py       :34  :j.<module>           - INFO     - check 5bf8cee2-7f85-4fd5-a78f-427039e3d777 on node ac1f6b272328 status
+[Fri23 16:51] - failures.py       :34  :j.<module>           - INFO     - check 684180c7-085a-4216-a230-48695e78c253 on node ac1f6b457630 status
+[Fri23 16:51] - failures.py       :34  :j.<module>           - INFO     - check 03f3aa5d-cb17-4d09-b36d-9bf82ebccfd6 on node ac1f6b457630 status
+[Fri23 16:51] - failures.py       :34  :j.<module>           - INFO     - check caac124a-9605-4d57-a179-c1279423cb29 on node ac1f6b457338 status
+[Fri23 16:51] - failures.py       :34  :j.<module>           - INFO     - check 3ca04009-8204-46cb-8b18-507e945a272b on node ac1f6b457338 status
+[Fri23 16:51] - failures.py       :34  :j.<module>           - INFO     - check 054f9be6-5462-4afb-a39c-3c343332f354 on node ac1f6b457344 status
+[Fri23 16:51] - failures.py       :34  :j.<module>           - INFO     - check 55f8434f-1f82-40ba-9e09-ae3ef753b266 on node ac1f6b457344 status
+[Fri23 16:51] - failures.py       :34  :j.<module>           - INFO     - check 98fa2cba-dc95-4a1e-98e0-e183f2339ee5 on node ac1f6b457344 status
+test003_upload_kill_tlog_download ... [Fri23 16:51] - test01_tlog.py    :80  :j.s3_failures        - INFO     - Upload file
+[Fri23 16:51] - s3.py             :43  :j.s3demo             - INFO     - get s3 client : ParseResult(scheme='http', netloc='172.29.134.218:1024', path='', params='', query='', fragment='')
+[Fri23 16:51] - s3.py             :167 :j.s3demo             - INFO     - create bucket
+[Fri23 16:51] - s3.py             :168 :j.s3demo             - INFO     - bucket : 0ucx5vaovfvp5kby
+[Fri23 16:51] - s3.py             :186 :j.s3demo             - INFO     - upload 043vmpxohndtl98m file to 0ucx5vaovfvp5kby bucket
+[Fri23 16:51] - failures.py       :320 :j.<module>           - INFO     - kill Tlog zdb process, zrobot will bring it back
+[Fri23 16:51] - failures.py       :330 :j.<module>           - INFO     - kill 15e366ad-3bc0-462e-8df4-b48b5a1843fb Tlog zdb
+[Fri23 16:52] - test01_tlog.py    :86  :j.s3_failures        - INFO     - Download file, should succeed
+[Fri23 16:52] - s3.py             :198 :j.s3demo             - INFO     - Download 043vmpxohndtl98m file form 0ucx5vaovfvp5kby bucket
+passed
+
+-----------------------------------------------------------------------------
+1 test run in 85.546 seconds (1 test passed)
+
+
+root@ubuntu:/opt/code/github/threefoldtech/minio/test/failures_testsuite# nosetests-3.4 -vs --logging-level=WARNING --progressive-with-bar --rednose testcases/s3/test01_tlog.py 
+[Fri23 16:04] - failures.py       :34  :j.<module>           - INFO     - check 5bf8cee2-7f85-4fd5-a78f-427039e3d777 on node ac1f6b272328 status
+[Fri23 16:04] - failures.py       :34  :j.<module>           - INFO     - check 03f3aa5d-cb17-4d09-b36d-9bf82ebccfd6 on node ac1f6b457630 status
+[Fri23 16:04] - failures.py       :34  :j.<module>           - INFO     - check 55f8434f-1f82-40ba-9e09-ae3ef753b266 on node ac1f6b457344 status
+[Fri23 16:04] - failures.py       :34  :j.<module>           - INFO     - check caac124a-9605-4d57-a179-c1279423cb29 on node ac1f6b457338 status
+[Fri23 16:04] - failures.py       :34  :j.<module>           - INFO     - check 054f9be6-5462-4afb-a39c-3c343332f354 on node ac1f6b457344 status
+[Fri23 16:04] - failures.py       :34  :j.<module>           - INFO     - check 3ca04009-8204-46cb-8b18-507e945a272b on node ac1f6b457338 status
+[Fri23 16:04] - failures.py       :34  :j.<module>           - INFO     - check 684180c7-085a-4216-a230-48695e78c253 on node ac1f6b457630 status
+[Fri23 16:04] - failures.py       :34  :j.<module>           - INFO     - check 98fa2cba-dc95-4a1e-98e0-e183f2339ee5 on node ac1f6b457344 status
+test001_upload_stop_tlog_start_download ... [Fri23 16:04] - s3.py             :43  :j.s3demo             - INFO     - get s3 client : ParseResult(scheme='http', netloc='172.29.134.218:1024', path='', params='', query='', fragment='')
+[Fri23 16:04] - s3.py             :167 :j.s3demo             - INFO     - create bucket
+[Fri23 16:04] - s3.py             :168 :j.s3demo             - INFO     - bucket : lt54p9h6hb5jr2wx
+[Fri23 16:04] - s3.py             :186 :j.s3demo             - INFO     - upload vyaohves8s8kffni file to lt54p9h6hb5jr2wx bucket
+[Fri23 16:04] - failures.py       :256 :j.<module>           - INFO     - stop Tlog 15e366ad-3bc0-462e-8df4-b48b5a1843fb on node ac1f6b272260
+[Fri23 16:05] - s3.py             :198 :j.s3demo             - INFO     - Download vyaohves8s8kffni file form lt54p9h6hb5jr2wx bucket
+[Fri23 16:05] - failures.py       :280 :j.<module>           - INFO     - start Tlog 15e366ad-3bc0-462e-8df4-b48b5a1843fb on node ac1f6b272260
+[Fri23 16:05] - test01_tlog.py    :27  :j.s3_failures        - INFO     - wait till tlog  be up
+[Fri23 16:05] - s3.py             :198 :j.s3demo             - INFO     - Download vyaohves8s8kffni file form lt54p9h6hb5jr2wx bucket
+passed
+
