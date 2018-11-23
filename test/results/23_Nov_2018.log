@@ -1,6 +1,6 @@
-| test bitrot | passed |
-| testkill zrobot process and make sure it will restart automatically| passed |
-| test kill minio process and make sure it will restart automatically | passed |
+-  test bitrot --> passed 
+- testkill zrobot process and make sure it will restart automatically --> passed 
+- test kill minio process and make sure it will restart automatically --> passed 
 
 
 
