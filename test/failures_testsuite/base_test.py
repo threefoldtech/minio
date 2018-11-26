@@ -42,10 +42,10 @@ class BaseTest(TestCase):
                     cls.logger.error("there is an error while installing s3 .. we will re-install it!")
                     cls.logger.error(e)
                     cls.logger.info('uninstall {} service'.format(cls.s3_service_name))
-                    s3_redundant_object = cls.s3_controller.s3[cls.s3_service_name]
-                    s3_redundant_object.uninstall()
+                    s3_object = cls.s3_controller.s3[cls.s3_service_name]
+                    s3_object.service.schedule_action('uninstall')
                     cls.logger.info('delete {} service'.format(cls.s3_service_name))
-                    s3_redundant_object.delete()
+                    s3_object.delete()
             else:
                 raise TimeoutError("can't install s3 .. gonna quit!")
 
@@ -64,17 +64,16 @@ class BaseTest(TestCase):
             else:
                 state.check('actions', 'install', 'ok')
 
-            time.sleep(60)
-            for _ in range(5):
+            for _ in range(10):
                 try:
                     url = cls.s3.url
                     if 'http' in url['public'] and 'http' in url['storage']:
                         cls.logger.info('s3 has a public and storage ip')
                         break
                     cls.logger.info('wait till s3 get the url')
-                    time.sleep(120)
+                    time.sleep(60)
                 except:
-                    time.sleep(120)
+                    time.sleep(60)
             else:
                 raise TimeoutError("There is no ip for the s3 ... gonna quit!")
             cls.general_s3 = cls.s3_service_name

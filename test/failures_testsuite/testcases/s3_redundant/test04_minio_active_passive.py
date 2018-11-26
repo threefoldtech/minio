@@ -56,8 +56,20 @@ class TestActivePassive(BaseTest):
                     cls.logger.info("wait for 5 mins .. then we try again!")
             else:
                 state.check('actions', 'install', 'ok')
-            cls.logger.info('wait for 120 sec before running test cases')
-            time.sleep(120)
+
+            for _ in range(10):
+                try:
+                    url = cls.s3_redundant_object.url
+                    if 'http' in url['active_urls']['public'] and 'http' in url['active_urls']['storage'] and 'http' in \
+                            url['passive_urls']['public'] and 'http' in url['passive_urls']['storage']:
+                        cls.logger.info('s3s have a public and storage ip')
+                        break
+                    cls.logger.info('wait till s3s get the urls')
+                    time.sleep(60)
+                except:
+                    time.sleep(60)
+            else:
+                raise TimeoutError("There is no ip for the s3 ... gonna quit!")
         else:
             sub = Popen('zrobot godtoken get', stdout=PIPE, stderr=PIPE, shell=True)
             out, err = sub.communicate()
@@ -71,7 +83,7 @@ class TestActivePassive(BaseTest):
 
     def setUp(self):
         if not self.s3_active_service_name or not self.s3_active_service_name:
-           self.skipTest('No s3 service for active minio is found')
+            self.skipTest("Please, check there is active and passive s3 minios")
         self.s3_active = self.s3_redundant_controller.s3[self.s3_active_service_name]
         self.s3_passive = self.s3_redundant_controller.s3[self.s3_passive_service_name]
 
@@ -142,7 +154,7 @@ class TestActivePassive(BaseTest):
         time.sleep(10)
 
         self.logger.info(' Download F1 from the passive minio, should succeed')
-        md5_after = self.s3_passive.download_file(file_name, bucket_name,  delete_bucket=False)
+        md5_after = self.s3_passive.download_file(file_name, bucket_name, delete_bucket=False)
         self.assertEqual(md5_after, md5_before, "md5s doesn't match")
 
         self.logger.info('Get the active minio vm (VM1)')
@@ -199,8 +211,9 @@ class TestActivePassive(BaseTest):
             self.logger.info('Download the file and check on its md5sum')
             self.s3_active.download_file(file_name, bucket_name, file_md5)
 
-            self.logger.info('Check that a new vm has been deployed (instead of VM1) and now acting as a passive minio.')
-            #wait till u make sure new passive vm has been created
+            self.logger.info(
+                'Check that a new vm has been deployed (instead of VM1) and now acting as a passive minio.')
+            # wait till u make sure new passive vm has been created
             url = self.s3_passive.url['public']
             duration = self.ping_minio(url, timeout=200)
             self.assertTrue(duration, "New minio vm acting as a passive minio didn't start")
