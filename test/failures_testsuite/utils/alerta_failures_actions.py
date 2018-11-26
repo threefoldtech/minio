@@ -64,7 +64,7 @@ def restore_nft_table():
 # the next function , if you run it on a node you will not be able to reach it again and need to reboot it from ipmi
 
 def drop_management_interface():
-    logger.info("deactivating management interface eno1")
+    logger.info("deactivating management interface ztrf2qmjmj")
     logger.warning("if you run it on a node you will not be able to reach it again and need to reboot it from ipmi")
     x= input("please enter y to continue or n to quit: ")
     if x = "y"
