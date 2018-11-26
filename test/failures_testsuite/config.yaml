@@ -10,11 +10,19 @@ s3:
   deploy: True # True > deploy, false > use
   instance:
     farm: 'kristof-farm'
-    size: 10000
-    shards: 4
-    parity: 2
+    size: 1000
+    shards: 1
+    parity: 1
     nsName: 'namespace'
   use:
     s3_service_name: 's3_demo_0'
-    s3_active_service_name: ''
-    s3_passive_service_name: ''
+
+s3_redundant:
+  deploy: True # True > deploy, false > use
+  instance:
+    farm: 'kristof-farm'
+    size: 1000
+    shards: 1
+    parity: 1
+  use:
+    s3_redundant_service_name: 's3_redundant_'

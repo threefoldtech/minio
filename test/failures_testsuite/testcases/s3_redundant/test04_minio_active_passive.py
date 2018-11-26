@@ -1,23 +1,94 @@
+from utils.controller import Controller
 from base_test import BaseTest
-import requests
 from requests.exceptions import ConnectionError
-import time
-import unittest
+import time, unittest, requests
+from jumpscale import j
+from subprocess import Popen, PIPE
 
 
 class TestActivePassive(BaseTest):
+    @classmethod
+    def setUpClass(cls):
+        """
+        Deploy s3 redundant.
+
+        function to deploy s3 redundant with one of pre-configured parameters.
+
+        """
+        cls.config = j.data.serializer.yaml.load('./config.yaml')
+        if cls.config['s3_redundant']['deploy']:
+            cls.s3_redundant_controller = Controller(cls.config)
+
+            data = [cls.config['s3_redundant']['instance']['farm'], cls.config['s3_redundant']['instance']['size'],
+                    cls.config['s3_redundant']['instance']['shards'], cls.config['s3_redundant']['instance']['parity']]
+
+            for _ in range(5):
+                cls.s3_redundant_service_name = 's3_redundant_{}'.format(str(time.time()).split('.')[0])
+                cls.logger.info("s3 redundant service name : {}".format(cls.s3_redundant_service_name))
+
+                instance = cls.s3_redundant_controller.deploy_s3_redundant(cls.s3_redundant_service_name, *data)
+                try:
+                    cls.logger.info("wait for deploying {} service".format(cls.s3_redundant_service_name))
+                    instance.wait(die=True)
+                    break
+                except Exception as e:
+                    cls.logger.error("There is an error while installing s3 .. we will re-install it!")
+                    cls.logger.error(e)
+                    cls.logger.info('uninstall {} service'.format(cls.s3_redundant_service_name))
+                    s3_redundant_object = cls.s3_redundant_controller.s3_redundant[cls.s3_redundant_service_name]
+                    s3_redundant_object.uninstall()
+                    cls.logger.info('delete {} service'.format(cls.s3_redundant_service_name))
+                    s3_redundant_object.delete()
+            else:
+                raise TimeoutError("can't install s3 redundant .. gonna quit!")
+
+            cls.logger.info('wait for {} state to be okay'.format(cls.s3_redundant_service_name))
+            for _ in range(10):
+                cls.s3_redundant_object = cls.s3_redundant_controller.s3_redundant[cls.s3_redundant_service_name]
+                state = cls.s3_redundant_object.service.state
+                cls.logger.info("{} state : {}".format(cls.s3_redundant_service_name, state))
+                try:
+                    cls.logger.info("waiting {} state to be ok ... ".format(cls.s3_redundant_service_name))
+                    state.check('actions', 'install', 'ok')
+                    break
+                except:
+                    time.sleep(5 * 60)
+                    cls.logger.info("wait for 5 mins .. then we try again!")
+            else:
+                state.check('actions', 'install', 'ok')
+
+            for _ in range(10):
+                try:
+                    url = cls.s3_redundant_object.url
+                    if 'http' in url['active_urls']['public'] and 'http' in url['active_urls']['storage'] and 'http' in \
+                            url['passive_urls']['public'] and 'http' in url['passive_urls']['storage']:
+                        cls.logger.info('s3s have a public and storage ip')
+                        break
+                    cls.logger.info('wait till s3s get the urls')
+                    time.sleep(60)
+                except:
+                    time.sleep(60)
+            else:
+                raise TimeoutError("There is no ip for the s3 ... gonna quit!")
+        else:
+            sub = Popen('zrobot godtoken get', stdout=PIPE, stderr=PIPE, shell=True)
+            out, err = sub.communicate()
+            god_token = str(out).split(' ')[2]
+            cls.s3_redundant_controller = Controller(cls.config, god_token)
+            cls.s3_redundant_service_name = cls.config['s3_redundant']['use']['s3_redundant_service_name']
+            cls.s3_redundant_object = cls.s3_redundant_controller.s3_redundant[cls.s3_redundant_service_name]
+
+        cls.s3_active_service_name = cls.s3_redundant_object.active_s3
+        cls.s3_passive_service_name = cls.s3_redundant_object.passive_s3
 
     def setUp(self):
-        if not self.s3_active_service_name:
-           self.skipTest('No s3 service for active minio is found')
-        if not self.s3_active_service_name:
-           self.skipTest('No s3 service for passive minio is found')
-        super().setUp()
-        self.s3_active = self.s3_controller.s3[self.s3_active_service_name]
-        self.s3_passive = self.s3_controller.s3[self.s3_passive_service_name]
+        if not self.s3_active_service_name or not self.s3_active_service_name:
+            self.skipTest("Please, check there is active and passive s3 minios")
+        self.s3_active = self.s3_redundant_controller.s3[self.s3_active_service_name]
+        self.s3_passive = self.s3_redundant_controller.s3[self.s3_passive_service_name]
 
     def tearDown(self):
-        super().tearDown()
+        pass
 
     def ping_minio(self, url, timeout=200):
         start = time.time()
@@ -83,7 +154,7 @@ class TestActivePassive(BaseTest):
         time.sleep(10)
 
         self.logger.info(' Download F1 from the passive minio, should succeed')
-        md5_after = self.s3_passive.download_file(file_name, bucket_name,  delete_bucket=False)
+        md5_after = self.s3_passive.download_file(file_name, bucket_name, delete_bucket=False)
         self.assertEqual(md5_after, md5_before, "md5s doesn't match")
 
         self.logger.info('Get the active minio vm (VM1)')
@@ -140,8 +211,9 @@ class TestActivePassive(BaseTest):
             self.logger.info('Download the file and check on its md5sum')
             self.s3_active.download_file(file_name, bucket_name, file_md5)
 
-            self.logger.info('Check that a new vm has been deployed (instead of VM1) and now acting as a passive minio.')
-            #wait till u make sure new passive vm has been created
+            self.logger.info(
+                'Check that a new vm has been deployed (instead of VM1) and now acting as a passive minio.')
+            # wait till u make sure new passive vm has been created
             url = self.s3_passive.url['public']
             duration = self.ping_minio(url, timeout=200)
             self.assertTrue(duration, "New minio vm acting as a passive minio didn't start")

@@ -40,12 +40,16 @@ class S3Manager:
     def client(self):
         if self._client is None:
             url = urlparse(self.data['minioUrls'][self._client_type])
-            logger.info('get s3 client : {}'.format(url))
+            logger.info('get s3 client : {}'.format(url['public']))
             self._client = Minio(url.netloc,
                                  access_key=self.data['minioLogin'],
                                  secret_key=self.data['minioPassword'],
                                  secure=False)
         return self._client
+
+    @property
+    def data(self):
+        return self.service.data['data']
 
     @property
     def service(self):
@@ -143,7 +147,7 @@ class S3Manager:
         return self.service.schedule_action('url').wait(die=True).result
 
     @property
-    def data(self):
+    def datac(self):
         return self.service.data['data']
 
     @property
@@ -186,24 +190,25 @@ class S3Manager:
         logger.info("upload {} file to {} bucket".format(file_name, bucket_name))
         try:
             self.client.fput_object(bucket_name, file_name, file_path)
-        except:
+        except Exception as e:
             logger.warning("Can't upload {} file".format(file_name))
+            logger.error(e)
             raise RuntimeError("Can't upload {} file".format(file_name))
         os.remove(file_path)
         return file_name, bucket_name, file_md5
 
     def download_file(self, file_name, bucket_name, delete_bucket=False, die=True):
-        data = None
         try:
-            logger.info("Download {} file form {} bucket".format(file_name, bucket_name))
+            logger.info("download {} file form {} bucket".format(file_name, bucket_name))
             data = self.client.get_object(bucket_name, file_name).data
         except ProtocolError:
             if die:
                 for _ in range(60):
                     try:
                         data = self.client.get_object(bucket_name, file_name).data
+                        break
                     except Exception as error:
-                        logger.warning('There is an error in downloading the file, we will try again!')
+                        logger.warning('there is an error in downloading the file, we will try again!')
                         logger.warning(error)
                         time.sleep(5)
                 else:
@@ -239,7 +244,7 @@ class S3Manager:
         g.map(func, nodes)
         g.join()
 
-    def deploy(self, farm, size=20000, data=4, parity=2, nsName='namespace', login='admin', password='adminadmin'):
+    def deploy(self, farm, size=1000, data=1, parity=1, nsName='namespace', login='admin', password='adminadmin'):
         """
         deploy an s3 environment
 

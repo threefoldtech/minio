@@ -24,7 +24,7 @@ class ZDBFailures(BaseTest):
         """
 
         test002_upload_stop_parity_zdb_download
-        - upload 2M, should succeed.
+        - upload 1M, should succeed.
         - Download file, should succeed
         - Deleted the downloaded file
         - assert md5 checksum is matching
@@ -101,7 +101,7 @@ class ZDBFailures(BaseTest):
         self.logger.info('stop {} zdb'.format(zdb_turn_down))
         self.s3.failures.zdb_down(count=zdb_turn_down)
 
-        self.logger.info('uploading should raise an error')
+        self.logger.info('uploading should fail')
         with self.assertRaises(RuntimeError):
             self.s3.upload_file()
 

@@ -4,7 +4,6 @@ import time
 
 
 class TestTlog(BaseTest):
-    @skip('https://github.com/threefoldtech/0-templates/issues/179')
     def test001_upload_stop_tlog_start_download(self):
         """
 
@@ -35,7 +34,6 @@ class TestTlog(BaseTest):
         md5_after = self.s3.download_file(file_name, bucket_name)
         self.assertEqual(md5_after, md5_before)
 
-    @skip('https://github.com/threefoldtech/0-templates/issues/179')
     def test002_stop_tlog_upload_download(self):
         """
 
@@ -48,23 +46,23 @@ class TestTlog(BaseTest):
         """
         self.s3.failures.tlog_down()
         time.sleep(60)
-        self.logger.info('Upload file, should fail')
+        self.logger.info('upload file, should fail')
         with self.assertRaises(RuntimeError):
             self.s3.upload_file()
 
         self.s3.failures.tlog_up()
         for _ in range(10):
-            self.logger.info('wait till tlog  be up')
             if self.s3.failures.tlog_status():
                 break
             else:
+                self.logger.info('wait till tlog  be up')
                 time.sleep(60)
         else:
             self.assertTrue(self.s3.failures.tlog_status())
 
-        self.logger.info('Upload file, should success')
+        self.logger.info('upload file, should success')
         file_name, bucket_name, md5_before = self.s3.upload_file()
-        self.logger.info('Download file, should success')
+        self.logger.info('download file, should success')
         md5_after = self.s3.download_file(file_name, bucket_name)
         self.assertEqual(md5_after, md5_before)
 
@@ -73,8 +71,8 @@ class TestTlog(BaseTest):
 
         test003_upload_kill_tlog_download
          - Upload file
-         - kill tlog
-         - wait 60 sec, tlog should be returned
+         - kill tlog zt container
+         - wait 60 sec, tlog container should be returned
          - Download file, should succeed
         """
         self.logger.info('Upload file')
@@ -100,43 +98,6 @@ class TestTlog(BaseTest):
         time.sleep(60)
 
         file_name, bucket_name, md5_before = self.s3.upload_file()
-
-        md5_after = self.s3.download_file(file_name, bucket_name)
-        self.assertEqual(md5_after, md5_before)
-
-    @skip('https://github.com/threefoldtech/0-templates/issues/186')
-    def test005_upload_tlog_die_forever_download(self):
-        """
-
-        test005_upload_tlog_die_forever_download
-         - Upload file
-         - Make tlog die forever
-         - Wait for 60 sec.
-         - Download file, should succeed
-        """
-        file_name, bucket_name, md5_before = self.s3.upload_file()
-        md5_before = self.file_name
-
-        self.assertFalse(self.s3.failures.tlog_die_forever())
-        time.sleep(60)
-
-        md5_after = self.s3.download_file(file_name, bucket_name)
-        self.assertEqual(md5_after, md5_before)
-
-    @skip('https://github.com/threefoldtech/0-templates/issues/186')
-    def test006_tlog_die_forever_upload_download(self):
-        """
-
-         - Make tlog die forever
-         - Wait for 60 sec.
-         - Upload file, should succeed
-         - Download file, should succeed
-        """
-        self.assertFalse(self.s3.failures.tlog_die_forever())
-        time.sleep(60)
-
-        file_name, bucket_name, md5_before = self.s3.upload_file()
-        self.assertTrue(False, "Upload file, should fail")
 
         md5_after = self.s3.download_file(file_name, bucket_name)
         self.assertEqual(md5_after, md5_before)
