@@ -68,15 +68,11 @@ def drop_management_interface():
     logger.warning("if you run it on a node you will not be able to reach it again and need to reboot it from ipmi")
     x= input("please enter y to continue or n to quit: ")
     if x = "y"
-        node_client.client.bash('ip lin set eno1 down')
-        node_client.client.bash("ip a | grep eno1 ").get()
+        node_client.client.bash('ip lin set ztrf2qmjmj down')
+        node_client.client.bash("ip a | grep ztrf2qmjmj ").get()
     else 
         exit
    
-def restore_management_interface():
-    logger.info("restoring management interface")
-    node_client.client.bash('ip lin set eno1 down')
-    node_client.client.bash("ip a | grep eno1 ").get()
 
 def drop_single_backend_interface():
     logger.info("deactivating first backend interface")
