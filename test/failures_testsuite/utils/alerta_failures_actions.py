@@ -1,4 +1,3 @@
-
 # This script is used for testing the network failures of a zero-os node using nft ports.
 
 from jumpscale import j
@@ -39,12 +38,22 @@ class AlertaFailures:
         logger.info("restoring 0-robot port 6600")
         self.node.client.container.add_portforward(self.z_robot_cont_id, 6600, 6600)
 
-    def drop_zdb_ports(self):
-        logger.info("backup all ZDB ports")
-        self.node.client.bash("nft list ruleset ip > zdb_backup.nft")
+    def simulate_zdb_failure(self):
+        containters = self.node.containers.list()
+        for i in containters :
+            if i.name[:6] == "zerodb":
+                key = i.info['container']['arguments']['mount'].keys()
+                for k in i.info['container']['arguments']['mount']:
+                    for v in k.split('/')[:4]:
+                        tmp = tmp + v + '/'
+                    mountpoint = tmp.rstrip('/')
+                break
+
         logger.info("dropping all ZDB ports")
-        self.node.client.bash(
-            "for i in $(nft list ruleset -na | grep 9900 | awk '{print $NF}'); do nft delete rule ip nat pre handle $i ; done")
+        d = self.node.client.bash('lsblk |grep {mount}'.format(mount=mountpoint)).get()
+        disk = d.stdout.split(' ')[0][2:]
+        self.node.client.bash('echo 1 > /sys/block/{disk}/device/delete'.format(disk= disk))
+        self.node.client.bash('umount {mount}'.format(mount=mountpoint))
 
     def drop_redis_port(self):
         logger.info("dropping redis port 6379")
@@ -109,3 +118,4 @@ def main(node_ip):
 
 if __name__ == '__main__':
     main()
+
