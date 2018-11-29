@@ -42,18 +42,15 @@ class AlertaFailures:
         containters = self.node.containers.list()
         for i in containters :
             if i.name[:6] == "zerodb":
-                key = i.info['container']['arguments']['mount'].keys()
-                for k in i.info['container']['arguments']['mount']:
-                    for v in k.split('/')[:4]:
-                        tmp = tmp + v + '/'
-                    mountpoint = tmp.rstrip('/')
-                break
-
+                mounts = i.info['container']['arguments']['mount'].popitem()[0]
+                mountpoint = mounts[:-16]
+                zdb_id = i.id
         logger.info("dropping all ZDB ports")
         d = self.node.client.bash('lsblk |grep {mount}'.format(mount=mountpoint)).get()
-        disk = d.stdout.split(' ')[0][2:]
+        disk = d.stdout.split(' ')[0][2:][:-1]
         self.node.client.bash('echo 1 > /sys/block/{disk}/device/delete'.format(disk= disk))
         self.node.client.bash('umount {mount}'.format(mount=mountpoint))
+        self.node.client.container.terminate(zdb_id)
 
     def drop_redis_port(self):
         logger.info("dropping redis port 6379")
