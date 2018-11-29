@@ -17,19 +17,19 @@ class TestTlog(BaseTest):
 
         file_name, bucket_name, md5_before = self.s3.upload_file()
 
-        self.s3.failures.tlog_down()
+        self.s3.failures.tlog_stop_service()
         time.sleep(60)
         self.assertEqual(self.s3.download_file(file_name, bucket_name), md5_before)
 
-        self.s3.failures.tlog_up()
+        self.s3.failures.tlog_start_service()
         for _ in range(10):
             self.logger.info('wait till tlog  be up')
-            if self.s3.failures.tlog_status():
+            if self.s3.failures.tlog_status_service():
                 break
             else:
                 time.sleep(60)
         else:
-            self.assertTrue(self.s3.failures.tlog_status())
+            self.assertTrue(self.s3.failures.tlog_status_service())
 
         md5_after = self.s3.download_file(file_name, bucket_name)
         self.assertEqual(md5_after, md5_before)
@@ -44,21 +44,21 @@ class TestTlog(BaseTest):
          - Upload file, should success
          - Download file, should success
         """
-        self.s3.failures.tlog_down()
+        self.s3.failures.tlog_stop_service()
         time.sleep(60)
         self.logger.info('upload file, should fail')
         with self.assertRaises(RuntimeError):
             self.s3.upload_file()
 
-        self.s3.failures.tlog_up()
+        self.s3.failures.tlog_start_service()
         for _ in range(10):
-            if self.s3.failures.tlog_status():
+            if self.s3.failures.tlog_status_service():
                 break
             else:
                 self.logger.info('wait till tlog  be up')
                 time.sleep(60)
         else:
-            self.assertTrue(self.s3.failures.tlog_status())
+            self.assertTrue(self.s3.failures.tlog_status_service())
 
         self.logger.info('upload file, should success')
         file_name, bucket_name, md5_before = self.s3.upload_file()
@@ -78,7 +78,7 @@ class TestTlog(BaseTest):
         self.logger.info('Upload file')
         file_name, bucket_name, md5_before = self.s3.upload_file()
 
-        self.s3.failures.kill_tlog()
+        self.s3.failures.tlog_kill_job()
         time.sleep(60)
 
         self.logger.info('Download file, should succeed')
@@ -94,7 +94,7 @@ class TestTlog(BaseTest):
          - Upload file
          - Download file, should succeed
         """
-        self.assertFalse(self.s3.failures.kill_tlog())
+        self.assertFalse(self.s3.failures.tlog_kill_job())
         time.sleep(60)
 
         file_name, bucket_name, md5_before = self.s3.upload_file()

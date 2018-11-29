@@ -27,5 +27,5 @@ class ZrobotFailures(BaseTest):
         - kill minio process and make sure it will restart automatically.
         """
         self.logger.info('kill minio process and make sure it will restart automatically')
-        flag = self.s3.failures.minio_process_down(timeout=200)
+        flag = self.s3.failures.minio_kill_job(timeout=200)
         self.assertTrue(flag, "minio didn't restart")

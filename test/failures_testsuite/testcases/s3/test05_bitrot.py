@@ -10,12 +10,12 @@ class TestS3Failures(BaseTest):
         ser = self.s3.dm_robot.services.names[self.s3_service_name]
         self.namespaces = ser.data['data']['namespaces']
         self.logger.info('Make sure all zdbs are up')
-        self.s3.failures.zdb_up(count=len(self.namespaces))
+        self.s3.failures.zdb_start_service(count=len(self.namespaces))
 
     def tearDown(self):
         super().tearDown()
         self.logger.info('Make sure all zdbs are up')
-        self.s3.failures.zdb_up(count=len(self.namespaces))
+        self.s3.failures.zdb_start_service(count=len(self.namespaces))
 
     def corrupt_namespace_data(self, namespace):
         robot = j.clients.zrobot.robots[namespace['node']]
@@ -61,7 +61,7 @@ class TestS3Failures(BaseTest):
         extra_namespaces_num = len(self.namespaces) - parityshards - datashards
         extra_namespaces = [ns['name'] for ns in self.namespaces[:extra_namespaces_num]]
         main_namespaces = [ns['name'] for ns in self.namespaces[extra_namespaces_num:]]
-        self.s3.failures.zdb_down(count=extra_namespaces_num, except_namespaces=main_namespaces)
+        self.s3.failures.zdb_stop_service(count=extra_namespaces_num, except_namespaces=main_namespaces)
 
         self.logger.info('Upload a file and get its md5sum, should succeed.')
         file_name, bucket_name, md5_before = self.s3.upload_file()
@@ -73,20 +73,20 @@ class TestS3Failures(BaseTest):
 
         self.logger.info('Get parity zdbs down excluding the corrupted namespace')
         wrong_data_namespace = namespace['name']
-        self.s3.failures.zdb_down(count=parityshards, except_namespaces=wrong_data_namespace)
+        self.s3.failures.zdb_stop_service(count=parityshards, except_namespaces=wrong_data_namespace)
 
         self.logger.info('Try to download F1, should give wrong md5')
         with self.assertRaises(MaxRetryError):
             self.s3.download_file(file_name, bucket_name, delete_bucket=False)
 
         self.logger.info('Get parity zdbs up exculding extra_namespaces zdbs')
-        self.s3.failures.zdb_up(parityshards, except_namespaces=extra_namespaces)
+        self.s3.failures.zdb_start_service(parityshards, except_namespaces=extra_namespaces)
 
         self.logger.info('Run the bitrot protection, should succeed')
         self.s3.minio_container.system('minio gateway zerostor-repair --config-dir /bin').get()
 
         self.logger.info('Get parity zdbs down again excluding corrupted namespace zdb')
-        self.s3.failures.zdb_down(count=parityshards, except_namespaces=wrong_data_namespace)
+        self.s3.failures.zdb_stop_service(count=parityshards, except_namespaces=wrong_data_namespace)
 
         self.logger.info('Download F1 again , should have same md5 as the uploaded file')
         md5_after = self.s3.download_file(file_name, bucket_name)
