@@ -140,6 +140,7 @@ class FailureGenenator:
             return
 
         n = 0
+        namespaces=[]
         for namespace in s3.service.data['data']['namespaces']:
             if namespace['name'] in except_namespaces:
                 continue
@@ -149,14 +150,15 @@ class FailureGenenator:
             robot = robot_god_token(robot)
             ns = robot.services.get(name=namespace['name'])
             zdb = robot.services.get(name=ns.data['data']['zerodb'])
-
             try:
                 zdb.state.check('status', 'running', 'ok')
                 logger.info('stop %s on node %s', zdb.name, namespace['node'])
                 zdb.schedule_action('stop').wait(die=True)
+                namespaces.append(namespace['name'])
                 n += 1
             except StateCheckError:
                 pass
+        return namespaces
 
     def zdb_up(self, count=1, except_namespaces=[]):
         """
@@ -166,7 +168,6 @@ class FailureGenenator:
         if not s3:
             logger.warning('There is no s3')
             return
-
         n = 0
         for namespace in s3.service.data['data']['namespaces']:
             if namespace['name'] in except_namespaces:
@@ -177,7 +178,6 @@ class FailureGenenator:
             robot = robot_god_token(robot)
             ns = robot.services.get(name=namespace['name'], template_name='namespace')
             zdb = robot.services.get(name=ns.data['data']['zerodb'], template_name='zerodb')
-
             try:
                 zdb.state.check('status', 'running', 'ok')
                 continue
@@ -459,63 +459,6 @@ class FailureGenenator:
             if result.state == "SUCCESS":
                 data_nodes.append(zdb_node)
         return data_nodes
-
-    def zdb_down(self, count=1, except_namespaces=[]):
-        """
-        ensure that count zdb are turned off
-        """
-        s3 = self._parent
-        if not s3:
-            logger.warning('There is no s3')
-            return
-
-        n = 0
-        namespaces=[]
-        for namespace in s3.service.data['data']['namespaces']:
-            if namespace['name'] in except_namespaces:
-                continue
-            if n >= count:
-                break
-            robot = j.clients.zrobot.robots[namespace['node']]
-            robot = robot_god_token(robot)
-            ns = robot.services.get(name=namespace['name'])
-            zdb = robot.services.get(name=ns.data['data']['zerodb'])
-            try:
-                zdb.state.check('status', 'running', 'ok')
-                logger.info('stop %s on node %s', zdb.name, namespace['node'])
-                zdb.schedule_action('stop').wait(die=True)
-                namespaces.append(namespace['name'])
-                n += 1
-            except StateCheckError:
-                pass
-        return namespaces
-
-    def zdb_up(self, count=1, except_namespaces=[]):
-        """
-        ensure that count zdb are turned on
-        """
-        s3 = self._parent
-        if not s3:
-            logger.warning('There is no s3')
-            return
-        n = 0
-        for namespace in s3.service.data['data']['namespaces']:
-            if namespace['name'] in except_namespaces:
-                continue
-            if n >= count:
-                break
-            robot = j.clients.zrobot.robots[namespace['node']]
-            robot = robot_god_token(robot)
-            ns = robot.services.get(name=namespace['name'])
-            zdb = robot.services.get(name=ns.data['data']['zerodb'])
-
-            try:
-                zdb.state.check('status', 'running', 'ok')
-                continue
-            except StateCheckError:
-                logger.info('start %s on node %s', zdb.name, namespace['node'])
-                zdb.schedule_action('start').wait(die=True)
-                n += 1
 
     def reboot_datashards_node(self, count=1,except_namespaces=[]):
         s3 = self._parent

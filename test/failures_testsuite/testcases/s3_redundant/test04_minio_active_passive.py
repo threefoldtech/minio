@@ -348,15 +348,18 @@ class TestActivePassive(BaseTest):
 
     def test007_hdd_failure(self):
         """
-        - Disable hdd of the data, should succeed.
+        test007_hdd_failure
+        - Stop extra zdbs, Upload a file (F1) to the active minio.
+        - Disable hhd of parity_shards namespace nodes, should succeed
+        - Check that new parity shards namespaces created, should succeed
         """
         parity_data_nodes=[]
         old_data_namespaces = self.s3_active.service.data['data']['namespaces']
         data_shards = self.s3_redundant_object.shards
         data_parity = self.s3_redundant_object.parity
-        extra_namespaces_len = len(data_namespaces) -(data_shards+data_parity)  
+        extra_namespaces_len = len(old_data_namespaces) -(data_shards+data_parity)  
 
-        self.logger.info('stop zdb  of extra namespace nodes, should succeed.')
+        self.logger.info('Stop extra zdbs, Upload a file (F1) to the active minio.')
         extra_namespaces=self.s3_active.failures.zdb_down(count=extra_namespaces_len)
         datashards_namespaces =[namespace['name']  for namespace in old_data_namespaces if namespace['name'] not in extra_namespaces]   
         file_name, bucket_name, md5_before = self.s3_active.upload_file()
@@ -370,12 +373,13 @@ class TestActivePassive(BaseTest):
 
             self.logger.info("Check that new parity shards namespaces created, should succeed")
             time.sleep(150)
-            md5_after = self.s3_active.download_file(file_name, bucket_name)
-            self.assertEqual(md5_after, md5_before)
-            file_name, bucket_name, md5_before = self.s3_active.upload_file()
             new_data_namespaces = self.s3_active.service.data['data']['namespaces']
             new_data_shards = [new_shard for new_shard in new_data_namespaces if new_shard not in old_data_namespaces]
             self.assertEqual(len(new_data_shards), data_parity+len(extra_namespaces))
+            
+            md5_after = self.s3_active.download_file(file_name, bucket_name)
+            self.assertEqual(md5_after, md5_before)
+
         except Exception as e:
             raise RuntimeError(e)
         finally:
