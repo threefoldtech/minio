@@ -420,6 +420,126 @@ class FailureGenenator:
         self.tlog['s3_data_ip'] = s3.service.data['data']['tlog']['address']
         logger.info(' tlog ip in s3 data : {}'.format(self.tlog['s3_data_ip']))
 
+    def disable_datadisk_hdd(self, count=1,except_nodes=[]):
+        s3 = self._parent
+        n = 0
+        data_nodes= []
+        for namespace in s3.service.data['data']['namespaces']:
+            if n >= count:
+                break
+            robot = j.clients.zrobot.robots[namespace['node']]
+            robot = robot_god_token(robot)
+            ns = robot.services.get(name=namespace['name'])
+            zdb = robot.services.get(name=ns.data['data']['zerodb'])
+            try:
+                zdb.state.check('status', 'running', 'ok')
+                n +=1
+            except StateCheckError:
+                continue
+            zdb_node = j.clients.zos.get(zdb.name,data={"host": namespace['url'][7:-5]})
+            if zdb_node in except_nodes:
+                continue
+            logger.info('disable hdd of zdb  %s  process on node %s', zdb.name, namespace['node'])
+            storagepools = zdb_node.storagepools.list()
+            device = None
+            for sp in storagepools:
+                if "ARCHIVE" or "HDD" in sp.type:
+                    for filesystem in sp.list():
+                        if filesystem.path == zdb.data['data']['path']:
+                            device = sp.device.split('/')[-1]
+                            break
+                    else:
+                        continue
+                    break    
+            else:
+                continue 
+            disk = ''.join([i for i in device if not i.isdigit()])
+            result = zdb_node.client.bash('echo 1 > /sys/block/{}/device/delete'.format(disk)).get()
+            if result.state == "SUCCESS":
+                data_nodes.append(zdb_node)
+        return data_nodes
+
+    def zdb_down(self, count=1, except_namespaces=[]):
+        """
+        ensure that count zdb are turned off
+        """
+        s3 = self._parent
+        if not s3:
+            logger.warning('There is no s3')
+            return
+
+        n = 0
+        namespaces=[]
+        for namespace in s3.service.data['data']['namespaces']:
+            if namespace['name'] in except_namespaces:
+                continue
+            if n >= count:
+                break
+            robot = j.clients.zrobot.robots[namespace['node']]
+            robot = robot_god_token(robot)
+            ns = robot.services.get(name=namespace['name'])
+            zdb = robot.services.get(name=ns.data['data']['zerodb'])
+            try:
+                zdb.state.check('status', 'running', 'ok')
+                logger.info('stop %s on node %s', zdb.name, namespace['node'])
+                zdb.schedule_action('stop').wait(die=True)
+                namespaces.append(namespace['name'])
+                n += 1
+            except StateCheckError:
+                pass
+        return namespaces
+
+    def zdb_up(self, count=1, except_namespaces=[]):
+        """
+        ensure that count zdb are turned on
+        """
+        s3 = self._parent
+        if not s3:
+            logger.warning('There is no s3')
+            return
+        n = 0
+        for namespace in s3.service.data['data']['namespaces']:
+            if namespace['name'] in except_namespaces:
+                continue
+            if n >= count:
+                break
+            robot = j.clients.zrobot.robots[namespace['node']]
+            robot = robot_god_token(robot)
+            ns = robot.services.get(name=namespace['name'])
+            zdb = robot.services.get(name=ns.data['data']['zerodb'])
+
+            try:
+                zdb.state.check('status', 'running', 'ok')
+                continue
+            except StateCheckError:
+                logger.info('start %s on node %s', zdb.name, namespace['node'])
+                zdb.schedule_action('start').wait(die=True)
+                n += 1
+
+    def reboot_datashards_node(self, count=1,except_namespaces=[]):
+        s3 = self._parent
+        n = 0
+        data_nodes= []
+        for namespace in s3.service.data['data']['namespaces']:
+            if n >= count:
+                break
+            if namespace['name'] in except_namespaces:
+                continue
+            robot = j.clients.zrobot.robots[namespace['node']]
+            robot = robot_god_token(robot)
+            ns = robot.services.get(name=namespace['name'])
+            zdb = robot.services.get(name=ns.data['data']['zerodb'])
+            try:
+                zdb.state.check('status', 'running', 'ok')
+                n += 1
+            except StateCheckError:
+                continue
+            logger.info('Reboot node %s of zdb %s', namespace['node'], zdb.name)
+            zdb_node = j.clients.zos.get(zdb.name, data={"host": namespace['url'][7:-5]})
+            zdb_node.reboot()
+            data_nodes.append({namespace['name']: namespace['url']})
+        return data_nodes
+
 
 def robot_god_token(robot):
     """

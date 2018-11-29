@@ -345,3 +345,80 @@ class TestActivePassive(BaseTest):
             if flag:
                 self.logger.info('Enable the ssd')
                 self.s3_passive.vm_host.client.bash('echo "- - -" | tee /sys/class/scsi_host/host*/scan').get()
+
+    def test007_hdd_failure(self):
+        """
+        - Disable hdd of the data, should succeed.
+        """
+        parity_data_nodes=[]
+        extra_namespaces = []
+        file_name, bucket_name, md5_before = self.s3_active.upload_file()
+        data_namespaces = self.s3_active.service.data['data']['namespaces']
+        data_shards = self.s3_redundant_object.shards
+        data_parity = self.s3_redundant_object.parity
+        extra_namespaces_len = len(data_namespaces) -(data_shards+data_parity)
+        try:
+            self.logger.info('stop zdb  of extra namespace nodes, should succeed.')
+            extra_namespaces = self.s3_active.failures.zdb_down(count=extra_namespaces_len)
+            md5_after = self.s3_active.download_file(file_name, bucket_name)
+            self.assertEqual(md5_after, md5_before)
+            
+            self.logger.info("Disable hhd of parity_shards namespace nodes, should succeed")
+            parity_data_nodes = self.s3_active.failures.disable_datadisk_hdd(count=data_parity)
+            self.assertEqual(len(parity_data_nodes), data_parity,"hdd hasn't been disabled")
+
+            self.logger.info("Check that new parity shards namespaces created, should succeed")
+            time.sleep(60)
+            md5_after = self.s3_active.download_file(file_name, bucket_name)
+            self.assertEqual(md5_after, md5_before)
+            file_name, bucket_name, md5_before = self.s3_active.upload_file()
+            new_data_namespaces = self.s3_active.service.data['data']['namespaces']
+            new_data_shards = [new_shard for new_shard in new_data_namespaces if new_shard not in old_data_namespaces]
+            self.assertEqual(len(new_data_shards), data_parity+len(extra_namespaces))
+        except Exception as e:
+            raise RuntimeError(e)
+        finally:
+            if extra_namespaces:
+                self.s3_active.failures.zdb_up(count=len(extra_namespaces))
+
+    def test008_reboot_datashards_node(self):
+        """
+
+        test008_reboot_datashards_node
+        - Stop extra zdbs, and Upload a file (F1) to the active minio.
+        - Reboot one of nodes of datashards.
+        - Start extra zdbs again.
+        - Check that a new namespace created instead of one on rebooted node.
+        - Check that  useless namespace deleted.
+        """
+        old_data_namespaces = self.s3_active.service.data['data']['namespaces']
+
+        self.logger.info(" Stop extra zdbs ")
+        extra_namespaces=self.s3_active.failures.zdb_down(count=2)
+        datashards_namespaces =[namespace['name']  for namespace in old_data_namespaces if namespace['name'] not in extra_namespaces]   
+        
+        self.logger.info('Upload a file (F1) to the active minio. ')
+        file_name, bucket_name, md5_before = self.s3_active.upload_file()
+        time.sleep(10)
+
+        self.logger.info(" Start extra zdbs again.")
+        self.s3_active.failures.zdb_up(count=2)
+
+        self.logger.info('Reboot one of nodes of datashards.')
+        rebooted_nodes = self.s3_active.failures.reboot_datashards_node(except_namespaces=extra_namespaces)
+
+        self.logger.info('Upload a file (F1) to the active minio. ')
+        file_name, bucket_name, md5_before = self.s3_active.upload_file()
+        time.sleep(300)
+
+        self.logger.info("Check that a new namespace created instead of one on rebooted node.")
+        new_data_namespaces = self.s3_active.update_data()['namespaces']
+        diff_data_shards = [new_shard for new_shard in new_data_namespaces if new_shard not in old_data_namespaces]
+        self.assertEqual(len(diff_data_shards),len(rebooted_nodes))
+
+        self.logger.info("Check that download working correctly. ")
+        self.s3_active.failures.zdb_down(count=2,except_namespaces=datashards_namespaces)
+        self.s3_active.failures.zdb_down(count=2,except_namespaces=rebooted_nodes)
+        md5_after = self.s3_active.download_file(file_name, bucket_name, delete_bucket=False)
+        self.assertEqual(md5_after, md5_before)
+
