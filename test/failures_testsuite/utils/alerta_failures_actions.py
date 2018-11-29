@@ -45,7 +45,7 @@ class AlertaFailures:
                 mounts = i.info['container']['arguments']['mount'].popitem()[0]
                 mountpoint = mounts[:-16]
                 zdb_id = i.id
-        logger.info("dropping all ZDB ports")
+        logger.info("dropping ZDB container")
         d = self.node.client.bash('lsblk |grep {mount}'.format(mount=mountpoint)).get()
         disk = d.stdout.split(' ')[0][2:][:-1]
         self.node.client.bash('echo 1 > /sys/block/{disk}/device/delete'.format(disk= disk))
@@ -54,8 +54,8 @@ class AlertaFailures:
 
     def drop_redis_port(self):
         logger.info("dropping redis port 6379")
-        self.node.client.bash("nft delete rule inet filter input handle $(nft list ruleset -na | grep 6379| awk '{print $NF}')")
-
+        self.node.client.nft.drop_port(6379)
+        
     def backup_nft_table(self):
         logger.info("backup all nft ports")
         self.node.client.bash("nft list ruleset > backup.nft")
