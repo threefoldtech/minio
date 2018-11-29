@@ -30,6 +30,10 @@ class AlertaFailures:
         out, err = sub.communicate()
         return out, err
 
+    def node_failure(self):
+        logger("simulating node failure by rebooting node")
+        self.node.reboot()
+        
     def drop_zrobot_port(self):
         logger.info("dropping 0-robot port 6600")
         self.node.client.container.remove_portforward(self.z_robot_cont_id,6600,6600)
