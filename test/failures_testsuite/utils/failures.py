@@ -420,13 +420,15 @@ class FailureGenenator:
         self.tlog['s3_data_ip'] = s3.service.data['data']['tlog']['address']
         logger.info(' tlog ip in s3 data : {}'.format(self.tlog['s3_data_ip']))
 
-    def disable_datadisk_hdd(self, count=1,except_nodes=[]):
+    def disable_datadisk_hdd(self, count=1,except_namespaces=[]):
         s3 = self._parent
         n = 0
         data_nodes= []
         for namespace in s3.service.data['data']['namespaces']:
             if n >= count:
                 break
+            if namespace['name'] in except_namespaces:
+                continue
             robot = j.clients.zrobot.robots[namespace['node']]
             robot = robot_god_token(robot)
             ns = robot.services.get(name=namespace['name'])
@@ -437,8 +439,7 @@ class FailureGenenator:
             except StateCheckError:
                 continue
             zdb_node = j.clients.zos.get(zdb.name,data={"host": namespace['url'][7:-5]})
-            if zdb_node in except_nodes:
-                continue
+
             logger.info('disable hdd of zdb  %s  process on node %s', zdb.name, namespace['node'])
             storagepools = zdb_node.storagepools.list()
             device = None
