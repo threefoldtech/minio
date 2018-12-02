@@ -9,7 +9,7 @@ import time, socket
 class BaseTest(TestCase):
     file_name = None
     logger = j.logger.get('s3_failures')
-    socket.setdefaulttimeout(120) # Minio use _GLOBAL_DEFAULT_TIMEOUT which is None by default
+    socket.setdefaulttimeout(60) # Minio use _GLOBAL_DEFAULT_TIMEOUT which is None by default
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -49,8 +49,8 @@ class BaseTest(TestCase):
             else:
                 raise TimeoutError("can't install s3 .. gonna quit!")
 
-            for _ in range(10):
-                cls.s3 = cls.s3_controller.s3[cls.s3_service_name]
+            cls.s3 = cls.s3_controller.s3[cls.s3_service_name]
+            for _ in range(20):
                 state = cls.s3.service.state
                 cls.logger.info("s3 state : {}".format(state))
                 try:
@@ -59,8 +59,7 @@ class BaseTest(TestCase):
                     break
                 except:
                     cls.logger.info("waiting {} state to be ok ... ".format(cls.s3_service_name))
-                    time.sleep(5 * 60)
-                    cls.logger.info("wait for 5 mins .. then we try again!")
+                    time.sleep(60)
             else:
                 state.check('actions', 'install', 'ok')
 

@@ -3,6 +3,10 @@ from base_test import BaseTest
 
 
 class ZDBFailures(BaseTest):
+    def setUp(self):
+        super().setUp()
+        self.namespaces = self.s3.data['namespaces']
+
     def test001_zdb_kill(self):
         """
 
@@ -28,7 +32,7 @@ class ZDBFailures(BaseTest):
         - Download file, should succeed
         - assert md5 checksum is matching
         - Stop n zdb, n = parity namespaces
-        - Upload a file, should fail
+        - Upload a file, should fail if len(namespace)-parity < parity+shards
         - Download the old file, should succeed
         - assert md5 checksum is matching
         - Start n zdb
@@ -43,8 +47,11 @@ class ZDBFailures(BaseTest):
         self.logger.info('stop {} zdb services'.format((self.s3.parity)))
         self.s3.failures.zdb_stop_service(count=self.s3.parity)
 
-        self.logger.info('upload a file, should fail')
-        with self.assertRaises(RuntimeError):
+        self.logger.info('upload a file, should fail if len(namespace)-parity < parity+shards')
+        if len(self.namespaces) < self.s3.shards + 2*self.s3.parity:
+            with self.assertRaises(RuntimeError):
+                self.s3.upload_file()
+        else:
             self.s3.upload_file()
 
         self.logger.info('download the old file, should succeed')
@@ -60,7 +67,7 @@ class ZDBFailures(BaseTest):
 
         test004_stop_parity_zdb_upload_start_download
         - Stop n zdb, n = parity
-        - upload file, should fail
+        - Upload a file, should fail if len(namespace)-parity < parity+shards
         - start n zdb, should pass
         - upload file, should succeed
         - download file, should pass
@@ -69,8 +76,11 @@ class ZDBFailures(BaseTest):
         self.logger.info('stop {} zdb services'.format((self.s3.parity)))
         self.s3.failures.zdb_stop_service(count=self.s3.parity)
 
-        self.logger.info('upload a file, should fail')
-        with self.assertRaises(RuntimeError):
+        self.logger.info('upload a file, should fail if len(namespace)-parity < parity+shards')
+        if len(self.namespaces) < self.s3.shards + 2*self.s3.parity:
+            with self.assertRaises(RuntimeError):
+                self.s3.upload_file()
+        else:
             self.s3.upload_file()
 
         self.logger.info('start {} zdb services'.format((self.s3.parity)))
@@ -99,8 +109,11 @@ class ZDBFailures(BaseTest):
         self.logger.info('stop {} zdb services'.format(zdb_turn_down))
         self.s3.failures.zdb_stop_service(count=zdb_turn_down)
 
-        self.logger.info('upload a file, should fail')
-        with self.assertRaises(RuntimeError):
+        self.logger.info('upload a file, should fail if len(namespace)-zdb_turn_down < parity+shards')
+        if len(self.namespaces)-zdb_turn_down < self.s3.shards + self.s3.parity:
+            with self.assertRaises(RuntimeError):
+                self.s3.upload_file()
+        else:
             self.s3.upload_file()
 
         self.logger.info('start {} zdb services'.format(zdb_turn_down))
@@ -125,7 +138,6 @@ class ZDBFailures(BaseTest):
         self.logger.info('upload file, should pass')
         file_name, bucket_name, md5_before = self.s3.upload_file()
 
-        self.namespaces = self.s3.data['namespaces']
         self.logger.info('stop {} zdb services'.format(len(self.namespaces)))
         self.s3.failures.zdb_stop_service(count=self.namespaces)
 
