@@ -139,14 +139,14 @@ class ZDBFailures(BaseTest):
         file_name, bucket_name, md5_before = self.s3.upload_file()
 
         self.logger.info('stop {} zdb services'.format(len(self.namespaces)))
-        self.s3.failures.zdb_stop_service(count=self.namespaces)
+        self.s3.failures.zdb_stop_service(count=len(self.namespaces))
 
         self.logger.info('uploading should raise an error')
         with self.assertRaises(RuntimeError):
             self.s3.upload_file()
 
-        self.logger.info('start {} zdb services'.format(self.namespaces))
-        self.s3.failures.zdb_start_service(count=self.namespaces)
+        self.logger.info('start {} zdb services'.format(len(self.namespaces)))
+        self.s3.failures.zdb_start_service(count=len(self.namespaces))
 
         self.logger.info('download old file, should pass')
         md5_after = self.s3.download_file(file_name, bucket_name)
