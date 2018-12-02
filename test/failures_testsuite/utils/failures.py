@@ -25,6 +25,7 @@ class FailureGenenator:
             logger.warning('There is no s3')
             return
 
+        logger.info('start all zdb services')
         def do(namespace):
             robot = j.clients.zrobot.robots[namespace['node']]
             robot = robot_god_token(robot)
@@ -49,6 +50,7 @@ class FailureGenenator:
             logger.warning('There is no s3')
             return
 
+        logger.info('stpp all zdb services')
         def do(namespace):
             robot = j.clients.zrobot.robots[namespace['node']]
             robot = robot_god_token(robot)
