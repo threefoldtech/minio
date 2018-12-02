@@ -10,6 +10,7 @@ class BaseTest(TestCase):
     file_name = None
     logger = j.logger.get('s3_failures')
     socket.setdefaulttimeout(60) # Minio use _GLOBAL_DEFAULT_TIMEOUT which is None by default
+    s3_service_name = None
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -101,6 +102,9 @@ class BaseTest(TestCase):
                 cls.logger.warning(e)
                 time.sleep(5)
 
+        cls.logger.info('minio config')
+        cls.logger.info(cls.s3.minio_config)
+
     @classmethod
     def tearDownClass(cls):
         """
@@ -108,7 +112,11 @@ class BaseTest(TestCase):
 
         :return:
         """
-        pass
+        cls.config = j.data.serializer.yaml.load('./config.yaml')
+        cls.s3_controller = Controller(cls.config)
+        cls.s3 = cls.s3_controller.s3[cls.s3_service_name]
+        cls.logger.info('minio config')
+        cls.logger.info(cls.s3.minio_config)
 
     def setUp(self):
         self.s3 = self.s3_controller.s3[self.s3_service_name]
