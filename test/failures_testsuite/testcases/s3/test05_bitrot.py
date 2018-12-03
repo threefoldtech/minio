@@ -2,6 +2,7 @@ from base_test import BaseTest
 from utils.failures import robot_god_token
 from jumpscale import j
 from urllib3.exceptions import MaxRetryError
+import time
 
 
 class TestS3Failures(BaseTest):
@@ -83,7 +84,15 @@ class TestS3Failures(BaseTest):
         self.s3.failures.zdb_start_service(parityshards, except_namespaces=extra_namespaces)
 
         self.logger.info('Run the bitrot protection, should succeed')
-        self.s3.minio_container.system('minio gateway zerostor-repair --config-dir /bin').get()
+        for _ in range(20):
+            try:
+                self.s3.minio_container.system('minio gateway zerostor-repair --config-dir /bin').get()
+                break
+            except Exception as e:
+                self.logger.warning(e)
+                time.sleep(5)
+        else:
+            self.s3.minio_container.system('minio gateway zerostor-repair --config-dir /bin').get()
 
         self.logger.info('Get parity zdbs down again excluding corrupted namespace zdb')
         self.s3.failures.zdb_stop_service(count=parityshards, except_namespaces=wrong_data_namespace)
