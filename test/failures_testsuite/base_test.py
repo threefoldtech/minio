@@ -132,10 +132,10 @@ class BaseTest(TestCase):
         pass
 
     @classmethod
-    def wait_and_update(cls, function_name, **kwargs):
+    def wait_and_update(cls, function_name):
         for _ in range(30):
             try:
-                function_name(kwargs)
+                function_name()
                 return
             except Exception as e:
                 cls.logger.warning(e)

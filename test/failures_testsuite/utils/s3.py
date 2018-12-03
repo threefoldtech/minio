@@ -127,7 +127,7 @@ class S3Manager:
 
     @property
     def minio_config(self):
-        return self.retrying.call(self.minio_sal_container.download_content('/bin/zerostor.yaml'))
+        return self.retrying.call(self.minio_sal_container.download_content, '/bin/zerostor.yaml')
 
     @property
     def vm_host(self):
