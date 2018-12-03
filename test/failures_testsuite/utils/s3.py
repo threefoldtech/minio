@@ -34,6 +34,7 @@ class S3Manager:
         self._vm_host_robot = None
         self._vm_host = None
         self._container_client = None
+        self._sal_container_client = None
         try:
             self._service = self.dm_robot.services.get(name=name, template_name='s3')
         except ServiceNotFoundError:
@@ -104,6 +105,11 @@ class S3Manager:
         return self._container_client
 
     @property
+    def minio_sal_container(self):
+        if self._sal_container_client is None:
+            self._sal_container_client = self.vm_node.containers.get(name='minio_{}'.format(self.service.guid))
+        return self._sal_container_client
+    @property
     def zerodb_nodes(self):
         for zerodb in self.service.data['data']['namespaces']:
             yield j.clients.zos.get(zerodb['node'])
@@ -121,7 +127,7 @@ class S3Manager:
 
     @property
     def minio_config(self):
-        return self.retrying.call(self.minio_container.download_content('/bin/zerostor.yaml'))
+        return self.retrying.call(self.minio_sal_container.download_content('/bin/zerostor.yaml'))
 
     @property
     def vm_host(self):
