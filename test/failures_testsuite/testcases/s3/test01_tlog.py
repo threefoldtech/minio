@@ -1,5 +1,4 @@
 from base_test import BaseTest
-from unittest import skip
 import time
 
 
@@ -94,7 +93,7 @@ class TestTlog(BaseTest):
          - Upload file
          - Download file, should succeed
         """
-        self.assertFalse(self.s3.failures.tlog_kill_job())
+        self.s3.failures.tlog_kill_job()
         time.sleep(60)
 
         file_name, bucket_name, md5_before = self.s3.upload_file()

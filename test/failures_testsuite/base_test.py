@@ -86,25 +86,6 @@ class BaseTest(TestCase):
 
         cls.s3 = cls.s3_controller.s3[cls.s3_service_name]
         cls.logger.info('{} url : {}'.format(cls.s3_service_name, cls.s3.url))
-        # for _ in range(30):
-        #     try:
-        #         cls.s3.failures.zdb_start_service_all()
-        #         break
-        #     except Exception as e:
-        #         cls.logger.warning(e)
-        #         time.sleep(5)
-        #         cls.s3_controller = Controller(cls.config)
-        #         cls.s3 = cls.s3_controller.s3[cls.s3_service_name]
-        #
-        # for _ in range(30):
-        #     try:
-        #         cls.s3.failures.tlog_start_service()
-        #         break
-        #     except Exception as e:
-        #         cls.logger.warning(e)
-        #         time.sleep(5)
-        #         cls.s3_controller = Controller(cls.config)
-        #         cls.s3 = cls.s3_controller.s3[cls.s3_service_name]
 
         cls.wait_and_update(function_name=cls.s3.failures.zdb_start_service_all)
         cls.wait_and_update(function_name=cls.s3.failures.tlog_start_service)
