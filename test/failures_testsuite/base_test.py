@@ -9,7 +9,9 @@ import time, socket
 class BaseTest(TestCase):
     file_name = None
     logger = j.logger.get('s3_failures')
-    socket.setdefaulttimeout(120) # Minio use _GLOBAL_DEFAULT_TIMEOUT which is None by default
+    socket.setdefaulttimeout(60) # Minio use _GLOBAL_DEFAULT_TIMEOUT which is None by default
+    s3_service_name = None
+    config = j.data.serializer.yaml.load('./config.yaml')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -23,7 +25,6 @@ class BaseTest(TestCase):
         function to deploy s3 with one of pre-configured parameters.
 
         """
-        cls.config = j.data.serializer.yaml.load('./config.yaml')
         if cls.config['s3']['deploy']:
             for _ in range(5):
                 cls.s3_controller = Controller(cls.config)
@@ -45,12 +46,12 @@ class BaseTest(TestCase):
                     s3_object = cls.s3_controller.s3[cls.s3_service_name]
                     s3_object.service.schedule_action('uninstall')
                     cls.logger.info('delete {} service'.format(cls.s3_service_name))
-                    s3_object.delete()
+                    s3_object.service.delete()
             else:
                 raise TimeoutError("can't install s3 .. gonna quit!")
 
-            for _ in range(10):
-                cls.s3 = cls.s3_controller.s3[cls.s3_service_name]
+            cls.s3 = cls.s3_controller.s3[cls.s3_service_name]
+            for _ in range(20):
                 state = cls.s3.service.state
                 cls.logger.info("s3 state : {}".format(state))
                 try:
@@ -59,8 +60,7 @@ class BaseTest(TestCase):
                     break
                 except:
                     cls.logger.info("waiting {} state to be ok ... ".format(cls.s3_service_name))
-                    time.sleep(5 * 60)
-                    cls.logger.info("wait for 5 mins .. then we try again!")
+                    time.sleep(60)
             else:
                 state.check('actions', 'install', 'ok')
 
@@ -86,8 +86,9 @@ class BaseTest(TestCase):
 
         cls.s3 = cls.s3_controller.s3[cls.s3_service_name]
         cls.logger.info('{} url : {}'.format(cls.s3_service_name, cls.s3.url))
-        cls.s3.failures.zdb_start_all()
-        cls.s3.failures.tlog_up()
+
+        # cls.logger.info('minio config')
+        # cls.logger.info(cls.s3.minio_config)
 
     @classmethod
     def tearDownClass(cls):
@@ -96,11 +97,27 @@ class BaseTest(TestCase):
 
         :return:
         """
-        pass
+        cls.config = j.data.serializer.yaml.load('./config.yaml')
+        cls.s3_controller = Controller(cls.config)
+        cls.s3 = cls.s3_controller.s3[cls.s3_service_name]
+        cls.logger.info('minio config')
+        cls.logger.info(cls.s3.minio_config)
 
     def setUp(self):
         self.s3 = self.s3_controller.s3[self.s3_service_name]
+        self.wait_and_update(function_name=self.s3.failures.zdb_start_service_all)
+        self.wait_and_update(function_name=self.s3.failures.tlog_start_service)
 
     def tearDown(self):
         pass
 
+    def wait_and_update(self, function_name):
+        for _ in range(30):
+            try:
+                function_name()
+                return
+            except Exception as e:
+                self.logger.warning(e)
+                time.sleep(5)
+                self.s3_controller = Controller(self.config)
+                self.s3 = self.s3_controller.s3[self.s3_service_name]

@@ -360,7 +360,7 @@ class TestActivePassive(BaseTest):
         extra_namespaces_len = len(old_data_namespaces) -(data_shards+data_parity)  
 
         self.logger.info('Stop extra zdbs, Upload a file (F1) to the active minio.')
-        extra_namespaces=self.s3_active.failures.zdb_down(count=extra_namespaces_len)
+        extra_namespaces=self.s3_active.failures.zdb_stop_service(count=extra_namespaces_len)
         datashards_namespaces =[namespace['name']  for namespace in old_data_namespaces if namespace['name'] not in extra_namespaces]   
         file_name, bucket_name, md5_before = self.s3_active.upload_file()
         md5_after = self.s3_active.download_file(file_name, bucket_name)
@@ -384,7 +384,7 @@ class TestActivePassive(BaseTest):
             raise RuntimeError(e)
         finally:
             if extra_namespaces:
-                self.s3_active.failures.zdb_up(count=len(extra_namespaces))
+                self.s3_active.failures.zdb_start_service(count=len(extra_namespaces))
 
     def test008_reboot_datashards_node(self):
         """
@@ -399,7 +399,7 @@ class TestActivePassive(BaseTest):
         old_data_namespaces = self.s3_active.service.data['data']['namespaces']
 
         self.logger.info(" Stop extra zdbs ")
-        extra_namespaces=self.s3_active.failures.zdb_down(count=2)
+        extra_namespaces=self.s3_active.failures.zdb_stop_service(count=2)
         datashards_namespaces =[namespace['name']  for namespace in old_data_namespaces if namespace['name'] not in extra_namespaces]   
         
         self.logger.info('Upload a file (F1) to the active minio. ')
@@ -407,7 +407,7 @@ class TestActivePassive(BaseTest):
         time.sleep(10)
 
         self.logger.info(" Start extra zdbs again.")
-        self.s3_active.failures.zdb_up(count=2)
+        self.s3_active.failures.zdb_start_service(count=2)
 
         self.logger.info('Reboot one of nodes of datashards.')
         rebooted_nodes = self.s3_active.failures.reboot_datashards_node(except_namespaces=extra_namespaces)
@@ -422,8 +422,8 @@ class TestActivePassive(BaseTest):
         self.assertEqual(len(diff_data_shards),len(rebooted_nodes))
 
         self.logger.info("Check that download working correctly. ")
-        self.s3_active.failures.zdb_down(count=2,except_namespaces=datashards_namespaces)
-        self.s3_active.failures.zdb_down(count=2,except_namespaces=rebooted_nodes)
+        self.s3_active.failures.zdb_stop_service(count=2, except_namespaces=datashards_namespaces)
+        self.s3_active.failures.zdb_stop_service(count=2, except_namespaces=rebooted_nodes)
         md5_after = self.s3_active.download_file(file_name, bucket_name, delete_bucket=False)
         self.assertEqual(md5_after, md5_before)
 

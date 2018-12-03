@@ -16,7 +16,7 @@ class FailureGenenator:
     def __init__(self, parent):
         self._parent = parent
 
-    def zdb_start_all(self):
+    def zdb_start_service_all(self):
         """
         start all the zerodb services used by minio
         """
@@ -25,6 +25,7 @@ class FailureGenenator:
             logger.warning('There is no s3')
             return
 
+        logger.info('start all zdb services')
         def do(namespace):
             robot = j.clients.zrobot.robots[namespace['node']]
             robot = robot_god_token(robot)
@@ -40,7 +41,7 @@ class FailureGenenator:
 
         self._parent.execute_all_nodes(do, nodes=s3.service.data['data']['namespaces'])
 
-    def zdb_stop_all(self):
+    def zdb_stop_service_all(self):
         """
         stop all the zerodb services used by minio
         """
@@ -49,6 +50,7 @@ class FailureGenenator:
             logger.warning('There is no s3')
             return
 
+        logger.info('stpp all zdb services')
         def do(namespace):
             robot = j.clients.zrobot.robots[namespace['node']]
             robot = robot_god_token(robot)
@@ -63,7 +65,7 @@ class FailureGenenator:
 
         self._parent.execute_all_nodes(do, nodes=s3.service.data['data']['namespaces'])
 
-    def minio_process_down(self, timeout):
+    def minio_kill_job(self, timeout):
         """
         turn off the minio process, then count how much times it takes to restart
         """
@@ -89,7 +91,7 @@ class FailureGenenator:
                 continue
         return False
 
-    def zdb_process_down(self, count=1, timeout=100):
+    def zdb_kill_job(self, count=1, timeout=100):
         """
         turn off zdb process , check it will be restart.
         """
@@ -130,7 +132,7 @@ class FailureGenenator:
                     return True
             return False
 
-    def zdb_down(self, count=1, except_namespaces=[]):
+    def zdb_stop_service(self, count=1, except_namespaces=[]):
         """
         ensure that count zdb are turned off
         """
@@ -160,7 +162,7 @@ class FailureGenenator:
                 pass
         return namespaces
 
-    def zdb_up(self, count=1, except_namespaces=[]):
+    def zdb_start_service(self, count=1, except_namespaces=[]):
         """
         ensure that count zdb are turned on
         """
@@ -237,7 +239,7 @@ class FailureGenenator:
         s3.vm_host.client.bash('echo 1 > /sys/block/{}/device/delete'.format(disk)).get()
         return disk
 
-    def tlog_down(self):
+    def tlog_stop_service(self):
         """
             Turn down tlog
         """
@@ -254,8 +256,8 @@ class FailureGenenator:
         zdb = robot.services.get(name=ns.data['data']['zerodb'], template_name='zerodb')
 
         try:
-            logger.info('tlog zdb {} on {} node'.format(zdb.name, tlog['name']))
-            logger.info('tlog namespace {} on {} node'.format(ns.name, tlog['name']))
+            logger.info('tlog zdb {} on {} node'.format(zdb.name, tlog['node']))
+            logger.info('tlog namespace {} on {} node'.format(ns.name, tlog['node']))
             logger.info('check status tlog zbd')
             zdb.state.check('status', 'running', 'ok')
             logger.info('status : running ok')
@@ -264,7 +266,7 @@ class FailureGenenator:
         except StateCheckError as e:
             logger.error(e)
 
-    def tlog_up(self):
+    def tlog_start_service(self):
         """
             Turn up tlog
         """
@@ -273,6 +275,7 @@ class FailureGenenator:
             logger.warning('There is no s3')
             return
 
+        logger.info('tlog start service')
         tlog = s3.service.data['data']['tlog']
         robot = j.clients.zrobot.robots[tlog['node']]
         robot = robot_god_token(robot)
@@ -289,7 +292,7 @@ class FailureGenenator:
             logger.info('start tlog zdb %s on node %s', zdb.name, tlog['node'])
             zdb.schedule_action('start').wait(die=True)
 
-    def tlog_status(self):
+    def tlog_status_service(self):
         """
         Check tlog status
         :return:
@@ -316,7 +319,7 @@ class FailureGenenator:
         except StateCheckError:
             return False
 
-    def kill_tlog(self):
+    def tlog_kill_job(self):
         """
         tlog is a namespace under a zdb container, This method will terminate this container but the zrobot will bring
         it back.

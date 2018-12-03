@@ -1,5 +1,4 @@
 from jumpscale import j
-import os, time, hashlib
 from zerorobot.service_collection import ServiceNotFoundError
 from gevent.pool import Group
 from utils.reset import EnvironmentReset
@@ -8,11 +7,15 @@ from urllib.parse import urlparse
 from minio import Minio
 from minio.error import BucketAlreadyExists, BucketAlreadyOwnedByYou
 from urllib3.exceptions import ProtocolError
+import os, time, hashlib, tenacity
 
 logger = j.logger.get('s3demo')
 
 
 class S3Manager:
+    retrying = tenacity.Retrying(wait=tenacity.wait_fixed(5),
+                                 retry=tenacity.retry_if_exception_type(IOError))
+
     def __init__(self, parent, name):
         self.failures = FailureGenenator(self)
         self.reset = EnvironmentReset(self)
@@ -31,6 +34,7 @@ class S3Manager:
         self._vm_host_robot = None
         self._vm_host = None
         self._container_client = None
+        self._sal_container_client = None
         try:
             self._service = self.dm_robot.services.get(name=name, template_name='s3')
         except ServiceNotFoundError:
@@ -40,7 +44,7 @@ class S3Manager:
     def client(self):
         if self._client is None:
             url = urlparse(self.data['minioUrls'][self._client_type])
-            logger.info('get s3 client : {}'.format(url['public']))
+            logger.info('get s3 client : {}'.format(url.netloc))
             self._client = Minio(url.netloc,
                                  access_key=self.data['minioLogin'],
                                  secret_key=self.data['minioPassword'],
@@ -88,7 +92,8 @@ class S3Manager:
         zrobot client of the node  that hosts the zos VM which hosts the minio container
         """
         if self._vm_host_robot is None:
-            j.clients.zrobot.get('demo_vm_host_robot', data={'url': "http://%s:6600" % self.vm_host.public_addr}) # 'god_token_': ''
+            j.clients.zrobot.get('demo_vm_host_robot',
+                                 data={'url': "http://%s:6600" % self.vm_host.public_addr})  # 'god_token_': ''
             self._vm_host_robot = j.clients.zrobot.robots['demo_vm_host_robot']
         return self._vm_host_robot
 
@@ -99,6 +104,11 @@ class S3Manager:
             self._container_client = self.vm_node.client.container.client(list(container.keys())[0])
         return self._container_client
 
+    @property
+    def minio_sal_container(self):
+        if self._sal_container_client is None:
+            self._sal_container_client = self.vm_node.containers.get(name='minio_{}'.format(self.service.guid))
+        return self._sal_container_client
     @property
     def zerodb_nodes(self):
         for zerodb in self.service.data['data']['namespaces']:
@@ -117,7 +127,7 @@ class S3Manager:
 
     @property
     def minio_config(self):
-        return self.minio_container.download_content('/bin/zerostor.yaml')
+        return self.retrying.call(self.minio_sal_container.download_content, '/bin/zerostor.yaml')
 
     @property
     def vm_host(self):
