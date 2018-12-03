@@ -46,7 +46,7 @@ class BaseTest(TestCase):
                     s3_object = cls.s3_controller.s3[cls.s3_service_name]
                     s3_object.service.schedule_action('uninstall')
                     cls.logger.info('delete {} service'.format(cls.s3_service_name))
-                    s3_object.delete()
+                    s3_object.service.delete()
             else:
                 raise TimeoutError("can't install s3 .. gonna quit!")
 
@@ -86,21 +86,28 @@ class BaseTest(TestCase):
 
         cls.s3 = cls.s3_controller.s3[cls.s3_service_name]
         cls.logger.info('{} url : {}'.format(cls.s3_service_name, cls.s3.url))
-        for _ in range(30):
-            try:
-                cls.s3.failures.zdb_start_service_all()
-                break
-            except Exception as e:
-                cls.logger.warning(e)
-                time.sleep(5)
+        # for _ in range(30):
+        #     try:
+        #         cls.s3.failures.zdb_start_service_all()
+        #         break
+        #     except Exception as e:
+        #         cls.logger.warning(e)
+        #         time.sleep(5)
+        #         cls.s3_controller = Controller(cls.config)
+        #         cls.s3 = cls.s3_controller.s3[cls.s3_service_name]
+        #
+        # for _ in range(30):
+        #     try:
+        #         cls.s3.failures.tlog_start_service()
+        #         break
+        #     except Exception as e:
+        #         cls.logger.warning(e)
+        #         time.sleep(5)
+        #         cls.s3_controller = Controller(cls.config)
+        #         cls.s3 = cls.s3_controller.s3[cls.s3_service_name]
 
-        for _ in range(30):
-            try:
-                cls.s3.failures.tlog_start_service()
-                break
-            except Exception as e:
-                cls.logger.warning(e)
-                time.sleep(5)
+        cls.wait_and_update(function_name=cls.s3.failures.zdb_start_service_all)
+        cls.wait_and_update(function_name=cls.s3.failures.tlog_start_service)
 
         cls.logger.info('minio config')
         cls.logger.info(cls.s3.minio_config)
@@ -124,3 +131,14 @@ class BaseTest(TestCase):
     def tearDown(self):
         pass
 
+    @classmethod
+    def wait_and_update(cls, function_name, **kwargs):
+        for _ in range(30):
+            try:
+                function_name(kwargs)
+                return
+            except Exception as e:
+                cls.logger.warning(e)
+                time.sleep(5)
+                cls.s3_controller = Controller(cls.config)
+                cls.s3 = cls.s3_controller.s3[cls.s3_service_name]
