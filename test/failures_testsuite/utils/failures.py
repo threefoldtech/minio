@@ -256,8 +256,8 @@ class FailureGenenator:
         zdb = robot.services.get(name=ns.data['data']['zerodb'], template_name='zerodb')
 
         try:
-            logger.info('tlog zdb {} on {} node'.format(zdb.name, tlog['name']))
-            logger.info('tlog namespace {} on {} node'.format(ns.name, tlog['name']))
+            logger.info('tlog zdb {} on {} node'.format(zdb.name, tlog['node']))
+            logger.info('tlog namespace {} on {} node'.format(ns.name, tlog['node']))
             logger.info('check status tlog zbd')
             zdb.state.check('status', 'running', 'ok')
             logger.info('status : running ok')
