@@ -11,6 +11,7 @@ class BaseTest(TestCase):
     logger = j.logger.get('s3_failures')
     socket.setdefaulttimeout(60) # Minio use _GLOBAL_DEFAULT_TIMEOUT which is None by default
     s3_service_name = None
+    config = j.data.serializer.yaml.load('./config.yaml')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -24,7 +25,6 @@ class BaseTest(TestCase):
         function to deploy s3 with one of pre-configured parameters.
 
         """
-        cls.config = j.data.serializer.yaml.load('./config.yaml')
         if cls.config['s3']['deploy']:
             for _ in range(5):
                 cls.s3_controller = Controller(cls.config)
@@ -87,11 +87,8 @@ class BaseTest(TestCase):
         cls.s3 = cls.s3_controller.s3[cls.s3_service_name]
         cls.logger.info('{} url : {}'.format(cls.s3_service_name, cls.s3.url))
 
-        cls.wait_and_update(function_name=cls.s3.failures.zdb_start_service_all)
-        cls.wait_and_update(function_name=cls.s3.failures.tlog_start_service)
-
-        cls.logger.info('minio config')
-        cls.logger.info(cls.s3.minio_config)
+        # cls.logger.info('minio config')
+        # cls.logger.info(cls.s3.minio_config)
 
     @classmethod
     def tearDownClass(cls):
@@ -108,18 +105,19 @@ class BaseTest(TestCase):
 
     def setUp(self):
         self.s3 = self.s3_controller.s3[self.s3_service_name]
+        self.wait_and_update(function_name=self.s3.failures.zdb_start_service_all)
+        self.wait_and_update(function_name=self.s3.failures.tlog_start_service)
 
     def tearDown(self):
         pass
 
-    @classmethod
-    def wait_and_update(cls, function_name):
+    def wait_and_update(self, function_name):
         for _ in range(30):
             try:
                 function_name()
                 return
             except Exception as e:
-                cls.logger.warning(e)
+                self.logger.warning(e)
                 time.sleep(5)
-                cls.s3_controller = Controller(cls.config)
-                cls.s3 = cls.s3_controller.s3[cls.s3_service_name]
+                self.s3_controller = Controller(self.config)
+                self.s3 = self.s3_controller.s3[self.s3_service_name]
