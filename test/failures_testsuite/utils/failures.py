@@ -275,6 +275,7 @@ class FailureGenenator:
             logger.warning('There is no s3')
             return
 
+        logger.info('tlog start service')
         tlog = s3.service.data['data']['tlog']
         robot = j.clients.zrobot.robots[tlog['node']]
         robot = robot_god_token(robot)
