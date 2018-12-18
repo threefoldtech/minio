@@ -175,11 +175,11 @@ class S3Manager:
         return file_path
 
     def _create_bucket(self):
-        bucket_name = j.data.idgenerator.generateXCharID(16)
+        self.bucket_name = j.data.idgenerator.generateXCharID(16)
         try:
-            self.client.make_bucket(bucket_name)
+            self.client.make_bucket(self.bucket_name)
             logger.info("create bucket")
-            logger.info("bucket : {}".format(bucket_name))
+            logger.info("bucket : {}".format(self.bucket_name))
         except BucketAlreadyExists:
             logger.warning('Bucket already exists')
         except BucketAlreadyOwnedByYou:
@@ -188,7 +188,14 @@ class S3Manager:
             logger.error("can't create bucket!")
             logger.error(e)
             raise RuntimeError("Can't create bucket!")
-        return bucket_name
+        return self.bucket_name
+
+    def _delete_bucket(self, bucket_name):
+        try:
+            self.client.remove_bucket(bucket_name=bucket_name)
+        except Exception as e:
+            logger.error("can't create bucket!")
+            logger.error(e)
 
     def upload_file(self, size=1024 * 1024):
         bucket_name = self._create_bucket()
