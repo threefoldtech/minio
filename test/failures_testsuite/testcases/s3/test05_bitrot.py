@@ -6,6 +6,10 @@ import time
 
 
 class TestS3Failures(BaseTest):
+    def setUp(self):
+        super().setUp()
+        self.namespaces = self.s3.data['namespaces']
+
     def corrupt_namespace_data(self, namespace):
         robot = j.clients.zrobot.robots[namespace['node']]
         robot = robot_god_token(robot)
