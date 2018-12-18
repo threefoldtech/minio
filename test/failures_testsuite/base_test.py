@@ -5,11 +5,10 @@ from subprocess import Popen, PIPE
 import time, socket
 
 
-
 class BaseTest(TestCase):
     file_name = None
     logger = j.logger.get('s3_failures')
-    socket.setdefaulttimeout(60) # Minio use _GLOBAL_DEFAULT_TIMEOUT which is None by default
+    socket.setdefaulttimeout(60)  # Minio use _GLOBAL_DEFAULT_TIMEOUT which is None by default
     s3_service_name = None
     config = j.data.serializer.yaml.load('./config.yaml')
 
@@ -109,7 +108,10 @@ class BaseTest(TestCase):
         self.wait_and_update(function_name=self.s3.failures.tlog_start_service)
 
     def tearDown(self):
-        pass
+        try:
+            self.s3._delete_bucket(self.s3.bucket_name)
+        except:
+            pass
 
     def wait_and_update(self, function_name):
         for _ in range(30):
