@@ -6,18 +6,6 @@ import time
 
 
 class TestS3Failures(BaseTest):
-    def setUp(self):
-        super().setUp()
-        ser = self.s3.dm_robot.services.names[self.s3_service_name]
-        self.namespaces = ser.data['data']['namespaces']
-        self.logger.info('Make sure all zdbs are up')
-        self.s3.failures.zdb_start_service(count=len(self.namespaces))
-
-    def tearDown(self):
-        super().tearDown()
-        self.logger.info('Make sure all zdbs are up')
-        self.s3.failures.zdb_start_service(count=len(self.namespaces))
-
     def corrupt_namespace_data(self, namespace):
         robot = j.clients.zrobot.robots[namespace['node']]
         robot = robot_god_token(robot)
