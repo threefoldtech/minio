@@ -30,7 +30,6 @@ import (
 
 	"github.com/minio/minio/cmd/logger"
 	"github.com/minio/minio/pkg/disk"
-	"github.com/minio/minio/pkg/hash"
 	"github.com/minio/minio/pkg/lock"
 )
 
@@ -92,7 +91,7 @@ func newCacheFSObjects(dir string, expiry int, maxDiskUsagePct int) (*cacheFSObj
 		appendFileMap: make(map[string]*fsAppendFile),
 	}
 
-	go fsObjects.cleanupStaleMultipartUploads(context.Background(), globalMultipartCleanupInterval, globalMultipartExpiry, globalServiceDoneCh)
+	go fsObjects.cleanupStaleMultipartUploads(context.Background(), GlobalMultipartCleanupInterval, GlobalMultipartExpiry, GlobalServiceDoneCh)
 
 	cacheFS := cacheFSObjects{
 		FSObjects:       fsObjects,
@@ -159,7 +158,7 @@ func (cfs *cacheFSObjects) purgeTrash() {
 
 	for {
 		select {
-		case <-globalServiceDoneCh:
+		case <-GlobalServiceDoneCh:
 			return
 		case <-ticker.C:
 			trashPath := path.Join(cfs.fsPath, minioMetaBucket, cacheTrashDir)
@@ -258,7 +257,7 @@ func (cfs *cacheFSObjects) IsOnline() bool {
 }
 
 // Caches the object to disk
-func (cfs *cacheFSObjects) Put(ctx context.Context, bucket, object string, data *hash.Reader, metadata map[string]string, opts ObjectOptions) error {
+func (cfs *cacheFSObjects) Put(ctx context.Context, bucket, object string, data *PutObjReader, metadata map[string]string, opts ObjectOptions) error {
 	if cfs.diskUsageHigh() {
 		select {
 		case cfs.purgeChan <- struct{}{}:
@@ -301,7 +300,8 @@ func (cfs *cacheFSObjects) Exists(ctx context.Context, bucket, object string) bo
 
 // Identical to fs PutObject operation except that it uses ETag in metadata
 // headers.
-func (cfs *cacheFSObjects) PutObject(ctx context.Context, bucket string, object string, data *hash.Reader, metadata map[string]string, opts ObjectOptions) (objInfo ObjectInfo, retErr error) {
+func (cfs *cacheFSObjects) PutObject(ctx context.Context, bucket string, object string, r *PutObjReader, metadata map[string]string, opts ObjectOptions) (objInfo ObjectInfo, retErr error) {
+	data := r.Reader
 	fs := cfs.FSObjects
 	// Lock the object.
 	objectLock := fs.nsMutex.NewNSLock(bucket, object)

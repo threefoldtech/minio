@@ -28,6 +28,7 @@ import (
 	"strings"
 
 	"github.com/minio/minio/cmd/logger"
+	"github.com/minio/minio/pkg/auth"
 	"github.com/minio/minio/pkg/handlers"
 	httptracer "github.com/minio/minio/pkg/handlers"
 )
@@ -133,6 +134,11 @@ func extractMetadata(ctx context.Context, r *http.Request) (metadata map[string]
 		return nil, err
 	}
 
+	// Set content-type to default value if it is not set.
+	if _, ok := metadata["content-type"]; !ok {
+		metadata["content-type"] = "application/octet-stream"
+	}
+
 	// Success.
 	return metadata, nil
 }
@@ -176,14 +182,35 @@ func getRedirectPostRawQuery(objInfo ObjectInfo) string {
 	return redirectValues.Encode()
 }
 
+// Returns access credentials in the request Authorization header.
+func getReqAccessCred(r *http.Request, region string) (cred auth.Credentials) {
+	cred, _, _ = getReqAccessKeyV4(r, region)
+	if cred.AccessKey == "" {
+		cred, _, _ = getReqAccessKeyV2(r)
+	}
+	if cred.AccessKey == "" {
+		claims, owner, _ := webRequestAuthenticate(r)
+		if owner {
+			return globalServerConfig.GetCredential()
+		}
+		cred, _ = globalIAMSys.GetUser(claims.Subject)
+	}
+	return cred
+}
+
 // Extract request params to be sent with event notifiation.
 func extractReqParams(r *http.Request) map[string]string {
 	if r == nil {
 		return nil
 	}
 
+	region := globalServerConfig.GetRegion()
+	cred := getReqAccessCred(r, region)
+
 	// Success.
 	return map[string]string{
+		"region":          region,
+		"accessKey":       cred.AccessKey,
 		"sourceIPAddress": handlers.GetSourceIP(r),
 		// Add more fields here.
 	}
@@ -193,6 +220,7 @@ func extractReqParams(r *http.Request) map[string]string {
 func extractRespElements(w http.ResponseWriter) map[string]string {
 
 	return map[string]string{
+		"requestId":      w.Header().Get(responseRequestIDKey),
 		"content-length": w.Header().Get("Content-Length"),
 		// Add more fields here.
 	}
@@ -336,8 +364,14 @@ func getResource(path string, host string, domain string) (string, error) {
 	return slashSeparator + pathJoin(bucket, path), nil
 }
 
+// If none of the http routes match respond with MethodNotAllowed, in JSON
+func notFoundHandlerJSON(w http.ResponseWriter, r *http.Request) {
+	writeErrorResponseJSON(w, ErrMethodNotAllowed, r.URL)
+	return
+}
+
 // If none of the http routes match respond with MethodNotAllowed
 func notFoundHandler(w http.ResponseWriter, r *http.Request) {
-	writeErrorResponse(w, ErrMethodNotAllowed, r.URL)
+	writeErrorResponse(w, ErrMethodNotAllowed, r.URL, guessIsBrowserReq(r))
 	return
 }

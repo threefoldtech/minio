@@ -19,7 +19,6 @@ package cmd
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -32,7 +31,6 @@ import (
 	"time"
 
 	"github.com/minio/minio/cmd/logger"
-	"github.com/minio/minio/pkg/hash"
 	"github.com/minio/minio/pkg/lock"
 	"github.com/minio/minio/pkg/madmin"
 	"github.com/minio/minio/pkg/mimedb"
@@ -154,10 +152,10 @@ func NewFSObjectLayer(fsPath string) (ObjectLayer, error) {
 	fs.fsFormatRlk = rlk
 
 	if !fs.diskMount {
-		go fs.diskUsage(globalServiceDoneCh)
+		go fs.diskUsage(GlobalServiceDoneCh)
 	}
 
-	go fs.cleanupStaleMultipartUploads(ctx, globalMultipartCleanupInterval, globalMultipartExpiry, globalServiceDoneCh)
+	go fs.cleanupStaleMultipartUploads(ctx, GlobalMultipartCleanupInterval, GlobalMultipartExpiry, GlobalServiceDoneCh)
 
 	// Return successfully initialized object layer.
 	return fs, nil
@@ -189,14 +187,9 @@ func (fs *FSObjects) diskUsage(doneCh chan struct{}) {
 		case <-doneCh:
 			return errWalkAbort
 		default:
-			var fi os.FileInfo
-			var err error
-			if hasSuffix(entry, slashSeparator) {
-				fi, err = fsStatDir(ctx, entry)
-			} else {
-				fi, err = fsStatFile(ctx, entry)
-			}
+			fi, err := os.Stat(entry)
 			if err != nil {
+				err = osErrToFSFileErr(err)
 				return err
 			}
 			atomic.AddUint64(&fs.totalUsed, uint64(fi.Size()))
@@ -228,14 +221,9 @@ func (fs *FSObjects) diskUsage(doneCh chan struct{}) {
 					}
 				}
 
-				var fi os.FileInfo
-				var err error
-				if hasSuffix(entry, slashSeparator) {
-					fi, err = fsStatDir(ctx, entry)
-				} else {
-					fi, err = fsStatFile(ctx, entry)
-				}
+				fi, err := os.Stat(entry)
 				if err != nil {
+					err = osErrToFSFileErr(err)
 					return err
 				}
 				usage = usage + uint64(fi.Size())
@@ -461,8 +449,7 @@ func (fs *FSObjects) CopyObject(ctx context.Context, srcBucket, srcObject, dstBu
 		// Return the new object info.
 		return fsMeta.ToObjectInfo(srcBucket, srcObject, fi), nil
 	}
-
-	objInfo, err := fs.putObject(ctx, dstBucket, dstObject, srcInfo.Reader, srcInfo.UserDefined)
+	objInfo, err := fs.putObject(ctx, dstBucket, dstObject, srcInfo.PutObjReader, srcInfo.UserDefined, dstOpts)
 	if err != nil {
 		return oi, toObjectErr(err, dstBucket, dstObject)
 	}
@@ -719,8 +706,12 @@ func (fs *FSObjects) getObjectInfo(ctx context.Context, bucket, object string) (
 		// Read from fs metadata only if it exists.
 		_, rerr := fsMeta.ReadFrom(ctx, rlk.LockedFile)
 		fs.rwPool.Close(fsMetaPath)
-		if rerr != nil && rerr != io.EOF {
-			return oi, rerr
+		if rerr != nil {
+			if rerr != io.EOF {
+				return oi, rerr
+			}
+			// Set Default ETag, if fs.json is empty
+			fsMeta = fs.defaultFsJSON(object)
 		}
 	}
 
@@ -813,8 +804,8 @@ func (fs *FSObjects) parentDirIsObject(ctx context.Context, bucket, parent strin
 // until EOF, writes data directly to configured filesystem path.
 // Additionally writes `fs.json` which carries the necessary metadata
 // for future object operations.
-func (fs *FSObjects) PutObject(ctx context.Context, bucket string, object string, data *hash.Reader, metadata map[string]string, opts ObjectOptions) (objInfo ObjectInfo, retErr error) {
-	if err := checkPutObjectArgs(ctx, bucket, object, fs, data.Size()); err != nil {
+func (fs *FSObjects) PutObject(ctx context.Context, bucket string, object string, r *PutObjReader, metadata map[string]string, opts ObjectOptions) (objInfo ObjectInfo, retErr error) {
+	if err := checkPutObjectArgs(ctx, bucket, object, fs, r.Size()); err != nil {
 		return ObjectInfo{}, err
 	}
 	// Lock the object.
@@ -824,11 +815,13 @@ func (fs *FSObjects) PutObject(ctx context.Context, bucket string, object string
 		return objInfo, err
 	}
 	defer objectLock.Unlock()
-	return fs.putObject(ctx, bucket, object, data, metadata)
+	return fs.putObject(ctx, bucket, object, r, metadata, opts)
 }
 
 // putObject - wrapper for PutObject
-func (fs *FSObjects) putObject(ctx context.Context, bucket string, object string, data *hash.Reader, metadata map[string]string) (objInfo ObjectInfo, retErr error) {
+func (fs *FSObjects) putObject(ctx context.Context, bucket string, object string, r *PutObjReader, metadata map[string]string, opts ObjectOptions) (objInfo ObjectInfo, retErr error) {
+	data := r.Reader
+
 	// No metadata is set, allocate a new one.
 	meta := make(map[string]string)
 	for k, v := range metadata {
@@ -919,8 +912,7 @@ func (fs *FSObjects) putObject(ctx context.Context, bucket string, object string
 		fsRemoveFile(ctx, fsTmpObjPath)
 		return ObjectInfo{}, toObjectErr(err, bucket, object)
 	}
-
-	fsMeta.Meta["etag"] = hex.EncodeToString(data.MD5Current())
+	fsMeta.Meta["etag"] = r.MD5CurrentHexString()
 
 	// Should return IncompleteBody{} error when reader has fewer
 	// bytes than specified in request header.
@@ -1220,14 +1212,20 @@ func (fs *FSObjects) ListObjects(ctx context.Context, bucket, prefix, marker, de
 		fs.listPool.Set(params, walkResultCh, endWalkCh)
 	}
 
-	result := ListObjectsInfo{IsTruncated: !eof}
+	result := ListObjectsInfo{}
 	for _, objInfo := range objInfos {
-		result.NextMarker = objInfo.Name
 		if objInfo.IsDir && delimiter == slashSeparator {
 			result.Prefixes = append(result.Prefixes, objInfo.Name)
 			continue
 		}
 		result.Objects = append(result.Objects, objInfo)
+	}
+
+	if !eof {
+		result.IsTruncated = true
+		if len(objInfos) > 0 {
+			result.NextMarker = objInfos[len(objInfos)-1].Name
+		}
 	}
 
 	// Success.
@@ -1314,7 +1312,12 @@ func (fs *FSObjects) IsNotificationSupported() bool {
 	return true
 }
 
-// IsEncryptionSupported returns whether server side encryption is applicable for this layer.
+// IsListenBucketSupported returns whether listen bucket notification is applicable for this layer.
+func (fs *FSObjects) IsListenBucketSupported() bool {
+	return true
+}
+
+// IsEncryptionSupported returns whether server side encryption is implemented for this layer.
 func (fs *FSObjects) IsEncryptionSupported() bool {
 	return true
 }

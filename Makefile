@@ -19,12 +19,15 @@ getdeps:
 	@echo "Installing misspell" && go get -u github.com/client9/misspell/cmd/misspell
 	@echo "Installing ineffassign" && go get -u github.com/gordonklaus/ineffassign
 
+crosscompile:
+	@(env bash $(PWD)/buildscripts/cross-compile.sh)
+
 verifiers: getdeps vet fmt lint cyclo deadcode spelling
 
 vet:
 	@echo "Running $@"
-	@go tool vet -atomic -bool -copylocks -nilfunc -printf -shadow -rangeloops -unreachable -unsafeptr -unusedresult cmd
-	@go tool vet -atomic -bool -copylocks -nilfunc -printf -shadow -rangeloops -unreachable -unsafeptr -unusedresult pkg
+	@go tool vet cmd
+	@go tool vet pkg
 
 fmt:
 	@echo "Running $@"
@@ -60,7 +63,7 @@ spelling:
 check: test
 test: verifiers build
 	@echo "Running unit tests"
-	@go test $(GOFLAGS) -tags kqueue ./...
+	@CGO_ENABLED=0 go test -tags kqueue ./...
 
 verify: build
 	@echo "Verifying build"
@@ -73,7 +76,7 @@ coverage: build
 # Builds minio locally.
 build: checks
 	@echo "Building minio binary to './minio'"
-	@CGO_ENABLED=0 go build -tags kqueue --ldflags $(BUILD_LDFLAGS) -o $(PWD)/minio
+	@GOFLAGS="" CGO_ENABLED=0 go build -tags kqueue --ldflags $(BUILD_LDFLAGS) -o $(PWD)/minio
 
 docker: build
 	@docker build -t $(TAG) . -f Dockerfile.dev

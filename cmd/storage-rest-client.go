@@ -115,11 +115,11 @@ type storageRESTClient struct {
 // Wrapper to restClient.Call to handle network errors, in case of network error the connection is makred disconnected
 // permanently. The only way to restore the storage connection is at the xl-sets layer by xlsets.monitorAndConnectEndpoints()
 // after verifying format.json
-func (client *storageRESTClient) call(method string, values url.Values, body io.Reader) (respBody io.ReadCloser, err error) {
+func (client *storageRESTClient) call(method string, values url.Values, body io.Reader, length int64) (respBody io.ReadCloser, err error) {
 	if !client.connected {
 		return nil, errDiskNotFound
 	}
-	respBody, err = client.restClient.Call(method, values, body)
+	respBody, err = client.restClient.Call(method, values, body, length)
 	if err == nil {
 		return respBody, nil
 	}
@@ -148,7 +148,7 @@ func (client *storageRESTClient) LastError() error {
 
 // DiskInfo - fetch disk information for a remote disk.
 func (client *storageRESTClient) DiskInfo() (info DiskInfo, err error) {
-	respBody, err := client.call(storageRESTMethodDiskInfo, nil, nil)
+	respBody, err := client.call(storageRESTMethodDiskInfo, nil, nil, -1)
 	if err != nil {
 		return
 	}
@@ -161,14 +161,14 @@ func (client *storageRESTClient) DiskInfo() (info DiskInfo, err error) {
 func (client *storageRESTClient) MakeVol(volume string) (err error) {
 	values := make(url.Values)
 	values.Set(storageRESTVolume, volume)
-	respBody, err := client.call(storageRESTMethodMakeVol, values, nil)
+	respBody, err := client.call(storageRESTMethodMakeVol, values, nil, -1)
 	defer CloseResponse(respBody)
 	return err
 }
 
 // ListVols - List all volumes on a remote disk.
 func (client *storageRESTClient) ListVols() (volinfo []VolInfo, err error) {
-	respBody, err := client.call(storageRESTMethodListVols, nil, nil)
+	respBody, err := client.call(storageRESTMethodListVols, nil, nil, -1)
 	if err != nil {
 		return
 	}
@@ -181,7 +181,7 @@ func (client *storageRESTClient) ListVols() (volinfo []VolInfo, err error) {
 func (client *storageRESTClient) StatVol(volume string) (volInfo VolInfo, err error) {
 	values := make(url.Values)
 	values.Set(storageRESTVolume, volume)
-	respBody, err := client.call(storageRESTMethodStatVol, values, nil)
+	respBody, err := client.call(storageRESTMethodStatVol, values, nil, -1)
 	if err != nil {
 		return
 	}
@@ -194,18 +194,7 @@ func (client *storageRESTClient) StatVol(volume string) (volInfo VolInfo, err er
 func (client *storageRESTClient) DeleteVol(volume string) (err error) {
 	values := make(url.Values)
 	values.Set(storageRESTVolume, volume)
-	respBody, err := client.call(storageRESTMethodDeleteVol, values, nil)
-	defer CloseResponse(respBody)
-	return err
-}
-
-// PrepareFile - to fallocate() disk space for a file.
-func (client *storageRESTClient) PrepareFile(volume, path string, length int64) error {
-	values := make(url.Values)
-	values.Set(storageRESTVolume, volume)
-	values.Set(storageRESTFilePath, path)
-	values.Set(storageRESTLength, strconv.Itoa(int(length)))
-	respBody, err := client.call(storageRESTMethodPrepareFile, values, nil)
+	respBody, err := client.call(storageRESTMethodDeleteVol, values, nil, -1)
 	defer CloseResponse(respBody)
 	return err
 }
@@ -216,7 +205,28 @@ func (client *storageRESTClient) AppendFile(volume, path string, buffer []byte) 
 	values.Set(storageRESTVolume, volume)
 	values.Set(storageRESTFilePath, path)
 	reader := bytes.NewBuffer(buffer)
-	respBody, err := client.call(storageRESTMethodAppendFile, values, reader)
+	respBody, err := client.call(storageRESTMethodAppendFile, values, reader, -1)
+	defer CloseResponse(respBody)
+	return err
+}
+
+func (client *storageRESTClient) CreateFile(volume, path string, length int64, r io.Reader) error {
+	values := make(url.Values)
+	values.Set(storageRESTVolume, volume)
+	values.Set(storageRESTFilePath, path)
+	values.Set(storageRESTLength, strconv.Itoa(int(length)))
+	respBody, err := client.call(storageRESTMethodCreateFile, values, r, length)
+	defer CloseResponse(respBody)
+	return err
+}
+
+// WriteAll - write all data to a file.
+func (client *storageRESTClient) WriteAll(volume, path string, buffer []byte) error {
+	values := make(url.Values)
+	values.Set(storageRESTVolume, volume)
+	values.Set(storageRESTFilePath, path)
+	reader := bytes.NewBuffer(buffer)
+	respBody, err := client.call(storageRESTMethodWriteAll, values, reader, -1)
 	defer CloseResponse(respBody)
 	return err
 }
@@ -226,7 +236,7 @@ func (client *storageRESTClient) StatFile(volume, path string) (info FileInfo, e
 	values := make(url.Values)
 	values.Set(storageRESTVolume, volume)
 	values.Set(storageRESTFilePath, path)
-	respBody, err := client.call(storageRESTMethodStatFile, values, nil)
+	respBody, err := client.call(storageRESTMethodStatFile, values, nil, -1)
 	if err != nil {
 		return info, err
 	}
@@ -240,12 +250,26 @@ func (client *storageRESTClient) ReadAll(volume, path string) ([]byte, error) {
 	values := make(url.Values)
 	values.Set(storageRESTVolume, volume)
 	values.Set(storageRESTFilePath, path)
-	respBody, err := client.call(storageRESTMethodReadAll, values, nil)
+	respBody, err := client.call(storageRESTMethodReadAll, values, nil, -1)
 	if err != nil {
 		return nil, err
 	}
 	defer CloseResponse(respBody)
 	return ioutil.ReadAll(respBody)
+}
+
+// ReadFileStream - returns a reader for the requested file.
+func (client *storageRESTClient) ReadFileStream(volume, path string, offset, length int64) (io.ReadCloser, error) {
+	values := make(url.Values)
+	values.Set(storageRESTVolume, volume)
+	values.Set(storageRESTFilePath, path)
+	values.Set(storageRESTOffset, strconv.Itoa(int(offset)))
+	values.Set(storageRESTLength, strconv.Itoa(int(length)))
+	respBody, err := client.call(storageRESTMethodReadFileStream, values, nil, -1)
+	if err != nil {
+		return nil, err
+	}
+	return respBody, nil
 }
 
 // ReadFile - reads section of a file.
@@ -262,7 +286,7 @@ func (client *storageRESTClient) ReadFile(volume, path string, offset int64, buf
 		values.Set(storageRESTBitrotAlgo, "")
 		values.Set(storageRESTBitrotHash, "")
 	}
-	respBody, err := client.call(storageRESTMethodReadFile, values, nil)
+	respBody, err := client.call(storageRESTMethodReadFile, values, nil, -1)
 	if err != nil {
 		return 0, err
 	}
@@ -277,7 +301,7 @@ func (client *storageRESTClient) ListDir(volume, dirPath string, count int) (ent
 	values.Set(storageRESTVolume, volume)
 	values.Set(storageRESTDirPath, dirPath)
 	values.Set(storageRESTCount, strconv.Itoa(count))
-	respBody, err := client.call(storageRESTMethodListDir, values, nil)
+	respBody, err := client.call(storageRESTMethodListDir, values, nil, -1)
 	if err != nil {
 		return nil, err
 	}
@@ -291,7 +315,7 @@ func (client *storageRESTClient) DeleteFile(volume, path string) error {
 	values := make(url.Values)
 	values.Set(storageRESTVolume, volume)
 	values.Set(storageRESTFilePath, path)
-	respBody, err := client.call(storageRESTMethodDeleteFile, values, nil)
+	respBody, err := client.call(storageRESTMethodDeleteFile, values, nil, -1)
 	defer CloseResponse(respBody)
 	return err
 }
@@ -303,7 +327,7 @@ func (client *storageRESTClient) RenameFile(srcVolume, srcPath, dstVolume, dstPa
 	values.Set(storageRESTSrcPath, srcPath)
 	values.Set(storageRESTDstVolume, dstVolume)
 	values.Set(storageRESTDstPath, dstPath)
-	respBody, err := client.call(storageRESTMethodRenameFile, values, nil)
+	respBody, err := client.call(storageRESTMethodRenameFile, values, nil, -1)
 	defer CloseResponse(respBody)
 	return err
 }
@@ -311,6 +335,7 @@ func (client *storageRESTClient) RenameFile(srcVolume, srcPath, dstVolume, dstPa
 // Close - marks the client as closed.
 func (client *storageRESTClient) Close() error {
 	client.connected = false
+	client.restClient.Close()
 	return nil
 }
 

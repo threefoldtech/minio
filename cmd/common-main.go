@@ -17,6 +17,7 @@
 package cmd
 
 import (
+	"crypto/tls"
 	"errors"
 	"net"
 	"os"
@@ -29,10 +30,12 @@ import (
 	dns2 "github.com/miekg/dns"
 	"github.com/minio/cli"
 	"github.com/minio/minio-go/pkg/set"
-	"github.com/minio/minio/cmd/crypto"
 	"github.com/minio/minio/cmd/logger"
+	"github.com/minio/minio/cmd/logger/target/console"
+	"github.com/minio/minio/cmd/logger/target/http"
 	"github.com/minio/minio/pkg/auth"
 	"github.com/minio/minio/pkg/dns"
+	xnet "github.com/minio/minio/pkg/net"
 )
 
 // Check for updates and print a notification message
@@ -49,57 +52,115 @@ func checkUpdate(mode string) {
 
 // Load logger targets based on user's configuration
 func loadLoggers() {
-	if endpoint, ok := os.LookupEnv("MINIO_LOGGER_HTTP_ENDPOINT"); ok {
-		// Enable http logging through ENV, this is specifically added gateway audit logging.
-		logger.AddTarget(logger.NewHTTP(endpoint, NewCustomHTTPTransport()))
-		return
+	auditEndpoint, ok := os.LookupEnv("MINIO_AUDIT_LOGGER_HTTP_ENDPOINT")
+	if ok {
+		// Enable audit HTTP logging through ENV.
+		logger.AddAuditTarget(http.New(auditEndpoint, NewCustomHTTPTransport()))
+	}
+
+	loggerEndpoint, ok := os.LookupEnv("MINIO_LOGGER_HTTP_ENDPOINT")
+	if ok {
+		// Enable HTTP logging through ENV.
+		logger.AddTarget(http.New(loggerEndpoint, NewCustomHTTPTransport()))
+	} else {
+		for _, l := range globalServerConfig.Logger.HTTP {
+			if l.Enabled {
+				// Enable http logging
+				logger.AddTarget(http.New(l.Endpoint, NewCustomHTTPTransport()))
+			}
+		}
 	}
 
 	if globalServerConfig.Logger.Console.Enabled {
 		// Enable console logging
-		logger.AddTarget(logger.NewConsole())
+		logger.AddTarget(console.New())
 	}
 
-	for _, l := range globalServerConfig.Logger.HTTP {
-		if l.Enabled {
-			// Enable http logging
-			logger.AddTarget(logger.NewHTTP(l.Endpoint, NewCustomHTTPTransport()))
+}
+
+func newConfigDirFromCtx(ctx *cli.Context, option string, getDefaultDir func() string) (*ConfigDir, bool) {
+	var dir string
+	var dirSet bool
+
+	switch {
+	case ctx.IsSet(option):
+		dir = ctx.String(option)
+		dirSet = true
+	case ctx.GlobalIsSet(option):
+		dir = ctx.GlobalString(option)
+		dirSet = true
+		// cli package does not expose parent's option option.  Below code is workaround.
+		if dir == "" || dir == getDefaultDir() {
+			dirSet = false // Unset to false since GlobalIsSet() true is a false positive.
+			if ctx.Parent().GlobalIsSet(option) {
+				dir = ctx.Parent().GlobalString(option)
+				dirSet = true
+			}
+		}
+	default:
+		// Neither local nor global option is provided.  In this case, try to use
+		// default directory.
+		dir = getDefaultDir()
+		if dir == "" {
+			logger.FatalIf(errInvalidArgument, "%s option must be provided", option)
 		}
 	}
+
+	if dir == "" {
+		logger.FatalIf(errors.New("empty directory"), "%s directory cannot be empty", option)
+	}
+
+	// Disallow relative paths, figure out absolute paths.
+	dirAbs, err := filepath.Abs(dir)
+	logger.FatalIf(err, "Unable to fetch absolute path for %s=%s", option, dir)
+
+	logger.FatalIf(mkdirAllIgnorePerm(dirAbs), "Unable to create directory specified %s=%s", option, dir)
+
+	return &ConfigDir{path: dirAbs}, dirSet
 }
 
 func handleCommonCmdArgs(ctx *cli.Context) {
 
-	var configDir string
-
-	switch {
-	case ctx.IsSet("config-dir"):
-		configDir = ctx.String("config-dir")
-	case ctx.GlobalIsSet("config-dir"):
-		configDir = ctx.GlobalString("config-dir")
-		// cli package does not expose parent's "config-dir" option.  Below code is workaround.
-		if configDir == "" || configDir == getConfigDir() {
-			if ctx.Parent().GlobalIsSet("config-dir") {
-				configDir = ctx.Parent().GlobalString("config-dir")
-			}
-		}
-	default:
-		// Neither local nor global config-dir option is provided.  In this case, try to use
-		// default config directory.
-		configDir = getConfigDir()
-		if configDir == "" {
-			logger.FatalIf(errors.New("missing option"), "config-dir option must be provided")
-		}
+	// Get "json" flag from command line argument and
+	// enable json and quite modes if jason flag is turned on.
+	globalCLIContext.JSON = ctx.IsSet("json") || ctx.GlobalIsSet("json")
+	if globalCLIContext.JSON {
+		logger.EnableJSON()
 	}
 
-	if configDir == "" {
-		logger.FatalIf(errors.New("empty directory"), "Configuration directory cannot be empty")
+	// Get quiet flag from command line argument.
+	globalCLIContext.Quiet = ctx.IsSet("quiet") || ctx.GlobalIsSet("quiet")
+	if globalCLIContext.Quiet {
+		logger.EnableQuiet()
 	}
 
-	// Disallow relative paths, figure out absolute paths.
-	configDirAbs, err := filepath.Abs(configDir)
-	logger.FatalIf(err, "Unable to fetch absolute path for config directory %s", configDir)
-	setConfigDir(configDirAbs)
+	// Get anonymous flag from command line argument.
+	globalCLIContext.Anonymous = ctx.IsSet("anonymous") || ctx.GlobalIsSet("anonymous")
+	if globalCLIContext.Anonymous {
+		logger.EnableAnonymous()
+	}
+
+	// Fetch address option
+	globalCLIContext.Addr = ctx.GlobalString("address")
+	if globalCLIContext.Addr == "" || globalCLIContext.Addr == ":"+globalMinioDefaultPort {
+		globalCLIContext.Addr = ctx.String("address")
+	}
+
+	// Set all config, certs and CAs directories.
+	var configSet, certsSet bool
+	globalConfigDir, configSet = newConfigDirFromCtx(ctx, "config-dir", defaultConfigDir.Get)
+	globalCertsDir, certsSet = newConfigDirFromCtx(ctx, "certs-dir", defaultCertsDir.Get)
+
+	// Remove this code when we deprecate and remove config-dir.
+	// This code is to make sure we inherit from the config-dir
+	// option if certs-dir is not provided.
+	if !certsSet && configSet {
+		globalCertsDir = &ConfigDir{path: filepath.Join(globalConfigDir.Get(), certsDir)}
+	}
+
+	globalCertsCADir = &ConfigDir{path: filepath.Join(globalCertsDir.Get(), certsCADir)}
+
+	logger.FatalIf(mkdirAllIgnorePerm(globalCertsCADir.Get()), "Unable to create certs CA directory at %s", globalCertsCADir.Get())
 }
 
 // Parses the given compression exclude list `extensions` or `content-types`.
@@ -157,12 +218,47 @@ func handleCommonEnvVars() {
 	etcdEndpointsEnv, ok := os.LookupEnv("MINIO_ETCD_ENDPOINTS")
 	if ok {
 		etcdEndpoints := strings.Split(etcdEndpointsEnv, ",")
+
+		var etcdSecure bool
+		for _, endpoint := range etcdEndpoints {
+			u, err := xnet.ParseURL(endpoint)
+			if err != nil {
+				logger.FatalIf(err, "Unable to initialize etcd with %s", etcdEndpoints)
+			}
+			// If one of the endpoint is https, we will use https directly.
+			etcdSecure = etcdSecure || u.Scheme == "https"
+		}
+
 		var err error
-		globalEtcdClient, err = etcd.New(etcd.Config{
-			Endpoints:         etcdEndpoints,
-			DialTimeout:       defaultDialTimeout,
-			DialKeepAliveTime: defaultDialKeepAlive,
-		})
+		if etcdSecure {
+			// This is only to support client side certificate authentication
+			// https://coreos.com/etcd/docs/latest/op-guide/security.html
+			etcdClientCertFile, ok1 := os.LookupEnv("MINIO_ETCD_CLIENT_CERT")
+			etcdClientCertKey, ok2 := os.LookupEnv("MINIO_ETCD_CLIENT_CERT_KEY")
+			var getClientCertificate func(*tls.CertificateRequestInfo) (*tls.Certificate, error)
+			if ok1 && ok2 {
+				getClientCertificate = func(unused *tls.CertificateRequestInfo) (*tls.Certificate, error) {
+					cert, terr := tls.LoadX509KeyPair(etcdClientCertFile, etcdClientCertKey)
+					return &cert, terr
+				}
+			}
+
+			globalEtcdClient, err = etcd.New(etcd.Config{
+				Endpoints:         etcdEndpoints,
+				DialTimeout:       defaultDialTimeout,
+				DialKeepAliveTime: defaultDialKeepAlive,
+				TLS: &tls.Config{
+					RootCAs:              globalRootCAs,
+					GetClientCertificate: getClientCertificate,
+				},
+			})
+		} else {
+			globalEtcdClient, err = etcd.New(etcd.Config{
+				Endpoints:         etcdEndpoints,
+				DialTimeout:       defaultDialTimeout,
+				DialKeepAliveTime: defaultDialKeepAlive,
+			})
+		}
 		logger.FatalIf(err, "Unable to initialize etcd with %s", etcdEndpoints)
 	}
 
@@ -176,14 +272,28 @@ func handleCommonEnvVars() {
 	minioEndpointsEnv, ok := os.LookupEnv("MINIO_PUBLIC_IPS")
 	if ok {
 		minioEndpoints := strings.Split(minioEndpointsEnv, ",")
-		globalDomainIPs = set.NewStringSet()
-		for i, ip := range minioEndpoints {
-			if net.ParseIP(ip) == nil {
-				logger.FatalIf(errInvalidArgument, "Unable to initialize Minio server with invalid MINIO_PUBLIC_IPS[%d]: %s", i, ip)
+		var domainIPs = set.NewStringSet()
+		for _, endpoint := range minioEndpoints {
+			if net.ParseIP(endpoint) == nil {
+				// Checking if the IP is a DNS entry.
+				addrs, err := net.LookupHost(endpoint)
+				if err != nil {
+					logger.FatalIf(err, "Unable to initialize Minio server with [%s] invalid entry found in MINIO_PUBLIC_IPS", endpoint)
+				}
+				for _, addr := range addrs {
+					domainIPs.Add(addr)
+				}
+				continue
 			}
-			globalDomainIPs.Add(ip)
+			domainIPs.Add(endpoint)
 		}
+		updateDomainIPs(domainIPs)
+	} else {
+		// Add found interfaces IP address to global domain IPS,
+		// loopback addresses will be naturally dropped.
+		updateDomainIPs(localIP4)
 	}
+
 	if globalDomainName != "" && !globalDomainIPs.IsEmpty() && globalEtcdClient != nil {
 		var err error
 		globalDNSConfig, err = dns.NewCoreDNS(globalDomainName, globalDomainIPs, globalMinioPort, globalEtcdClient)
@@ -271,20 +381,6 @@ func handleCommonEnvVars() {
 		// if worm is turned off or on.
 		globalIsEnvWORM = true
 		globalWORMEnabled = bool(wormFlag)
-	}
-
-	kmsConf, err := crypto.NewVaultConfig()
-	if err != nil {
-		logger.Fatal(err, "Unable to initialize hashicorp vault")
-	}
-	if kmsConf.Vault.Endpoint != "" {
-		kms, err := crypto.NewVault(kmsConf)
-		if err != nil {
-			logger.Fatal(err, "Unable to initialize KMS")
-		}
-		globalKMS = kms
-		globalKMSKeyID = kmsConf.Vault.Key.Name
-		globalKMSConfig = kmsConf
 	}
 
 	if compress := os.Getenv("MINIO_COMPRESS"); compress != "" {

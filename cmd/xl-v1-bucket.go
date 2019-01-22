@@ -244,7 +244,6 @@ func (xl xlObjects) DeleteBucket(ctx context.Context, bucket string) error {
 			err := disk.DeleteVol(bucket)
 
 			if err != nil {
-				logger.LogIf(ctx, err)
 				dErrs[index] = err
 				return
 			}
@@ -295,7 +294,12 @@ func (xl xlObjects) IsNotificationSupported() bool {
 	return true
 }
 
-// IsEncryptionSupported returns whether server side encryption is applicable for this layer.
+// IsListenBucketSupported returns whether listen bucket notification is applicable for this layer.
+func (xl xlObjects) IsListenBucketSupported() bool {
+	return true
+}
+
+// IsEncryptionSupported returns whether server side encryption is implemented for this layer.
 func (xl xlObjects) IsEncryptionSupported() bool {
 	return true
 }

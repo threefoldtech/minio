@@ -71,6 +71,7 @@ type posix struct {
 	connected bool
 
 	diskMount bool // indicates if the path is an actual mount.
+	driveSync bool // indicates if the backend is synchronous.
 
 	// Disk usage metrics
 	stopUsageCh chan struct{}
@@ -83,8 +84,10 @@ func checkPathLength(pathName string) error {
 		return errFileNameTooLong
 	}
 
-	// Convert any '\' to '/'.
-	pathName = filepath.ToSlash(pathName)
+	if runtime.GOOS == "windows" {
+		// Convert any '\' to '/'.
+		pathName = filepath.ToSlash(pathName)
+	}
 
 	// Check each path segment length is > 255
 	for len(pathName) > 0 && pathName != "." && pathName != "/" {
@@ -189,8 +192,17 @@ func newPosix(path string) (*posix, error) {
 		diskMount:   mountinfo.IsLikelyMountPoint(path),
 	}
 
+	var pf BoolFlag
+	if driveSync := os.Getenv("MINIO_DRIVE_SYNC"); driveSync != "" {
+		pf, err = ParseBoolFlag(driveSync)
+		if err != nil {
+			return nil, err
+		}
+		p.driveSync = bool(pf)
+	}
+
 	if !p.diskMount {
-		go p.diskUsage(globalServiceDoneCh)
+		go p.diskUsage(GlobalServiceDoneCh)
 	}
 
 	// Success.
@@ -374,6 +386,7 @@ func (s *posix) diskUsage(doneCh chan struct{}) {
 		default:
 			fi, err := os.Stat(entry)
 			if err != nil {
+				err = osErrToFSFileErr(err)
 				return err
 			}
 			atomic.AddUint64(&s.totalUsed, uint64(fi.Size()))
@@ -413,6 +426,7 @@ func (s *posix) diskUsage(doneCh chan struct{}) {
 				default:
 					fi, err := os.Stat(entry)
 					if err != nil {
+						err = osErrToFSFileErr(err)
 						return err
 					}
 					usage = usage + uint64(fi.Size())
@@ -847,7 +861,7 @@ func (s *posix) ReadFile(volume, path string, offset int64, buffer []byte, verif
 	return int64(len(buffer)), nil
 }
 
-func (s *posix) createFile(volume, path string) (f *os.File, err error) {
+func (s *posix) openFile(volume, path string, mode int) (f *os.File, err error) {
 	defer func() {
 		if err == errFaultyDisk {
 			atomic.AddInt32(&s.ioErrCount, 1)
@@ -896,7 +910,7 @@ func (s *posix) createFile(volume, path string) (f *os.File, err error) {
 		}
 	}
 
-	w, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
+	w, err := os.OpenFile(filePath, mode, 0666)
 	if err != nil {
 		// File path cannot be verified since one of the parents is a file.
 		switch {
@@ -914,11 +928,99 @@ func (s *posix) createFile(volume, path string) (f *os.File, err error) {
 	return w, nil
 }
 
-// PrepareFile - run prior actions before creating a new file for optimization purposes
-// Currently we use fallocate when available to avoid disk fragmentation as much as possible
-func (s *posix) PrepareFile(volume, path string, fileSize int64) (err error) {
-	// It doesn't make sense to create a negative-sized file
-	if fileSize < -1 {
+// Just like io.LimitedReader but supports Close() to be compatible with io.ReadCloser that is
+// returned by posix.ReadFileStream()
+type posixLimitedReader struct {
+	io.LimitedReader
+}
+
+func (l *posixLimitedReader) Close() error {
+	c, ok := l.R.(io.Closer)
+	if !ok {
+		return errUnexpected
+	}
+	return c.Close()
+}
+
+// ReadFileStream - Returns the read stream of the file.
+func (s *posix) ReadFileStream(volume, path string, offset, length int64) (io.ReadCloser, error) {
+	var err error
+	defer func() {
+		if err == errFaultyDisk {
+			atomic.AddInt32(&s.ioErrCount, 1)
+		}
+	}()
+
+	if offset < 0 {
+		return nil, errInvalidArgument
+	}
+
+	if atomic.LoadInt32(&s.ioErrCount) > maxAllowedIOError {
+		return nil, errFaultyDisk
+	}
+
+	if err = s.checkDiskFound(); err != nil {
+		return nil, err
+	}
+
+	volumeDir, err := s.getVolDir(volume)
+	if err != nil {
+		return nil, err
+	}
+	// Stat a volume entry.
+	_, err = os.Stat((volumeDir))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, errVolumeNotFound
+		} else if isSysErrIO(err) {
+			return nil, errFaultyDisk
+		}
+		return nil, err
+	}
+
+	// Validate effective path length before reading.
+	filePath := pathJoin(volumeDir, path)
+	if err = checkPathLength((filePath)); err != nil {
+		return nil, err
+	}
+
+	// Open the file for reading.
+	file, err := os.Open((filePath))
+	if err != nil {
+		switch {
+		case os.IsNotExist(err):
+			return nil, errFileNotFound
+		case os.IsPermission(err):
+			return nil, errFileAccessDenied
+		case isSysErrNotDir(err):
+			return nil, errFileAccessDenied
+		case isSysErrIO(err):
+			return nil, errFaultyDisk
+		default:
+			return nil, err
+		}
+	}
+
+	st, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	// Verify it is a regular file, otherwise subsequent Seek is
+	// undefined.
+	if !st.Mode().IsRegular() {
+		return nil, errIsNotRegular
+	}
+
+	if _, err = file.Seek(offset, io.SeekStart); err != nil {
+		return nil, err
+	}
+	return &posixLimitedReader{io.LimitedReader{R: file, N: length}}, nil
+}
+
+// CreateFile - creates the file.
+func (s *posix) CreateFile(volume, path string, fileSize int64, r io.Reader) (err error) {
+	if fileSize < 0 {
 		return errInvalidArgument
 	}
 
@@ -940,13 +1042,13 @@ func (s *posix) PrepareFile(volume, path string, fileSize int64) (err error) {
 		return err
 	}
 
-	// Create file if not found
-	w, err := s.createFile(volume, path)
+	// Create file if not found. Note that it is created with os.O_EXCL flag as the file
+	// always is supposed to be created in the tmp directory with a unique file name.
+	w, err := s.openFile(volume, path, os.O_CREATE|os.O_APPEND|os.O_WRONLY|os.O_EXCL)
 	if err != nil {
 		return err
 	}
 
-	// Close upon return.
 	defer w.Close()
 
 	var e error
@@ -969,7 +1071,45 @@ func (s *posix) PrepareFile(volume, path string, fileSize int64) (err error) {
 		}
 		return err
 	}
+
+	bufp := s.pool.Get().(*[]byte)
+	defer s.pool.Put(bufp)
+
+	n, err := io.CopyBuffer(w, r, *bufp)
+	if err != nil {
+		return err
+	}
+	if n < fileSize {
+		return errLessData
+	}
+	if n > fileSize {
+		return errMoreData
+	}
 	return nil
+}
+
+func (s *posix) WriteAll(volume, path string, buf []byte) (err error) {
+	defer func() {
+		if err == errFaultyDisk {
+			atomic.AddInt32(&s.ioErrCount, 1)
+		}
+	}()
+
+	if atomic.LoadInt32(&s.ioErrCount) > maxAllowedIOError {
+		return errFaultyDisk
+	}
+
+	// Create file if not found
+	w, err := s.openFile(volume, path, os.O_CREATE|os.O_SYNC|os.O_WRONLY)
+	if err != nil {
+		return err
+	}
+
+	if _, err = w.Write(buf); err != nil {
+		return err
+	}
+
+	return w.Close()
 }
 
 // AppendFile - append a byte array at path, if file doesn't exist at
@@ -985,14 +1125,23 @@ func (s *posix) AppendFile(volume, path string, buf []byte) (err error) {
 		return errFaultyDisk
 	}
 
-	// Create file if not found
-	w, err := s.createFile(volume, path)
+	var w *os.File
+	// Create file if not found, additionally also enables synchronous
+	// operation if asked by the user.
+	if s.driveSync {
+		w, err = s.openFile(volume, path, os.O_CREATE|os.O_SYNC|os.O_APPEND|os.O_WRONLY)
+	} else {
+		w, err = s.openFile(volume, path, os.O_CREATE|os.O_APPEND|os.O_WRONLY)
+	}
 	if err != nil {
 		return err
 	}
-	_, err = w.Write(buf)
-	w.Close()
-	return err
+
+	if _, err = w.Write(buf); err != nil {
+		return err
+	}
+
+	return w.Close()
 }
 
 // StatFile - get file info.

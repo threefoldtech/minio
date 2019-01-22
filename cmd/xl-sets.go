@@ -29,7 +29,6 @@ import (
 
 	"github.com/minio/minio/cmd/logger"
 	"github.com/minio/minio/pkg/bpool"
-	"github.com/minio/minio/pkg/hash"
 	"github.com/minio/minio/pkg/madmin"
 	"github.com/minio/minio/pkg/policy"
 	"github.com/minio/minio/pkg/sync/errgroup"
@@ -235,7 +234,7 @@ func (s *xlSets) monitorAndConnectEndpoints(monitorInterval time.Duration) {
 
 	for {
 		select {
-		case <-globalServiceDoneCh:
+		case <-GlobalServiceDoneCh:
 			return
 		case <-s.disksConnectDoneCh:
 			return
@@ -289,7 +288,7 @@ func newXLSets(endpoints EndpointList, format *formatXLV3, setCount int, drivesP
 			nsMutex:  mutex,
 			bp:       bp,
 		}
-		go s.sets[i].cleanupStaleMultipartUploads(context.Background(), globalMultipartCleanupInterval, globalMultipartExpiry, globalServiceDoneCh)
+		go s.sets[i].cleanupStaleMultipartUploads(context.Background(), GlobalMultipartCleanupInterval, GlobalMultipartExpiry, GlobalServiceDoneCh)
 	}
 
 	// Connect disks right away, but wait until we have `format.json` quorum.
@@ -517,7 +516,12 @@ func (s *xlSets) IsNotificationSupported() bool {
 	return s.getHashedSet("").IsNotificationSupported()
 }
 
-// IsEncryptionSupported returns whether server side encryption is applicable for this layer.
+// IsListenBucketSupported returns whether listen bucket notification is applicable for this layer.
+func (s *xlSets) IsListenBucketSupported() bool {
+	return true
+}
+
+// IsEncryptionSupported returns whether server side encryption is implemented for this layer.
 func (s *xlSets) IsEncryptionSupported() bool {
 	return s.getHashedSet("").IsEncryptionSupported()
 }
@@ -598,7 +602,7 @@ func (s *xlSets) GetObject(ctx context.Context, bucket, object string, startOffs
 }
 
 // PutObject - writes an object to hashedSet based on the object name.
-func (s *xlSets) PutObject(ctx context.Context, bucket string, object string, data *hash.Reader, metadata map[string]string, opts ObjectOptions) (objInfo ObjectInfo, err error) {
+func (s *xlSets) PutObject(ctx context.Context, bucket string, object string, data *PutObjReader, metadata map[string]string, opts ObjectOptions) (objInfo ObjectInfo, err error) {
 	return s.getHashedSet(object).PutObject(ctx, bucket, object, data, metadata, opts)
 }
 
@@ -630,8 +634,7 @@ func (s *xlSets) CopyObject(ctx context.Context, srcBucket, srcObject, destBucke
 		}
 		defer objectDWLock.Unlock()
 	}
-
-	return destSet.putObject(ctx, destBucket, destObject, srcInfo.Reader, srcInfo.UserDefined, dstOpts)
+	return destSet.putObject(ctx, destBucket, destObject, srcInfo.PutObjReader, srcInfo.UserDefined, dstOpts)
 }
 
 // Returns function "listDir" of the type listDirFunc.
@@ -828,17 +831,17 @@ func (s *xlSets) CopyObjectPart(ctx context.Context, srcBucket, srcObject, destB
 	startOffset int64, length int64, srcInfo ObjectInfo, srcOpts, dstOpts ObjectOptions) (partInfo PartInfo, err error) {
 	destSet := s.getHashedSet(destObject)
 
-	return destSet.PutObjectPart(ctx, destBucket, destObject, uploadID, partID, srcInfo.Reader, dstOpts)
+	return destSet.PutObjectPart(ctx, destBucket, destObject, uploadID, partID, NewPutObjReader(srcInfo.Reader, nil, nil), dstOpts)
 }
 
 // PutObjectPart - writes part of an object to hashedSet based on the object name.
-func (s *xlSets) PutObjectPart(ctx context.Context, bucket, object, uploadID string, partID int, data *hash.Reader, opts ObjectOptions) (info PartInfo, err error) {
+func (s *xlSets) PutObjectPart(ctx context.Context, bucket, object, uploadID string, partID int, data *PutObjReader, opts ObjectOptions) (info PartInfo, err error) {
 	return s.getHashedSet(object).PutObjectPart(ctx, bucket, object, uploadID, partID, data, opts)
 }
 
 // ListObjectParts - lists all uploaded parts to an object in hashedSet.
-func (s *xlSets) ListObjectParts(ctx context.Context, bucket, object, uploadID string, partNumberMarker int, maxParts int) (result ListPartsInfo, err error) {
-	return s.getHashedSet(object).ListObjectParts(ctx, bucket, object, uploadID, partNumberMarker, maxParts)
+func (s *xlSets) ListObjectParts(ctx context.Context, bucket, object, uploadID string, partNumberMarker int, maxParts int, opts ObjectOptions) (result ListPartsInfo, err error) {
+	return s.getHashedSet(object).ListObjectParts(ctx, bucket, object, uploadID, partNumberMarker, maxParts, opts)
 }
 
 // Aborts an in-progress multipart operation on hashedSet based on the object name.
@@ -847,8 +850,8 @@ func (s *xlSets) AbortMultipartUpload(ctx context.Context, bucket, object, uploa
 }
 
 // CompleteMultipartUpload - completes a pending multipart transaction, on hashedSet based on object name.
-func (s *xlSets) CompleteMultipartUpload(ctx context.Context, bucket, object, uploadID string, uploadedParts []CompletePart) (objInfo ObjectInfo, err error) {
-	return s.getHashedSet(object).CompleteMultipartUpload(ctx, bucket, object, uploadID, uploadedParts)
+func (s *xlSets) CompleteMultipartUpload(ctx context.Context, bucket, object, uploadID string, uploadedParts []CompletePart, opts ObjectOptions) (objInfo ObjectInfo, err error) {
+	return s.getHashedSet(object).CompleteMultipartUpload(ctx, bucket, object, uploadID, uploadedParts, opts)
 }
 
 /*
@@ -1202,8 +1205,14 @@ func (s *xlSets) HealBucket(ctx context.Context, bucket string, dryRun bool) (re
 	for _, endpoint := range s.endpoints {
 		var foundBefore bool
 		for _, v := range res.Before.Drives {
-			if v.Endpoint == endpoint.String() {
-				foundBefore = true
+			if endpoint.IsLocal {
+				if v.Endpoint == endpoint.Path {
+					foundBefore = true
+				}
+			} else {
+				if v.Endpoint == endpoint.String() {
+					foundBefore = true
+				}
 			}
 		}
 		if !foundBefore {
@@ -1215,8 +1224,14 @@ func (s *xlSets) HealBucket(ctx context.Context, bucket string, dryRun bool) (re
 		}
 		var foundAfter bool
 		for _, v := range res.After.Drives {
-			if v.Endpoint == endpoint.String() {
-				foundAfter = true
+			if endpoint.IsLocal {
+				if v.Endpoint == endpoint.Path {
+					foundAfter = true
+				}
+			} else {
+				if v.Endpoint == endpoint.String() {
+					foundAfter = true
+				}
 			}
 		}
 		if !foundAfter {

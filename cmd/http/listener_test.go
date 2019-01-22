@@ -20,6 +20,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -116,7 +117,7 @@ func getTLSConfig(t *testing.T) *tls.Config {
 	tlsConfig := &tls.Config{
 		PreferServerCipherSuites: true,
 		MinVersion:               tls.VersionTLS12,
-		NextProtos:               []string{"http/1.1", "h2"},
+		NextProtos:               []string{"http/1.1"},
 	}
 	tlsConfig.Certificates = append(tlsConfig.Certificates, tlsCert)
 
@@ -802,11 +803,19 @@ func TestIgnoreErr(t *testing.T) {
 			want: true,
 		},
 		{
+			err:  errors.New("EOF"),
+			want: true,
+		},
+		{
 			err:  &net.OpError{Err: &myTimeoutErr{timeout: false}},
 			want: false,
 		},
 		{
 			err:  io.ErrUnexpectedEOF,
+			want: false,
+		},
+		{
+			err:  nil,
 			want: false,
 		},
 	}

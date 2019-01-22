@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
+	"path/filepath"
 	"time"
 
 	"github.com/eclipse/paho.mqtt.golang"
@@ -41,6 +42,7 @@ type MQTTArgs struct {
 	MaxReconnectInterval time.Duration  `json:"reconnectInterval"`
 	KeepAlive            time.Duration  `json:"keepAliveInterval"`
 	RootCAs              *x509.CertPool `json:"-"`
+	QueueDir             string         `json:"queueDir"`
 }
 
 // Validate MQTTArgs fields
@@ -56,6 +58,9 @@ func (m MQTTArgs) Validate() error {
 	case "ws", "wss", "tcp", "ssl", "tls", "tcps":
 	default:
 		return errors.New("unknown protocol in broker address")
+	}
+	if m.QueueDir != "" && !filepath.IsAbs(m.QueueDir) {
+		return errors.New("queueDir path should be absolute")
 	}
 	return nil
 }
@@ -89,17 +94,21 @@ func (target *MQTTTarget) Send(eventData event.Event) error {
 	}
 	key := eventData.S3.Bucket.Name + "/" + objectName
 
-	data, err := json.Marshal(event.Log{eventData.EventName, key, []event.Event{eventData}})
+	data, err := json.Marshal(event.Log{EventName: eventData.EventName, Key: key, Records: []event.Event{eventData}})
 	if err != nil {
 		return err
 	}
 
 	token := target.client.Publish(target.args.Topic, target.args.QoS, false, string(data))
 
-	if token.Wait() {
+	// In-case if the queueDir is configured OR mqtt broker is offline, the token.Wait() waits indefinitely
+	if target.args.QueueDir == "" {
+		token.Wait()
 		return token.Error()
 	}
 
+	// Need a fix from the paho.mqtt.golang library - https://github.com/eclipse/paho.mqtt.golang/issues/274
+	// Right now the server panics on IO File store errors, returning nil for now.
 	return nil
 }
 
@@ -120,6 +129,10 @@ func NewMQTTTarget(id string, args MQTTArgs) (*MQTTTarget, error) {
 		SetTLSConfig(&tls.Config{RootCAs: args.RootCAs}).
 		AddBroker(args.Broker.String())
 
+	if args.QueueDir != "" {
+		options = options.SetStore(mqtt.NewFileStore(args.QueueDir))
+	}
+
 	client := mqtt.NewClient(options)
 	token := client.Connect()
 	if token.Wait() && token.Error() != nil {
@@ -127,7 +140,7 @@ func NewMQTTTarget(id string, args MQTTArgs) (*MQTTTarget, error) {
 	}
 
 	return &MQTTTarget{
-		id:     event.TargetID{id, "mqtt"},
+		id:     event.TargetID{ID: id, Name: "mqtt"},
 		args:   args,
 		client: client,
 	}, nil

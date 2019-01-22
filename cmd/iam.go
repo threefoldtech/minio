@@ -60,9 +60,9 @@ type IAMSys struct {
 	iamCannedPolicyMap map[string]iampolicy.Policy
 }
 
-// Load - load iam.json
+// Load - loads iam subsystem
 func (sys *IAMSys) Load(objAPI ObjectLayer) error {
-	return sys.Init(objAPI)
+	return sys.refresh(objAPI)
 }
 
 // Init - initializes config system from iam.json
@@ -78,7 +78,7 @@ func (sys *IAMSys) Init(objAPI ObjectLayer) error {
 			defer ticker.Stop()
 			for {
 				select {
-				case <-globalServiceDoneCh:
+				case <-GlobalServiceDoneCh:
 					return
 				case <-ticker.C:
 					sys.refresh(objAPI)
@@ -269,10 +269,44 @@ func (sys *IAMSys) DeleteUser(accessKey string) error {
 }
 
 // SetTempUser - set temporary user credentials, these credentials have an expiry.
-func (sys *IAMSys) SetTempUser(accessKey string, cred auth.Credentials) error {
+func (sys *IAMSys) SetTempUser(accessKey string, cred auth.Credentials, policyName string) error {
 	objectAPI := newObjectLayerFn()
 	if objectAPI == nil {
 		return errServerNotInitialized
+	}
+
+	sys.Lock()
+	defer sys.Unlock()
+
+	// If OPA is not set we honor any policy claims for this
+	// temporary user which match with pre-configured canned
+	// policies for this server.
+	if globalPolicyOPA == nil && policyName != "" {
+		p, ok := sys.iamCannedPolicyMap[policyName]
+		if !ok {
+			return errInvalidArgument
+		}
+		if p.IsEmpty() {
+			delete(sys.iamPolicyMap, accessKey)
+			return nil
+		}
+
+		data, err := json.Marshal(policyName)
+		if err != nil {
+			return err
+		}
+
+		configFile := pathJoin(iamConfigSTSPrefix, accessKey, iamPolicyFile)
+		if globalEtcdClient != nil {
+			err = saveConfigEtcd(context.Background(), globalEtcdClient, configFile, data)
+		} else {
+			err = saveConfig(context.Background(), objectAPI, configFile, data)
+		}
+		if err != nil {
+			return err
+		}
+
+		sys.iamPolicyMap[accessKey] = policyName
 	}
 
 	configFile := pathJoin(iamConfigSTSPrefix, accessKey, iamIdentityFile)
@@ -290,9 +324,6 @@ func (sys *IAMSys) SetTempUser(accessKey string, cred auth.Credentials) error {
 	if err != nil {
 		return err
 	}
-
-	sys.Lock()
-	defer sys.Unlock()
 
 	sys.iamUsersMap[accessKey] = cred
 	return nil
@@ -433,13 +464,13 @@ func (sys *IAMSys) IsAllowed(args iampolicy.Args) bool {
 	return args.IsOwner
 }
 
-var defaultContextTimeout = 5 * time.Minute
+var defaultContextTimeout = 30 * time.Second
 
 // Similar to reloadUsers but updates users, policies maps from etcd server,
 func reloadEtcdUsers(prefix string, usersMap map[string]auth.Credentials, policyMap map[string]string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
-	r, err := globalEtcdClient.Get(ctx, prefix, etcd.WithPrefix(), etcd.WithKeysOnly())
 	defer cancel()
+	r, err := globalEtcdClient.Get(ctx, prefix, etcd.WithPrefix(), etcd.WithKeysOnly())
 	if err != nil {
 		return err
 	}
@@ -505,8 +536,8 @@ func reloadEtcdUsers(prefix string, usersMap map[string]auth.Credentials, policy
 
 func reloadEtcdPolicies(prefix string, cannedPolicyMap map[string]iampolicy.Policy) error {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
-	r, err := globalEtcdClient.Get(ctx, prefix, etcd.WithPrefix(), etcd.WithKeysOnly())
 	defer cancel()
+	r, err := globalEtcdClient.Get(ctx, prefix, etcd.WithPrefix(), etcd.WithKeysOnly())
 	if err != nil {
 		return err
 	}

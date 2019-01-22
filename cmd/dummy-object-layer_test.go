@@ -21,7 +21,6 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/minio/minio/pkg/hash"
 	"github.com/minio/minio/pkg/madmin"
 	"github.com/minio/minio/pkg/policy"
 )
@@ -72,7 +71,7 @@ func (api *DummyObjectLayer) GetObjectInfo(ctx context.Context, bucket, object s
 	return
 }
 
-func (api *DummyObjectLayer) PutObject(ctx context.Context, bucket, object string, data *hash.Reader, metadata map[string]string, opts ObjectOptions) (objInfo ObjectInfo, err error) {
+func (api *DummyObjectLayer) PutObject(ctx context.Context, bucket, object string, data *PutObjReader, metadata map[string]string, opts ObjectOptions) (objInfo ObjectInfo, err error) {
 	return
 }
 
@@ -96,11 +95,11 @@ func (api *DummyObjectLayer) CopyObjectPart(ctx context.Context, srcBucket, srcO
 	return
 }
 
-func (api *DummyObjectLayer) PutObjectPart(ctx context.Context, bucket, object, uploadID string, partID int, data *hash.Reader, opts ObjectOptions) (info PartInfo, err error) {
+func (api *DummyObjectLayer) PutObjectPart(ctx context.Context, bucket, object, uploadID string, partID int, data *PutObjReader, opts ObjectOptions) (info PartInfo, err error) {
 	return
 }
 
-func (api *DummyObjectLayer) ListObjectParts(ctx context.Context, bucket, object, uploadID string, partNumberMarker int, maxParts int) (result ListPartsInfo, err error) {
+func (api *DummyObjectLayer) ListObjectParts(ctx context.Context, bucket, object, uploadID string, partNumberMarker int, maxParts int, opts ObjectOptions) (result ListPartsInfo, err error) {
 	return
 }
 
@@ -108,7 +107,7 @@ func (api *DummyObjectLayer) AbortMultipartUpload(ctx context.Context, bucket, o
 	return
 }
 
-func (api *DummyObjectLayer) CompleteMultipartUpload(ctx context.Context, bucket, object, uploadID string, uploadedParts []CompletePart) (objInfo ObjectInfo, err error) {
+func (api *DummyObjectLayer) CompleteMultipartUpload(ctx context.Context, bucket, object, uploadID string, uploadedParts []CompletePart, opts ObjectOptions) (objInfo ObjectInfo, err error) {
 	return
 }
 
@@ -153,6 +152,9 @@ func (api *DummyObjectLayer) DeleteBucketPolicy(context.Context, string) (err er
 }
 
 func (api *DummyObjectLayer) IsNotificationSupported() (b bool) {
+	return
+}
+func (api *DummyObjectLayer) IsListenBucketSupported() (b bool) {
 	return
 }
 

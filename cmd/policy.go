@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"path"
 	"strings"
@@ -29,6 +30,7 @@ import (
 	miniogopolicy "github.com/minio/minio-go/pkg/policy"
 	"github.com/minio/minio-go/pkg/set"
 	"github.com/minio/minio/cmd/logger"
+	"github.com/minio/minio/pkg/event"
 	"github.com/minio/minio/pkg/handlers"
 	"github.com/minio/minio/pkg/policy"
 )
@@ -140,7 +142,7 @@ func (sys *PolicySys) Init(objAPI ObjectLayer) error {
 			defer ticker.Stop()
 			for {
 				select {
-				case <-globalServiceDoneCh:
+				case <-GlobalServiceDoneCh:
 					return
 				case <-ticker.C:
 					sys.refresh(objAPI)
@@ -182,8 +184,25 @@ func NewPolicySys() *PolicySys {
 	}
 }
 
-func getConditionValues(request *http.Request, locationConstraint string) map[string][]string {
-	args := make(map[string][]string)
+func getConditionValues(request *http.Request, locationConstraint string, username string) map[string][]string {
+	currTime := UTCNow()
+	principalType := func() string {
+		if username != "" {
+			return "User"
+		}
+		return "Anonymous"
+	}()
+	args := map[string][]string{
+		"CurrenTime":      {currTime.Format(event.AMZTimeFormat)},
+		"EpochTime":       {fmt.Sprintf("%d", currTime.Unix())},
+		"principaltype":   {principalType},
+		"SecureTransport": {fmt.Sprintf("%t", request.TLS != nil)},
+		"SourceIp":        {handlers.GetSourceIP(request)},
+		"UserAgent":       {request.UserAgent()},
+		"Referer":         {request.Referer()},
+		"userid":          {username},
+		"username":        {username},
+	}
 
 	for key, values := range request.Header {
 		if existingValues, found := args[key]; found {
@@ -200,8 +219,6 @@ func getConditionValues(request *http.Request, locationConstraint string) map[st
 			args[key] = values
 		}
 	}
-
-	args["SourceIp"] = []string{handlers.GetSourceIP(request)}
 
 	if locationConstraint != "" {
 		args["LocationConstraint"] = []string{locationConstraint}

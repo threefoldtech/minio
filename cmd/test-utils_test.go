@@ -77,7 +77,8 @@ func init() {
 	// Set system resources to maximum.
 	setMaxResources()
 
-	logger.Disable = true
+	// Uncomment the following line to see trace logs during unit tests.
+	// logger.AddTarget(console.New())
 }
 
 // concurreny level for certain parallel tests.
@@ -136,12 +137,12 @@ func calculateSignedChunkLength(chunkDataSize int64) int64 {
 		2 // CRLF
 }
 
-func mustGetHashReader(t TestErrHandler, data io.Reader, size int64, md5hex, sha256hex string) *hash.Reader {
+func mustGetPutObjReader(t TestErrHandler, data io.Reader, size int64, md5hex, sha256hex string) *PutObjReader {
 	hr, err := hash.NewReader(data, size, md5hex, sha256hex, size)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return hr
+	return NewPutObjReader(hr, nil, nil)
 }
 
 // calculateSignedChunkLength - calculates the length of the overall stream (data + metadata)
@@ -404,7 +405,7 @@ func StartTestServer(t TestErrHandler, instanceType string) TestServer {
 
 // Sets the global config path to empty string.
 func resetGlobalConfigPath() {
-	setConfigDir("")
+	globalConfigDir = &ConfigDir{path: ""}
 }
 
 // sets globalObjectAPI to `nil`.
@@ -2115,7 +2116,7 @@ func registerBucketLevelFunc(bucket *mux.Router, api objectAPIHandlers, apiFunct
 func registerAPIFunctions(muxRouter *mux.Router, objLayer ObjectLayer, apiFunctions ...string) {
 	if len(apiFunctions) == 0 {
 		// Register all api endpoints by default.
-		registerAPIRouter(muxRouter)
+		registerAPIRouter(muxRouter, true)
 		return
 	}
 	// API Router.
@@ -2133,8 +2134,9 @@ func registerAPIFunctions(muxRouter *mux.Router, objLayer ObjectLayer, apiFuncti
 	// to underlying cache layer to manage object layer operation and disk caching
 	// operation
 	api := objectAPIHandlers{
-		ObjectAPI: newObjectLayerFn,
-		CacheAPI:  newCacheObjectsFn,
+		ObjectAPI:         newObjectLayerFn,
+		CacheAPI:          newCacheObjectsFn,
+		EncryptionEnabled: func() bool { return true },
 	}
 
 	// Register ListBuckets	handler.
@@ -2155,7 +2157,7 @@ func initTestAPIEndPoints(objLayer ObjectLayer, apiFunctions []string) http.Hand
 		registerAPIFunctions(muxRouter, objLayer, apiFunctions...)
 		return muxRouter
 	}
-	registerAPIRouter(muxRouter)
+	registerAPIRouter(muxRouter, true)
 	return muxRouter
 }
 
@@ -2319,7 +2321,7 @@ func getEndpointsLocalAddr(endpoints EndpointList) string {
 		}
 	}
 
-	return globalMinioHost + ":" + globalMinioPort
+	return net.JoinHostPort(globalMinioHost, globalMinioPort)
 }
 
 // fetches a random number between range min-max.
@@ -2354,8 +2356,9 @@ func TestToErrIsNil(t *testing.T) {
 	if toStorageErr(nil) != nil {
 		t.Errorf("Test expected to return nil, failed instead got a non-nil value %s", toStorageErr(nil))
 	}
-	if toAPIErrorCode(nil) != ErrNone {
-		t.Errorf("Test expected error code to be ErrNone, failed instead provided %d", toAPIErrorCode(nil))
+	ctx := context.Background()
+	if toAPIErrorCode(ctx, nil) != ErrNone {
+		t.Errorf("Test expected error code to be ErrNone, failed instead provided %d", toAPIErrorCode(ctx, nil))
 	}
 }
 

@@ -35,13 +35,14 @@ const DefaultRESTTimeout = 1 * time.Minute
 
 // Client - http based RPC client.
 type Client struct {
-	httpClient   *http.Client
-	url          *url.URL
-	newAuthToken func() string
+	httpClient          *http.Client
+	httpIdleConnsCloser func()
+	url                 *url.URL
+	newAuthToken        func() string
 }
 
 // Call - make a REST call.
-func (c *Client) Call(method string, values url.Values, body io.Reader) (reply io.ReadCloser, err error) {
+func (c *Client) Call(method string, values url.Values, body io.Reader, length int64) (reply io.ReadCloser, err error) {
 	req, err := http.NewRequest(http.MethodPost, c.url.String()+"/"+method+"?"+values.Encode(), body)
 	if err != nil {
 		return nil, err
@@ -49,7 +50,9 @@ func (c *Client) Call(method string, values url.Values, body io.Reader) (reply i
 
 	req.Header.Set("Authorization", "Bearer "+c.newAuthToken())
 	req.Header.Set("X-Minio-Time", time.Now().UTC().Format(time.RFC3339))
-
+	if length > 0 {
+		req.ContentLength = length
+	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -65,6 +68,13 @@ func (c *Client) Call(method string, values url.Values, body io.Reader) (reply i
 		return nil, errors.New(string(b))
 	}
 	return resp.Body, nil
+}
+
+// Close closes all idle connections of the underlying http client
+func (c *Client) Close() {
+	if c.httpIdleConnsCloser != nil {
+		c.httpIdleConnsCloser()
+	}
 }
 
 func newCustomDialContext(timeout time.Duration) func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -84,25 +94,26 @@ func newCustomDialContext(timeout time.Duration) func(ctx context.Context, netwo
 	}
 }
 
-// NewClient - returns new RPC client.
+// NewClient - returns new REST client.
 func NewClient(url *url.URL, tlsConfig *tls.Config, timeout time.Duration, newAuthToken func() string) *Client {
+	// Transport is exactly same as Go default in https://golang.org/pkg/net/http/#RoundTripper
+	// except custom DialContext and TLSClientConfig.
+	tr := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           newCustomDialContext(timeout),
+		MaxIdleConnsPerHost:   4096,
+		MaxIdleConns:          4096,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		TLSClientConfig:       tlsConfig,
+		DisableCompression:    true,
+	}
+
 	return &Client{
-		httpClient: &http.Client{
-			// Transport is exactly same as Go default in https://golang.org/pkg/net/http/#RoundTripper
-			// except custom DialContext and TLSClientConfig.
-			Transport: &http.Transport{
-				Proxy:                 http.ProxyFromEnvironment,
-				DialContext:           newCustomDialContext(timeout),
-				MaxIdleConnsPerHost:   4096,
-				MaxIdleConns:          4096,
-				IdleConnTimeout:       90 * time.Second,
-				TLSHandshakeTimeout:   10 * time.Second,
-				ExpectContinueTimeout: 1 * time.Second,
-				TLSClientConfig:       tlsConfig,
-				DisableCompression:    true,
-			},
-		},
-		url:          url,
-		newAuthToken: newAuthToken,
+		httpClient:          &http.Client{Transport: tr},
+		httpIdleConnsCloser: tr.CloseIdleConnections,
+		url:                 url,
+		newAuthToken:        newAuthToken,
 	}
 }
