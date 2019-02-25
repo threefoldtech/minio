@@ -156,6 +156,12 @@ export MINIO_DOMAIN=mydomain.com
 minio server /data
 ```
 
+For advanced use cases `MINIO_DOMAIN` environment variable supports multiple-domains with comma separated values.
+```sh
+export MINIO_DOMAIN=sub1.mydomain.com,sub2.mydomain.com
+minio server /data
+```
+
 ### Drive Sync
 
 By default, Minio writes to disk in synchronous mode for all metadata operations. Set `MINIO_DRIVE_SYNC` environment variable to enable synchronous mode for all data operations as well.
@@ -164,6 +170,17 @@ Example:
 
 ```sh
 export MINIO_DRIVE_SYNC=on
+minio server /data
+```
+
+### HTTP Trace
+
+By default, Minio disables the feature to log HTTP trace. You may enable this feature by setting `MINIO_HTTP_TRACE` environment variable.
+
+Example:
+
+```sh
+export MINIO_HTTP_TRACE=/var/log/minio.log
 minio server /data
 ```
 

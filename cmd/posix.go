@@ -73,6 +73,7 @@ type posix struct {
 	diskMount bool // indicates if the path is an actual mount.
 	driveSync bool // indicates if the backend is synchronous.
 
+	diskFileInfo os.FileInfo
 	// Disk usage metrics
 	stopUsageCh chan struct{}
 }
@@ -177,7 +178,10 @@ func newPosix(path string) (*posix, error) {
 	if path, err = getValidPath(path); err != nil {
 		return nil, err
 	}
-
+	fi, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
 	p := &posix{
 		connected: true,
 		diskPath:  path,
@@ -188,8 +192,9 @@ func newPosix(path string) (*posix, error) {
 				return &b
 			},
 		},
-		stopUsageCh: make(chan struct{}),
-		diskMount:   mountinfo.IsLikelyMountPoint(path),
+		stopUsageCh:  make(chan struct{}),
+		diskFileInfo: fi,
+		diskMount:    mountinfo.IsLikelyMountPoint(path),
 	}
 
 	var pf BoolFlag
@@ -303,9 +308,10 @@ func (s *posix) IsOnline() bool {
 // DiskInfo is an extended type which returns current
 // disk usage per path.
 type DiskInfo struct {
-	Total uint64
-	Free  uint64
-	Used  uint64
+	Total    uint64
+	Free     uint64
+	Used     uint64
+	RootDisk bool
 }
 
 // DiskInfo provides current information about disk space usage,
@@ -319,12 +325,17 @@ func (s *posix) DiskInfo() (info DiskInfo, err error) {
 	if !s.diskMount {
 		used = atomic.LoadUint64(&s.totalUsed)
 	}
-	return DiskInfo{
-		Total: di.Total,
-		Free:  di.Free,
-		Used:  used,
-	}, nil
 
+	rootDisk, err := disk.IsRootDisk(s.diskPath)
+	if err != nil {
+		return info, err
+	}
+	return DiskInfo{
+		Total:    di.Total,
+		Free:     di.Free,
+		Used:     used,
+		RootDisk: rootDisk,
+	}, nil
 }
 
 // getVolDir - will convert incoming volume names to
@@ -345,7 +356,7 @@ func (s *posix) checkDiskFound() (err error) {
 	if !s.IsOnline() {
 		return errDiskNotFound
 	}
-	_, err = os.Stat(s.diskPath)
+	fi, err := os.Stat(s.diskPath)
 	if err != nil {
 		switch {
 		case os.IsNotExist(err):
@@ -357,6 +368,10 @@ func (s *posix) checkDiskFound() (err error) {
 		default:
 			return err
 		}
+	}
+	if !os.SameFile(s.diskFileInfo, fi) {
+		s.connected = false
+		return errDiskNotFound
 	}
 	return nil
 }
@@ -854,7 +869,7 @@ func (s *posix) ReadFile(volume, path string, offset int64, buffer []byte, verif
 		return 0, err
 	}
 
-	if bytes.Compare(h.Sum(nil), verifier.sum) != 0 {
+	if !bytes.Equal(h.Sum(nil), verifier.sum) {
 		return 0, hashMismatchError{hex.EncodeToString(verifier.sum), hex.EncodeToString(h.Sum(nil))}
 	}
 
@@ -1099,8 +1114,9 @@ func (s *posix) WriteAll(volume, path string, buf []byte) (err error) {
 		return errFaultyDisk
 	}
 
-	// Create file if not found
-	w, err := s.openFile(volume, path, os.O_CREATE|os.O_SYNC|os.O_WRONLY)
+	// Create file if not found. Note that it is created with os.O_EXCL flag as the file
+	// always is supposed to be created in the tmp directory with a unique file name.
+	w, err := s.openFile(volume, path, os.O_CREATE|os.O_SYNC|os.O_WRONLY|os.O_EXCL)
 	if err != nil {
 		return err
 	}

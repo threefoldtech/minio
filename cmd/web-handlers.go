@@ -471,7 +471,7 @@ func (web *webAPIHandlers) ListObjects(r *http.Request, args *ListObjectsArgs, r
 			AccountName:     claims.Subject,
 			Action:          iampolicy.ListBucketAction,
 			BucketName:      args.BucketName,
-			ConditionValues: getConditionValues(r, "", ""),
+			ConditionValues: getConditionValues(r, "", claims.Subject),
 			IsOwner:         owner,
 		})
 
@@ -479,7 +479,7 @@ func (web *webAPIHandlers) ListObjects(r *http.Request, args *ListObjectsArgs, r
 			AccountName:     claims.Subject,
 			Action:          iampolicy.PutObjectAction,
 			BucketName:      args.BucketName,
-			ConditionValues: getConditionValues(r, "", ""),
+			ConditionValues: getConditionValues(r, "", claims.Subject),
 			IsOwner:         owner,
 			ObjectName:      args.Prefix + "/",
 		})
@@ -894,7 +894,7 @@ func (web *webAPIHandlers) Upload(w http.ResponseWriter, r *http.Request) {
 	// Extract incoming metadata if any.
 	metadata, err := extractMetadata(context.Background(), r)
 	if err != nil {
-		writeErrorResponse(w, ErrInternalError, r.URL, guessIsBrowserReq(r))
+		writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
 		return
 	}
 
@@ -913,7 +913,7 @@ func (web *webAPIHandlers) Upload(w http.ResponseWriter, r *http.Request) {
 		metadata[ReservedMetadataPrefix+"actual-size"] = strconv.FormatInt(size, 10)
 
 		pipeReader, pipeWriter := io.Pipe()
-		snappyWriter := snappy.NewWriter(pipeWriter)
+		snappyWriter := snappy.NewBufferedWriter(pipeWriter)
 
 		var actualReader *hash.Reader
 		actualReader, err = hash.NewReader(reader, size, "", "", actualSize)
@@ -941,9 +941,9 @@ func (web *webAPIHandlers) Upload(w http.ResponseWriter, r *http.Request) {
 	pReader = NewPutObjReader(hashReader, nil, nil)
 	// get gateway encryption options
 	var opts ObjectOptions
-	opts, err = putEncryptionOpts(ctx, r, bucket, object, nil)
+	opts, err = putOpts(ctx, r, bucket, object, metadata)
 	if err != nil {
-		writeErrorResponseHeadersOnly(w, toAPIErrorCode(ctx, err))
+		writeErrorResponseHeadersOnly(w, toAPIError(ctx, err))
 		return
 	}
 	if objectAPI.IsEncryptionSupported() {
@@ -952,13 +952,13 @@ func (web *webAPIHandlers) Upload(w http.ResponseWriter, r *http.Request) {
 			var objectEncryptionKey []byte
 			reader, objectEncryptionKey, err = EncryptRequest(hashReader, r, bucket, object, metadata)
 			if err != nil {
-				writeErrorResponse(w, toAPIErrorCode(ctx, err), r.URL, guessIsBrowserReq(r))
+				writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
 				return
 			}
 			info := ObjectInfo{Size: size}
 			hashReader, err = hash.NewReader(reader, info.EncryptedSize(), "", "", size) // do not try to verify encrypted content
 			if err != nil {
-				writeErrorResponse(w, toAPIErrorCode(ctx, err), r.URL, guessIsBrowserReq(r))
+				writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
 				return
 			}
 			pReader = NewPutObjReader(rawReader, hashReader, objectEncryptionKey)
@@ -980,7 +980,7 @@ func (web *webAPIHandlers) Upload(w http.ResponseWriter, r *http.Request) {
 	if !hasServerSideEncryptionHeader(r.Header) && web.CacheAPI() != nil {
 		putObject = web.CacheAPI().PutObject
 	}
-	objInfo, err := putObject(context.Background(), bucket, object, pReader, metadata, opts)
+	objInfo, err := putObject(context.Background(), bucket, object, pReader, opts)
 	if err != nil {
 		writeWebErrorResponse(w, err)
 		return
@@ -1313,14 +1313,15 @@ func (web *webAPIHandlers) DownloadZip(w http.ResponseWriter, r *http.Request) {
 				// Response writer should be limited early on for decryption upto required length,
 				// additionally also skipping mod(offset)64KiB boundaries.
 				writer = ioutil.LimitedWriter(writer, startOffset%(64*1024), length)
-				writer, startOffset, length, err = DecryptBlocksRequest(writer, r, args.BucketName, objectName, startOffset, length, info, false)
+				writer, startOffset, length, err = DecryptBlocksRequest(writer, r,
+					args.BucketName, objectName, startOffset, length, info, false)
 				if err != nil {
 					writeWebErrorResponse(w, err)
 					return err
 				}
 			}
 			httpWriter := ioutil.WriteOnClose(writer)
-			if err = getObject(ctx, args.BucketName, objectName, 0, length, httpWriter, "", opts); err != nil {
+			if err = getObject(ctx, args.BucketName, objectName, startOffset, length, httpWriter, "", opts); err != nil {
 				httpWriter.Close()
 				if info.IsCompressed() {
 					// Wait for decompression go-routine to retire.

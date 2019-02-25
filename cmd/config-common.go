@@ -78,7 +78,7 @@ func saveConfig(ctx context.Context, objAPI ObjectLayer, configFile string, data
 		return err
 	}
 
-	_, err = objAPI.PutObject(ctx, minioMetaBucket, configFile, NewPutObjReader(hashReader, nil, nil), nil, ObjectOptions{})
+	_, err = objAPI.PutObject(ctx, minioMetaBucket, configFile, NewPutObjReader(hashReader, nil, nil), ObjectOptions{})
 	return err
 }
 
@@ -103,16 +103,14 @@ func readConfigEtcd(ctx context.Context, client *etcd.Client, configFile string)
 	return nil, errConfigNotFound
 }
 
-// watchConfig - watches for changes on `configFile` on etcd and loads them.
-func watchConfig(objAPI ObjectLayer, configFile string, loadCfgFn func(ObjectLayer) error) {
-	if globalEtcdClient != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
-		defer cancel()
-		for watchResp := range globalEtcdClient.Watch(ctx, configFile) {
-			for _, event := range watchResp.Events {
-				if event.IsModify() || event.IsCreate() {
-					loadCfgFn(objAPI)
-				}
+// watchConfigEtcd - watches for changes on `configFile` on etcd and loads them.
+func watchConfigEtcd(objAPI ObjectLayer, configFile string, loadCfgFn func(ObjectLayer) error) {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
+	defer cancel()
+	for watchResp := range globalEtcdClient.Watch(ctx, configFile) {
+		for _, event := range watchResp.Events {
+			if event.IsModify() || event.IsCreate() {
+				loadCfgFn(objAPI)
 			}
 		}
 	}

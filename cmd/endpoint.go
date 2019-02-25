@@ -94,7 +94,7 @@ func NewEndpoint(arg string) (ep Endpoint, e error) {
 		// - Scheme field must contain "http" or "https"
 		// - All field should be empty except Host and Path.
 		if !((u.Scheme == "http" || u.Scheme == "https") &&
-			u.User == nil && u.Opaque == "" && u.ForceQuery == false && u.RawQuery == "" && u.Fragment == "") {
+			u.User == nil && u.Opaque == "" && !u.ForceQuery && u.RawQuery == "" && u.Fragment == "") {
 			return ep, fmt.Errorf("invalid URL endpoint format")
 		}
 
@@ -204,7 +204,7 @@ func (endpoints EndpointList) GetString(i int) string {
 // local endpoints from given list of endpoints
 func localEndpointsMemUsage(endpoints EndpointList) ServerMemUsageInfo {
 	var memUsages []mem.Usage
-	var addr string
+	var historicUsages []mem.Usage
 	scratchSpace := map[string]bool{}
 	for _, endpoint := range endpoints {
 		// Only proceed for local endpoints
@@ -212,15 +212,15 @@ func localEndpointsMemUsage(endpoints EndpointList) ServerMemUsageInfo {
 			if _, ok := scratchSpace[endpoint.Host]; ok {
 				continue
 			}
-			addr = GetLocalPeer(endpoints)
-			memUsage := mem.GetUsage()
-			memUsages = append(memUsages, memUsage)
+			memUsages = append(memUsages, mem.GetUsage())
+			historicUsages = append(historicUsages, mem.GetHistoricUsage())
 			scratchSpace[endpoint.Host] = true
 		}
 	}
 	return ServerMemUsageInfo{
-		Addr:  addr,
-		Usage: memUsages,
+		Addr:          GetLocalPeer(endpoints),
+		Usage:         memUsages,
+		HistoricUsage: historicUsages,
 	}
 }
 
@@ -228,7 +228,7 @@ func localEndpointsMemUsage(endpoints EndpointList) ServerMemUsageInfo {
 // local endpoints from given list of endpoints
 func localEndpointsCPULoad(endpoints EndpointList) ServerCPULoadInfo {
 	var cpuLoads []cpu.Load
-	var addr string
+	var historicLoads []cpu.Load
 	scratchSpace := map[string]bool{}
 	for _, endpoint := range endpoints {
 		// Only proceed for local endpoints
@@ -236,15 +236,15 @@ func localEndpointsCPULoad(endpoints EndpointList) ServerCPULoadInfo {
 			if _, ok := scratchSpace[endpoint.Host]; ok {
 				continue
 			}
-			addr = GetLocalPeer(endpoints)
-			cpuLoad := cpu.GetLoad()
-			cpuLoads = append(cpuLoads, cpuLoad)
+			cpuLoads = append(cpuLoads, cpu.GetLoad())
+			historicLoads = append(historicLoads, cpu.GetHistoricLoad())
 			scratchSpace[endpoint.Host] = true
 		}
 	}
 	return ServerCPULoadInfo{
-		Addr: addr,
-		Load: cpuLoads,
+		Addr:         GetLocalPeer(endpoints),
+		Load:         cpuLoads,
+		HistoricLoad: historicLoads,
 	}
 }
 
@@ -252,26 +252,22 @@ func localEndpointsCPULoad(endpoints EndpointList) ServerCPULoadInfo {
 // local endpoints from given list of endpoints
 func localEndpointsDrivePerf(endpoints EndpointList) ServerDrivesPerfInfo {
 	var dps []disk.Performance
-	var addr string
 	for _, endpoint := range endpoints {
 		// Only proceed for local endpoints
 		if endpoint.IsLocal {
-			addr = GetLocalPeer(endpoints)
 			if _, err := os.Stat(endpoint.Path); err != nil {
 				// Since this drive is not available, add relevant details and proceed
 				dps = append(dps, disk.Performance{Path: endpoint.Path, Error: err.Error()})
 				continue
 			}
-			tempObj := mustGetUUID()
-			fsPath := pathJoin(endpoint.Path, minioMetaTmpBucket, tempObj)
-			dp := disk.GetPerformance(fsPath)
+			dp := disk.GetPerformance(pathJoin(endpoint.Path, minioMetaTmpBucket, mustGetUUID()))
 			dp.Path = endpoint.Path
 			dps = append(dps, dp)
 		}
 	}
 
 	return ServerDrivesPerfInfo{
-		Addr: addr,
+		Addr: GetLocalPeer(endpoints),
 		Perf: dps,
 	}
 }

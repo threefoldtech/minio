@@ -55,8 +55,8 @@ var globalHandlers = []HandlerFunc{
 	setBucketForwardingHandler,
 	// Ratelimit the incoming requests using a token bucket algorithm
 	setRateLimitHandler,
-	// Validate all the incoming paths.
-	setPathValidityHandler,
+	// Validate all the incoming requests.
+	setRequestValidityHandler,
 	// Network statistics
 	setHTTPStatsHandler,
 	// Limits all requests size to a maximum fixed limit
@@ -105,7 +105,7 @@ func configureServerHandler(endpoints EndpointList) (http.Handler, error) {
 	registerSTSRouter(router)
 
 	// Add Admin router, all APIs are enabled in server mode.
-	registerAdminRouter(router, true)
+	registerAdminRouter(router, true, true)
 
 	// Add healthcheck router
 	registerHealthCheckRouter(router)

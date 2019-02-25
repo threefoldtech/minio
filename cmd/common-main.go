@@ -122,7 +122,7 @@ func newConfigDirFromCtx(ctx *cli.Context, option string, getDefaultDir func() s
 func handleCommonCmdArgs(ctx *cli.Context) {
 
 	// Get "json" flag from command line argument and
-	// enable json and quite modes if jason flag is turned on.
+	// enable json and quite modes if json flag is turned on.
 	globalCLIContext.JSON = ctx.IsSet("json") || ctx.GlobalIsSet("json")
 	if globalCLIContext.JSON {
 		logger.EnableJSON()
@@ -262,10 +262,14 @@ func handleCommonEnvVars() {
 		logger.FatalIf(err, "Unable to initialize etcd with %s", etcdEndpoints)
 	}
 
-	globalDomainName, globalIsEnvDomainName = os.LookupEnv("MINIO_DOMAIN")
-	if globalDomainName != "" {
-		if _, ok = dns2.IsDomainName(globalDomainName); !ok {
-			logger.Fatal(uiErrInvalidDomainValue(nil).Msg("Unknown value `%s`", globalDomainName), "Invalid MINIO_DOMAIN value in environment variable")
+	v, ok := os.LookupEnv("MINIO_DOMAIN")
+	if ok {
+		for _, domainName := range strings.Split(v, ",") {
+			if _, ok = dns2.IsDomainName(domainName); !ok {
+				logger.Fatal(uiErrInvalidDomainValue(nil).Msg("Unknown value `%s`", domainName),
+					"Invalid MINIO_DOMAIN value in environment variable")
+			}
+			globalDomainNames = append(globalDomainNames, domainName)
 		}
 	}
 
@@ -294,10 +298,10 @@ func handleCommonEnvVars() {
 		updateDomainIPs(localIP4)
 	}
 
-	if globalDomainName != "" && !globalDomainIPs.IsEmpty() && globalEtcdClient != nil {
+	if len(globalDomainNames) != 0 && !globalDomainIPs.IsEmpty() && globalEtcdClient != nil {
 		var err error
-		globalDNSConfig, err = dns.NewCoreDNS(globalDomainName, globalDomainIPs, globalMinioPort, globalEtcdClient)
-		logger.FatalIf(err, "Unable to initialize DNS config for %s.", globalDomainName)
+		globalDNSConfig, err = dns.NewCoreDNS(globalDomainNames, globalDomainIPs, globalMinioPort, globalEtcdClient)
+		logger.FatalIf(err, "Unable to initialize DNS config for %s.", globalDomainNames)
 	}
 
 	if drives := os.Getenv("MINIO_CACHE_DRIVES"); drives != "" {

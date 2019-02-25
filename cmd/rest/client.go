@@ -28,6 +28,7 @@ import (
 	"time"
 
 	xhttp "github.com/minio/minio/cmd/http"
+	"golang.org/x/net/http2"
 )
 
 // DefaultRESTTimeout - default RPC timeout is one minute.
@@ -59,9 +60,9 @@ func (c *Client) Call(method string, values url.Values, body io.Reader, length i
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		defer xhttp.DrainBody(resp.Body)
 		// Limit the ReadAll(), just in case, because of a bug, the server responds with large data.
-		r := io.LimitReader(resp.Body, 1024)
-		b, err := ioutil.ReadAll(r)
+		b, err := ioutil.ReadAll(io.LimitReader(resp.Body, 4096))
 		if err != nil {
 			return nil, err
 		}
@@ -95,7 +96,7 @@ func newCustomDialContext(timeout time.Duration) func(ctx context.Context, netwo
 }
 
 // NewClient - returns new REST client.
-func NewClient(url *url.URL, tlsConfig *tls.Config, timeout time.Duration, newAuthToken func() string) *Client {
+func NewClient(url *url.URL, tlsConfig *tls.Config, timeout time.Duration, newAuthToken func() string) (*Client, error) {
 	// Transport is exactly same as Go default in https://golang.org/pkg/net/http/#RoundTripper
 	// except custom DialContext and TLSClientConfig.
 	tr := &http.Transport{
@@ -103,17 +104,22 @@ func NewClient(url *url.URL, tlsConfig *tls.Config, timeout time.Duration, newAu
 		DialContext:           newCustomDialContext(timeout),
 		MaxIdleConnsPerHost:   4096,
 		MaxIdleConns:          4096,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
+		IdleConnTimeout:       120 * time.Second,
+		TLSHandshakeTimeout:   30 * time.Second,
+		ExpectContinueTimeout: 10 * time.Second,
 		TLSClientConfig:       tlsConfig,
 		DisableCompression:    true,
 	}
-
+	if tlsConfig != nil {
+		// If TLS is enabled configure http2
+		if err := http2.ConfigureTransport(tr); err != nil {
+			return nil, err
+		}
+	}
 	return &Client{
 		httpClient:          &http.Client{Transport: tr},
 		httpIdleConnsCloser: tr.CloseIdleConnections,
 		url:                 url,
 		newAuthToken:        newAuthToken,
-	}
+	}, nil
 }
