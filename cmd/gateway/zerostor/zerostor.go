@@ -42,6 +42,17 @@ func (zc *zsClient) Write(bucket, object string, rd io.Reader, userDefMeta map[s
 	return zc.Client.WriteWithUserMeta(key, rd, userDef)
 }
 
+func (zc *zsClient) Read(metadata *metatypes.Metadata, writer io.Writer, offset, length int64) error {
+	if offset == 0 && (length <= 0 || length == metadata.Size) {
+		println("Read ", string(metadata.Key))
+		return zc.Client.Read(*metadata, writer)
+	}
+	return zc.Client.Read(*metadata, writer)
+
+	println("ReadRange ", string(metadata.Key))
+	return zc.Client.ReadRange(*metadata, writer, offset, length)
+}
+
 // getKey generates 0-stor key from the given bucket/object
 func (zc *zsClient) getKey(bucket, object string) []byte {
 	return []byte(filepath.Join(bucket, object))

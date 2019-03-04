@@ -3,9 +3,7 @@ package meta
 import (
 	"context"
 	"errors"
-	"os"
 	"path/filepath"
-	"syscall"
 	"time"
 
 	minio "github.com/minio/minio/cmd"
@@ -27,11 +25,23 @@ type Manager interface {
 	DeleteBucket(string) error
 	ListBuckets() (map[string]*Bucket, error)
 	SetBucketPolicy(name string, policy *policy.Policy) error
-	SetChunk(metaData *ObjectMeta) (string, error)
-	SetObjectLink(bucket, object, partID string) error
+	SetObjectLink(bucket, object, fileID string) error
 	ListObjects(ctx context.Context, bucket, prefix, marker, delimiter string, maxKeys int) (minio.ListObjectsInfo, error)
 	ListObjectsV2(ctx context.Context, bucket, prefix, continuationToken, delimiter string, maxKeys int, fetchOwner bool, startAfter string) (minio.ListObjectsV2Info, error)
 	NewMultipartUpload(bucket, object string, opts minio.ObjectOptions) (string, error)
+	ListMultipartUploads(bucket string) (minio.ListMultipartsInfo, error)
+	SetPartLink(bucket, uploadID, partID, fileID string) error
+	ListPartsInfo(bucket, uploadID string) ([]minio.PartInfo, error)
+	ListPartsMeta(bucket, uploadID string) (map[int]*ObjectMeta, error)
+	CompleteMultipartUpload(bucket, object, uploadID string, parts []minio.CompletePart) (minio.ObjectInfo, error)
+	DeleteBlob(blob string) error
+	DeleteUploadDir(bucket, uploadID string) error
+	DeleteObjectFile(bucket, object string) error
+	PutObjectPart(metaData *metatypes.Metadata, bucket, uploadID string, partID int) (minio.PartInfo, error)
+	PutObject(metaData *metatypes.Metadata, bucket, object string) (minio.ObjectInfo, error)
+	GetObjectInfo(bucket, object string) (minio.ObjectInfo, error)
+	StreamObjectMeta(done <-chan struct{}, bucket, object string) <-chan result
+	ValidUpload(bucket, uploadID string) (bool, error)
 }
 
 // Bucket defines a bucket
@@ -44,8 +54,11 @@ type Bucket struct {
 // ObjectMeta defines meta for an object
 type ObjectMeta struct {
 	*metatypes.Metadata
-	NextPart   string
-	ObjectSize int64
+	NextBlob       string
+	ObjectSize     int64
+	ObjectModTime  int64
+	ObjectUserMeta map[string]string
+	Filename       string
 }
 
 // MultiPartInfo represents info/metadata of a multipart upload
@@ -59,7 +72,7 @@ func InitializeMetaManager(dir string) (Manager, error) {
 	meta := &Meta{
 		objDir:    filepath.Join(dir, objectDir),
 		bucketDir: filepath.Join(dir, bucketDir),
-		partDir:   filepath.Join(dir, partDir),
+		blobDir:   filepath.Join(dir, blobDir),
 		uploadDir: filepath.Join(dir, uploadDir),
 	}
 	if err := meta.createDirs(); err != nil {
@@ -69,70 +82,36 @@ func InitializeMetaManager(dir string) (Manager, error) {
 	return meta, nil
 }
 
-func createWriteFile(filename string, content []byte, perm os.FileMode) error {
-	// try to writes file directly
-	var (
-		file *os.File
-		err  error
-	)
-
-	if err = os.MkdirAll(filepath.Dir(filename), dirPerm); err != nil {
-		return err
-	}
-
-	file, err = os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	if err = syscall.Flock(int(file.Fd()), syscall.LOCK_EX); err != nil {
-		return err
-	}
-
-	defer syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
-
-	//we only truncate the file once we have the lock
-	//to not corrupt file data
-	if err = file.Truncate(0); err != nil {
-		return err
-	}
-
-	_, err = file.Write(content)
-
-	return err
-}
-
 // CreateObjectInfo creates minio ObjectInfo from 0-stor metadata
 func CreateObjectInfo(bucket, object string, md *ObjectMeta) minio.ObjectInfo {
-	etag := getUserMetadataValue(ETagKey, md.UserDefined)
+	etag := getUserMetadataValue(ETagKey, md.ObjectUserMeta)
 	if etag == "" {
 		etag = object
 	}
 
 	storageClass := "STANDARD"
-	if class, ok := md.UserDefined[amzStorageClass]; ok {
+	if class, ok := md.ObjectUserMeta[amzStorageClass]; ok {
 		storageClass = class
 	}
 
 	info := minio.ObjectInfo{
 		Bucket:          bucket,
 		Name:            object,
-		Size:            md.Size,
-		ModTime:         zstorEpochToTimestamp(md.LastWriteEpoch),
+		Size:            md.ObjectSize,
+		ModTime:         zstorEpochToTimestamp(md.ObjectModTime),
 		ETag:            etag,
-		ContentType:     getUserMetadataValue(contentTypeKey, md.UserDefined),
-		ContentEncoding: getUserMetadataValue(contentEncodingKey, md.UserDefined),
+		ContentType:     getUserMetadataValue(contentTypeKey, md.ObjectUserMeta),
+		ContentEncoding: getUserMetadataValue(contentEncodingKey, md.ObjectUserMeta),
 		StorageClass:    storageClass,
 	}
 
-	delete(md.UserDefined, contentTypeKey)
-	delete(md.UserDefined, contentEncodingKey)
-	delete(md.UserDefined, amzStorageClass)
-	delete(md.UserDefined, ETagKey)
-	delete(md.UserDefined, nextPartKey)
+	delete(md.ObjectUserMeta, contentTypeKey)
+	delete(md.ObjectUserMeta, contentEncodingKey)
+	delete(md.ObjectUserMeta, amzStorageClass)
+	delete(md.ObjectUserMeta, ETagKey)
+	delete(md.ObjectUserMeta, nextBlobKey)
 
-	info.UserDefined = md.UserDefined
+	info.UserDefined = md.ObjectUserMeta
 
 	return info
 }
@@ -145,12 +124,4 @@ func getUserMetadataValue(key string, userMeta map[string]string) string {
 // convert zerostor epoch time to Go timestamp
 func zstorEpochToTimestamp(epoch int64) time.Time {
 	return time.Unix(epoch/1e9, epoch%1e9)
-}
-
-func exists(name string) (bool, error) {
-	_, err := os.Stat(name)
-	if os.IsNotExist(err) {
-		return false, nil
-	}
-	return err != nil, err
 }

@@ -2,25 +2,10 @@ package zerostor
 
 import (
 	"context"
-	"net/http"
 
 	minio "github.com/minio/minio/cmd"
 	"github.com/minio/minio/pkg/madmin"
 )
-
-// //ClearLocks implementation
-// func (zo *zerostorObjects) ClearLocks(context.Context, []minio.VolumeLockInfo) error {
-// 	return minio.NotImplemented{}
-// }
-
-// //ListLocks implementation
-// func (zo *zerostorObjects) ListLocks(ctx context.Context, bucket, prefix string, duration time.Duration) ([]minio.VolumeLockInfo, error) {
-// 	return nil, minio.NotImplemented{}
-// }
-
-func (zo *zerostorObjects) GetObjectNInfo(ctx context.Context, bucket, object string, rs *minio.HTTPRangeSpec, h http.Header, lockType minio.LockType, opts minio.ObjectOptions) (reader *minio.GetObjectReader, err error) {
-	return &minio.GetObjectReader{}, minio.NotImplemented{}
-}
 
 //ReloadFormat implementation
 func (zo *zerostorObjects) ReloadFormat(ctx context.Context, dryRun bool) error {

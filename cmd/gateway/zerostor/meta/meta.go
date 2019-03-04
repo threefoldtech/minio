@@ -1,24 +1,26 @@
 package meta
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/gob"
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	minio "github.com/minio/minio/cmd"
+	"github.com/minio/minio/cmd/gateway/zerostor/utils"
 	"github.com/minio/minio/pkg/policy"
 	"github.com/pkg/errors"
 	"github.com/satori/uuid"
-	"github.com/threefoldtech/0-stor/client/metastor/db"
 	"github.com/threefoldtech/0-stor/client/metastor/metatypes"
+	"github.com/threefoldtech/minio/cmd/gateway/zerostor/meta"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -26,16 +28,17 @@ import (
 const (
 	bucketDir          = "buckets"
 	objectDir          = "objects"
-	partDir            = "parts"
+	blobDir            = "blobs"
 	uploadDir          = "uploads"
 	uploadMetaFile     = ".meta"
 	contentTypeKey     = "content-type"
 	contentEncodingKey = "content-encoding"
 	amzStorageClass    = "x-amz-storage-class"
-	nextPartKey        = "next-part"
+	nextBlobKey        = "next-blob"
 	ETagKey            = "etag"
 	fileMetaDirSize    = 4096 // size of dir always 4096
-
+	// MinPartSize limit on min part size for partial upload
+	MinPartSize = 5 * 1024 * 1024
 )
 
 var (
@@ -47,8 +50,36 @@ var (
 type Meta struct {
 	bucketDir string
 	objDir    string
-	partDir   string
+	blobDir   string
 	uploadDir string
+}
+
+func (m *Meta) blobFile(fileID string) string {
+	return filepath.Join(m.blobDir, fileID[0:2], fileID)
+}
+
+func (m *Meta) objectFile(bucket, object string) string {
+	return filepath.Join(m.objDir, bucket, object)
+}
+
+func (m *Meta) bucketFileName(bucket string) string {
+	return filepath.Join(m.bucketDir, bucket)
+}
+
+func (m *Meta) bucketObjectsDir(bucket string) string {
+	return filepath.Join(m.objDir, bucket)
+}
+
+func (m *Meta) bucketUploadsDir(bucket string) string {
+	return filepath.Join(m.uploadDir, bucket)
+}
+
+func (m *Meta) uploadDirName(bucket, uploadID string) string {
+	return filepath.Join(m.bucketUploadsDir(bucket), uploadID)
+}
+
+func (m *Meta) partFileName(bucket, uploadID, partID string) string {
+	return filepath.Join(m.uploadDir, bucket, uploadID, partID)
 }
 
 func (m *Meta) createDirs() error {
@@ -62,8 +93,8 @@ func (m *Meta) createDirs() error {
 		return err
 	}
 
-	// initialize parts dir, if not exist
-	if err := os.MkdirAll(m.partDir, dirPerm); err != nil {
+	// initialize blobs dir, if not exist
+	if err := os.MkdirAll(m.blobDir, dirPerm); err != nil {
 		return err
 	}
 
@@ -72,7 +103,7 @@ func (m *Meta) createDirs() error {
 
 // CreateBucket creates bucket given its name
 func (m *Meta) CreateBucket(name string) error {
-	if exists, err := exists(m.bucketFileName(name)); err != nil {
+	if exists, err := utils.Exists(m.bucketFileName(name)); err != nil {
 		return err
 	} else if exists {
 		return minio.BucketAlreadyExists{}
@@ -82,7 +113,7 @@ func (m *Meta) CreateBucket(name string) error {
 	if err := m.createBucket(name); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(m.objectsBucket(name), dirPerm); err != nil {
+	if err := os.MkdirAll(m.bucketObjectsDir(name), dirPerm); err != nil {
 		return err
 	}
 	return nil
@@ -117,18 +148,13 @@ func (m *Meta) saveBucket(bkt *Bucket) error {
 // DeleteBucket deletes a bucket given its name
 func (m *Meta) DeleteBucket(name string) error {
 
-	if err := os.Remove(filepath.Join(m.bucketDir, name)); err != nil {
-		if !os.IsNotExist(err) {
-			log.WithError(err).WithFields(log.Fields{
-				"subsystem": "disk",
-				"bucket":    name,
-			}).Error("failed to delete bucket")
-		}
-
+	if err := utils.RemoveFile(filepath.Join(m.bucketDir, name)); err != nil {
+		log.WithError(err).WithFields(log.Fields{
+			"subsystem": "disk",
+			"bucket":    name,
+		}).Error("failed to delete bucket")
 		return err
 	}
-
-	// @todo: delete meta links too
 
 	if err := os.RemoveAll(filepath.Join(m.objDir, name)); err != nil {
 		//we only log a warning if we failed to delete bucket objects
@@ -136,8 +162,17 @@ func (m *Meta) DeleteBucket(name string) error {
 			"subsystem": "disk",
 			"bucket":    name,
 		}).Warning("failed to delete bucket objects")
+		return err
 	}
 
+	if err := os.RemoveAll(filepath.Join(m.uploadDir, name)); err != nil {
+		//we only log a warning if we failed to delete bucket objects
+		log.WithError(err).WithFields(log.Fields{
+			"subsystem": "disk",
+			"bucket":    name,
+		}).Warning("failed to delete bucket objects")
+		return err
+	}
 	return nil
 }
 
@@ -197,52 +232,114 @@ func (m *Meta) SetBucketPolicy(name string, policy *policy.Policy) error {
 	return m.saveBucket(bkt)
 }
 
-// SetChunk saves the metadata to a file under /parts and returns the file id
-func (m *Meta) SetChunk(metaData *ObjectMeta) (string, error) {
-
-	metaBytes := new(bytes.Buffer)
-	gob.NewEncoder(metaBytes).Encode(metaData)
-	partID := uuid.NewV4().String()
-	if err := createWriteFile(m.partFileName(partID), metaBytes.Bytes(), filePerm); err != nil {
-		log.WithError(err).WithFields(log.Fields{
-			"subsystem": "disk",
-			"key":       string(metaData.Key),
-		}).Error("failed to write metadata")
-		return "", err
+func (m *Meta) PutObject(metaData *metatypes.Metadata, bucket, object string) (minio.ObjectInfo, error) {
+	fileID, objMeta, err := m.createBlob(metaData, false)
+	if err != nil {
+		return minio.ObjectInfo{}, err
 	}
-	return partID, nil
+
+	if err = m.SetObjectLink(bucket, object, fileID); err != nil {
+		return minio.ObjectInfo{}, err
+	}
+
+	return CreateObjectInfo(bucket, object, &objMeta), nil
 }
 
-// SetObjectLink creates the object file under /objects and links it to the first part metadata file
-func (m *Meta) SetObjectLink(bucket, object, partID string) error {
+func (m *Meta) PutObjectPart(metaData *metatypes.Metadata, bucket, uploadID string, partID int) (minio.PartInfo, error) {
+	fileID, _, err := m.createBlob(metaData, true)
+	if err != nil {
+		return minio.PartInfo{}, err
+	}
 
-	objectFile := m.objectFileName(bucket, object)
-	partFile := m.partFileName(partID)
+	if err = m.SetPartLink(bucket, uploadID, strconv.Itoa(partID), fileID); err != nil {
+		return minio.PartInfo{}, err
+	}
+
+	return minio.PartInfo{
+		PartNumber:   partID,
+		LastModified: time.Unix(metaData.CreationEpoch, 0),
+		ETag:         metaData.UserDefined[meta.ETagKey],
+		Size:         metaData.Size,
+	}, nil
+}
+
+// createBlob saves the metadata to a file under /blobs and returns the file id
+func (m *Meta) createBlob(metaData *metatypes.Metadata, multiUpload bool) (string, ObjectMeta, error) {
+	fileID := uuid.NewV4().String()
+	objMeta := ObjectMeta{
+		Metadata: metaData,
+		Filename: fileID,
+	}
+
+	if !multiUpload {
+		objMeta.ObjectSize = metaData.Size
+
+		objMeta.ObjectUserMeta = metaData.UserDefined
+		objMeta.ObjectModTime = metaData.LastWriteEpoch
+	}
+	filename := m.blobFile(fileID)
+
+	if err := os.MkdirAll(filepath.Dir(filename), dirPerm); err != nil {
+		return fileID, ObjectMeta{}, err
+	}
+
+	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fileID, ObjectMeta{}, err
+	}
+	defer file.Close()
+
+	return fileID, objMeta, gob.NewEncoder(file).Encode(objMeta)
+}
+
+func (m *Meta) DeleteBlob(blob string) error {
+	blobFile := m.blobFile(blob)
+	if err := utils.RemoveFile(blobFile); err != nil {
+		return err
+	}
+
+	blobDir := path.Dir(blobFile)
+	files, err := ioutil.ReadDir(blobDir)
+	if err != nil {
+		return nil
+	}
+	if len(files) == 0 {
+		return os.RemoveAll(blobDir)
+	}
+	return nil
+}
+
+func (m *Meta) DeleteUploadDir(bucket, uploadID string) error {
+	return os.RemoveAll(m.uploadDirName(bucket, uploadID))
+}
+
+func (m *Meta) DeleteObjectFile(bucket, object string) error {
+	return utils.RemoveFile(m.objectFile(bucket, object))
+}
+
+// SetObjectLink creates the object file under /objects and links it to the first blob metadata file
+func (m *Meta) SetObjectLink(bucket, object, fileID string) error {
+	if err := m.DeleteObjectFile(bucket, object); err != nil {
+		return err
+
+	}
+
+	objectFile := m.objectFile(bucket, object)
+	blobFile := m.blobFile(fileID)
 
 	if err := os.MkdirAll(filepath.Dir(objectFile), dirPerm); err != nil {
 		return err
 	}
-	return os.Link(partFile, objectFile)
+	return os.Symlink(blobFile, objectFile)
 }
 
-func (m *Meta) partFileName(partID string) string {
-	return filepath.Join(m.partDir, partID[0:2], partID)
-}
+// SetPartLink
+func (m *Meta) SetPartLink(bucket, uploadID, partID, fileID string) error {
 
-func (m *Meta) objectFileName(bucket, object string) string {
-	return filepath.Join(m.objDir, bucket, object)
-}
+	partFile := m.partFileName(bucket, uploadID, partID)
+	blobFile := m.blobFile(fileID)
 
-func (m *Meta) bucketFileName(bucket string) string {
-	return filepath.Join(m.bucketDir, bucket)
-}
-
-func (m *Meta) objectsBucket(bucket string) string {
-	return filepath.Join(m.objDir, bucket)
-}
-
-func (m *Meta) uploadDirName(bucket, object string) string {
-	return filepath.Join(m.uploadDir, bucket, object)
+	return os.Symlink(blobFile, partFile)
 }
 
 func (m *Meta) ListObjects(ctx context.Context, bucket, prefix, marker, delimiter string, maxKeys int) (result minio.ListObjectsInfo, err error) {
@@ -338,13 +435,12 @@ func (m *Meta) scan(ctx context.Context, bucket, prefix, after string, delimited
 
 	if !stat.IsDir() {
 		//is a file
-
-		md, decodeErr := m.GetDecodeMeta(filepath.Join(bucket, prefix))
+		md, decodeErr := m.decodeObjMeta(m.objectFile(bucket, prefix))
 		if decodeErr != nil {
 			return "", decodeErr
 		}
 
-		result.Objects = append(result.Objects, CreateObjectInfo(bucket, prefix, md))
+		result.Objects = append(result.Objects, CreateObjectInfo(bucket, prefix, &md))
 		return "", nil
 	}
 
@@ -399,75 +495,17 @@ func (m *Meta) scan(ctx context.Context, bucket, prefix, after string, delimited
 
 		//we found a file
 		// if file, get metadata of this file
-		md, err := m.GetDecodeMeta(filepath.Join(bucket, name))
+
+		md, err := m.decodeObjMeta(m.objectFile(bucket, name))
 		if err != nil {
 			return err
 		}
 
-		result.Objects = append(result.Objects, CreateObjectInfo(bucket, name, md))
+		result.Objects = append(result.Objects, CreateObjectInfo(bucket, name, &md))
 		return nil
 	})
 
 	return last, err
-}
-
-// get the metadata and decode it
-func (m *Meta) GetDecodeMeta(key string) (*ObjectMeta, error) {
-	rawMd, err := m.getMetaBytes(key)
-	if err != nil {
-		return nil, err
-	}
-
-	var md ObjectMeta
-	println("*********************************")
-
-	dec := gob.NewDecoder(bytes.NewReader(rawMd))
-	err = dec.Decode(&md)
-	return &md, err
-}
-
-func (m *Meta) getMetaBytes(key string) ([]byte, error) {
-
-	file, err := os.Open(filepath.Join(m.objDir, key))
-	if os.IsNotExist(err) {
-		return nil, db.ErrNotFound
-	} else if err != nil {
-		return nil, err
-	}
-
-	defer file.Close()
-
-	if err = syscall.Flock(int(file.Fd()), syscall.LOCK_EX); err != nil {
-		return nil, err
-	}
-	defer syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
-
-	fi, err := file.Stat()
-	if err != nil {
-		return nil, err
-	}
-
-	var buffer bytes.Buffer
-
-	if !fi.IsDir() {
-		_, err = buffer.ReadFrom(file)
-	} else {
-		epoch := fi.ModTime().UnixNano()
-		// Create an encoder and send a value.
-		enc := gob.NewEncoder(&buffer)
-		err = enc.Encode(metatypes.Metadata{
-			Size:           fileMetaDirSize,
-			Key:            []byte(key),
-			StorageSize:    fileMetaDirSize,
-			CreationEpoch:  epoch,
-			LastWriteEpoch: epoch,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	return buffer.Bytes(), nil
 }
 
 func (m *Meta) NewMultipartUpload(bucket, object string, opts minio.ObjectOptions) (string, error) {
@@ -491,7 +529,7 @@ func (m *Meta) NewMultipartUpload(bucket, object string, opts minio.ObjectOption
 	}
 
 	// creates meta file
-	uploadMetaFile := filepath.Join(m.uploadDir, uploadMetaFile)
+	uploadMetaFile := filepath.Join(uploadDir, uploadMetaFile)
 	f, err := os.OpenFile(uploadMetaFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filePerm)
 	if err != nil {
 		log.WithError(err).WithFields(log.Fields{
@@ -505,4 +543,269 @@ func (m *Meta) NewMultipartUpload(bucket, object string, opts minio.ObjectOption
 
 	err = gob.NewEncoder(f).Encode(info)
 	return uploadID, err
+}
+
+func (m *Meta) ListPartsInfo(bucket, uploadID string) ([]minio.PartInfo, error) {
+	files, err := ioutil.ReadDir(m.uploadDirName(bucket, uploadID))
+	if err != nil {
+		log.WithError(err).WithFields(log.Fields{
+			"bucket":    bucket,
+			"upload_id": uploadID,
+			"subsystem": "disk",
+		}).Error("failed to get multipart upload")
+		return nil, err
+	}
+	var infos []minio.PartInfo
+
+	// read-decode each file
+	for _, file := range files {
+		if file.Name() == uploadMetaFile {
+			continue
+		}
+
+		metaObj, err := m.decodeObjMeta(m.partFileName(bucket, uploadID, file.Name()))
+
+		if err != nil {
+			return nil, err
+		}
+		partID, err := strconv.ParseInt(file.Name(), 0, 64)
+		if err != nil {
+			return nil, err
+		}
+
+		info := minio.PartInfo{
+			PartNumber:   int(partID),
+			LastModified: time.Unix(metaObj.CreationEpoch, 0),
+			ETag:         metaObj.UserDefined[meta.ETagKey],
+			Size:         metaObj.Size,
+		}
+		infos = append(infos, info)
+	}
+
+	sort.Slice(infos, func(i, j int) bool {
+		if infos[i].PartNumber != infos[j].PartNumber { // sort by part number first
+			return infos[i].PartNumber < infos[j].PartNumber
+		}
+		return infos[i].LastModified.Before(infos[j].LastModified)
+
+	})
+
+	return infos, nil
+}
+
+func (m *Meta) ListPartsMeta(bucket, uploadID string) (map[int]*ObjectMeta, error) {
+	files, err := ioutil.ReadDir(m.uploadDirName(bucket, uploadID))
+	if err != nil {
+		log.WithError(err).WithFields(log.Fields{
+			"bucket":    bucket,
+			"upload_id": uploadID,
+			"subsystem": "disk",
+		}).Error("failed to get multipart upload")
+		return nil, err
+	}
+	infos := make(map[int]*ObjectMeta)
+
+	// read-decode each file
+	for _, file := range files {
+		if file.Name() == uploadMetaFile {
+			continue
+		}
+
+		metaObj, err := m.decodeObjMeta(m.partFileName(bucket, uploadID, file.Name()))
+
+		if err != nil {
+			return nil, err
+		}
+		partID, err := strconv.ParseInt(file.Name(), 0, 64)
+		if err != nil {
+			return nil, err
+		}
+
+		infos[int(partID)] = &metaObj
+	}
+	return infos, nil
+}
+func (m *Meta) decodeObjMeta(file string) (ObjectMeta, error) {
+	// open file
+	f, err := os.Open(file)
+	if os.IsNotExist(err) {
+		return ObjectMeta{}, minio.ObjectNotFound{}
+	} else if err != nil {
+		return ObjectMeta{}, err
+	}
+
+	defer f.Close()
+
+	stat, err := f.Stat()
+	if err != nil {
+		return ObjectMeta{}, err
+	}
+	if !stat.IsDir() {
+		objMeta := new(ObjectMeta)
+		objMeta.Metadata = new(metatypes.Metadata)
+		err = gob.NewDecoder(f).Decode(objMeta)
+		return *objMeta, err
+	}
+	epoch := stat.ModTime().UnixNano()
+
+	return ObjectMeta{
+		ObjectSize:    fileMetaDirSize,
+		ObjectModTime: epoch,
+	}, nil
+
+}
+
+func (m *Meta) encodeObjMeta(file string, obj *ObjectMeta) error {
+
+	f, err := os.OpenFile(file, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filePerm)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	return gob.NewEncoder(f).Encode(obj)
+}
+
+func (m *Meta) CompleteMultipartUpload(bucket, object, uploadID string, parts []minio.CompletePart) (minio.ObjectInfo, error) {
+
+	partsMap, err := m.ListPartsMeta(bucket, uploadID)
+	if err != nil {
+		return minio.ObjectInfo{}, err
+	}
+
+	var totalSize int64
+	var modTime int64
+
+	// use upload parts to set NextBlob in all blobs
+	for ix, part := range parts {
+		info, ok := partsMap[part.PartNumber]
+		if !ok {
+			return minio.ObjectInfo{}, minio.InvalidPart{}
+		}
+		// append the meta
+		if info.Size < MinPartSize && ix != len(parts)-1 {
+			//only last part is allowed to be less than 5M
+			return minio.ObjectInfo{}, minio.PartTooSmall{
+				PartSize:   info.Size,
+				PartNumber: part.PartNumber,
+			}
+		}
+		totalSize += info.Size
+
+		if ix != len(parts)-1 {
+			nextInfo, ok := partsMap[parts[ix+1].PartNumber]
+			if !ok {
+				return minio.ObjectInfo{}, minio.InvalidPart{}
+			}
+			info.NextBlob = string(nextInfo.Filename)
+			if ix != 0 {
+				m.encodeObjMeta(m.blobFile(info.Filename), info)
+
+			}
+		} else {
+			modTime = info.LastWriteEpoch
+
+		}
+	}
+
+	f, err := os.Open(filepath.Join(m.uploadDirName(bucket, uploadID), uploadMetaFile))
+	if err != nil {
+		return minio.ObjectInfo{}, err
+	}
+	defer f.Close()
+
+	uploadInfo := MultiPartInfo{}
+	err = gob.NewDecoder(f).Decode(&uploadInfo)
+	if err != nil {
+		return minio.ObjectInfo{}, err
+	}
+
+	// put the object info in the first blob
+	firstPart := partsMap[parts[0].PartNumber]
+	firstPart.ObjectUserMeta = uploadInfo.Metadata
+	firstPart.ObjectSize = totalSize
+	firstPart.ObjectModTime = modTime
+	if err := m.encodeObjMeta(m.blobFile(firstPart.Filename), firstPart); err != nil {
+		return minio.ObjectInfo{}, err
+	}
+
+	// link the object to the first blob
+	if err := m.SetObjectLink(bucket, object, firstPart.Filename); err != nil {
+		return minio.ObjectInfo{}, err
+	}
+
+	return CreateObjectInfo(bucket, object, firstPart), m.DeleteUploadDir(bucket, uploadID)
+}
+
+func (m *Meta) GetObjectInfo(bucket, object string) (minio.ObjectInfo, error) {
+	md, err := m.decodeObjMeta(m.objectFile(bucket, object))
+	if err != nil {
+		println("error in getobject info", err.Error())
+		return minio.ObjectInfo{}, err
+	}
+	return CreateObjectInfo(bucket, object, &md), nil
+}
+
+type result struct {
+	Obj   ObjectMeta
+	Error error
+}
+
+func (m *Meta) StreamObjectMeta(done <-chan struct{}, bucket, object string) <-chan result {
+	c := make(chan result)
+	go func() {
+		defer close(c)
+		metaFile := m.objectFile(bucket, object)
+		for true {
+			println("Reading meta %s", metaFile)
+			objMeta, err := m.decodeObjMeta(metaFile)
+
+			select {
+			case c <- result{objMeta, err}:
+				println("NextBlob", objMeta.NextBlob)
+				if objMeta.NextBlob == "" {
+					println("last blob...returning")
+					return
+				}
+				metaFile = m.blobFile(objMeta.NextBlob)
+
+			case <-done:
+				println("Done closed")
+				return
+			}
+
+		}
+
+	}()
+	return c
+}
+
+func (m *Meta) ValidUpload(bucket, uploadID string) (bool, error) {
+	exists, err := utils.Exists(m.uploadDirName(bucket, uploadID))
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
+func (m *Meta) ListMultipartUploads(bucket string) (minio.ListMultipartsInfo, error) {
+	files, err := ioutil.ReadDir(m.bucketUploadsDir(bucket))
+	if err != nil {
+		return minio.ListMultipartsInfo{}, err
+	}
+
+	info := new(minio.ListMultipartsInfo)
+
+	for _, file := range files {
+		if !file.IsDir() {
+			continue
+		}
+
+		f, err := os.Open(filepath.Join(m.bucketUploadsDir(bucket), file.Name(), uploadMetaFile))
+		if err != nil {
+			return *info, err
+		}
+		defer f.Close()
+
+	}
 }
