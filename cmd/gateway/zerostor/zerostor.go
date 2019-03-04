@@ -80,6 +80,12 @@ func (zm *zsClientManager) Open(cfg config.Config) error {
 	return nil
 }
 
+func (zm *zsClientManager) Close() error {
+	zm.mux.Lock()
+	defer zm.mux.Unlock()
+	return zm.zstorClient.Client.Close()
+}
+
 // createClient creates a 0-stor client from a configuration file
 func createClient(cfg config.Config) (*client.Client, error) {
 	if cfg.Namespace == "" {

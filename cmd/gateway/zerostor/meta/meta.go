@@ -593,38 +593,6 @@ func (m *Meta) ListPartsInfo(bucket, uploadID string) ([]minio.PartInfo, error) 
 	return infos, nil
 }
 
-func (m *Meta) ListPartsMeta(bucket, uploadID string) (map[int]*ObjectMeta, error) {
-	files, err := ioutil.ReadDir(m.uploadDirName(bucket, uploadID))
-	if err != nil {
-		log.WithError(err).WithFields(log.Fields{
-			"bucket":    bucket,
-			"upload_id": uploadID,
-			"subsystem": "disk",
-		}).Error("failed to get multipart upload")
-		return nil, err
-	}
-	infos := make(map[int]*ObjectMeta)
-
-	// read-decode each file
-	for _, file := range files {
-		if file.Name() == uploadMetaFile {
-			continue
-		}
-
-		metaObj, err := m.decodeObjMeta(m.partFileName(bucket, uploadID, file.Name()))
-
-		if err != nil {
-			return nil, err
-		}
-		partID, err := strconv.ParseInt(file.Name(), 0, 64)
-		if err != nil {
-			return nil, err
-		}
-
-		infos[int(partID)] = &metaObj
-	}
-	return infos, nil
-}
 func (m *Meta) decodeObjMeta(file string) (ObjectMeta, error) {
 	// open file
 	f, err := os.Open(file)
@@ -668,44 +636,48 @@ func (m *Meta) encodeObjMeta(file string, obj *ObjectMeta) error {
 
 func (m *Meta) CompleteMultipartUpload(bucket, object, uploadID string, parts []minio.CompletePart) (minio.ObjectInfo, error) {
 
-	partsMap, err := m.ListPartsMeta(bucket, uploadID)
-	if err != nil {
-		return minio.ObjectInfo{}, err
-	}
-
 	var totalSize int64
 	var modTime int64
+	var previousPart ObjectMeta
+	var firstPart ObjectMeta
 
-	// use upload parts to set NextBlob in all blobs
+	// use upload parts to set NextBlob in all blobs metaData
 	for ix, part := range parts {
-		info, ok := partsMap[part.PartNumber]
-		if !ok {
-			return minio.ObjectInfo{}, minio.InvalidPart{}
+		metaObj, err := m.decodeObjMeta(m.partFileName(bucket, uploadID, strconv.Itoa(part.PartNumber)))
+
+		if err != nil {
+			if os.IsNotExist(err) {
+				return minio.ObjectInfo{}, minio.InvalidPart{}
+			}
+			return minio.ObjectInfo{}, err
 		}
-		// append the meta
-		if info.Size < MinPartSize && ix != len(parts)-1 {
+
+		if metaObj.Size < MinPartSize && ix != len(parts)-1 {
 			//only last part is allowed to be less than 5M
 			return minio.ObjectInfo{}, minio.PartTooSmall{
-				PartSize:   info.Size,
+				PartSize:   metaObj.Size,
 				PartNumber: part.PartNumber,
 			}
 		}
-		totalSize += info.Size
 
-		if ix != len(parts)-1 {
-			nextInfo, ok := partsMap[parts[ix+1].PartNumber]
-			if !ok {
-				return minio.ObjectInfo{}, minio.InvalidPart{}
+		// calculate the total size of the object
+		totalSize += metaObj.Size
+
+		// set the NextBlob and save the file except for the first part which we save later on
+		if ix != 0 {
+			previousPart.NextBlob = string(metaObj.Filename)
+			if ix == 1 {
+				firstPart = previousPart
+			} else {
+				m.encodeObjMeta(m.blobFile(previousPart.Filename), &previousPart)
 			}
-			info.NextBlob = string(nextInfo.Filename)
-			if ix != 0 {
-				m.encodeObjMeta(m.blobFile(info.Filename), info)
-
-			}
-		} else {
-			modTime = info.LastWriteEpoch
-
 		}
+
+		if ix == len(parts)-1 {
+			m.encodeObjMeta(m.blobFile(metaObj.Filename), &metaObj)
+			modTime = metaObj.LastWriteEpoch
+		}
+		previousPart = metaObj
 	}
 
 	f, err := os.Open(filepath.Join(m.uploadDirName(bucket, uploadID), uploadMetaFile))
@@ -720,12 +692,11 @@ func (m *Meta) CompleteMultipartUpload(bucket, object, uploadID string, parts []
 		return minio.ObjectInfo{}, err
 	}
 
-	// put the object info in the first blob
-	firstPart := partsMap[parts[0].PartNumber]
+	// put the object info in the first blob and save it
 	firstPart.ObjectUserMeta = uploadInfo.Metadata
 	firstPart.ObjectSize = totalSize
 	firstPart.ObjectModTime = modTime
-	if err := m.encodeObjMeta(m.blobFile(firstPart.Filename), firstPart); err != nil {
+	if err := m.encodeObjMeta(m.blobFile(firstPart.Filename), &firstPart); err != nil {
 		return minio.ObjectInfo{}, err
 	}
 
@@ -734,7 +705,7 @@ func (m *Meta) CompleteMultipartUpload(bucket, object, uploadID string, parts []
 		return minio.ObjectInfo{}, err
 	}
 
-	return CreateObjectInfo(bucket, object, firstPart), m.DeleteUploadDir(bucket, uploadID)
+	return CreateObjectInfo(bucket, object, &firstPart), m.DeleteUploadDir(bucket, uploadID)
 }
 
 func (m *Meta) GetObjectInfo(bucket, object string) (minio.ObjectInfo, error) {
@@ -746,13 +717,13 @@ func (m *Meta) GetObjectInfo(bucket, object string) (minio.ObjectInfo, error) {
 	return CreateObjectInfo(bucket, object, &md), nil
 }
 
-type result struct {
+type metaStream struct {
 	Obj   ObjectMeta
 	Error error
 }
 
-func (m *Meta) StreamObjectMeta(done <-chan struct{}, bucket, object string) <-chan result {
-	c := make(chan result)
+func (m *Meta) StreamObjectMeta(ctx context.Context, bucket, object string) <-chan metaStream {
+	c := make(chan metaStream)
 	go func() {
 		defer close(c)
 		metaFile := m.objectFile(bucket, object)
@@ -761,7 +732,7 @@ func (m *Meta) StreamObjectMeta(done <-chan struct{}, bucket, object string) <-c
 			objMeta, err := m.decodeObjMeta(metaFile)
 
 			select {
-			case c <- result{objMeta, err}:
+			case c <- metaStream{objMeta, err}:
 				println("NextBlob", objMeta.NextBlob)
 				if objMeta.NextBlob == "" {
 					println("last blob...returning")
@@ -769,7 +740,7 @@ func (m *Meta) StreamObjectMeta(done <-chan struct{}, bucket, object string) <-c
 				}
 				metaFile = m.blobFile(objMeta.NextBlob)
 
-			case <-done:
+			case <-ctx.Done():
 				println("Done closed")
 				return
 			}
@@ -807,5 +778,58 @@ func (m *Meta) ListMultipartUploads(bucket string) (minio.ListMultipartsInfo, er
 		}
 		defer f.Close()
 
+		uploadInfo := MultiPartInfo{}
+		err = gob.NewDecoder(f).Decode(&uploadInfo)
+		if err != nil {
+			return minio.ListMultipartsInfo{}, err
+		}
+
+		upload := minio.MultipartInfo{
+			UploadID:     file.Name(),
+			Object:       uploadInfo.Object,
+			StorageClass: uploadInfo.StorageClass,
+			Initiated:    uploadInfo.Initiated,
+		}
+		info.Uploads = append(info.Uploads, upload)
+
 	}
+	return *info, nil
+}
+
+func (m *Meta) StreamPartsMeta(ctx context.Context, bucket, uploadID string) <-chan metaStream {
+	c := make(chan metaStream)
+
+	go func() {
+		defer close(c)
+
+		files, err := ioutil.ReadDir(m.uploadDirName(bucket, uploadID))
+		if err != nil {
+			log.WithError(err).WithFields(log.Fields{
+				"bucket":    bucket,
+				"upload_id": uploadID,
+				"subsystem": "disk",
+			}).Error("failed to get multipart upload")
+			c <- metaStream{Error: err}
+			return
+		}
+
+		// read-decode each file
+		for _, file := range files {
+			if file.Name() == uploadMetaFile {
+				continue
+			}
+
+			objMeta, err := m.decodeObjMeta(m.partFileName(bucket, uploadID, file.Name()))
+
+			select {
+			case c <- metaStream{objMeta, err}:
+				continue
+			case <-ctx.Done():
+				println("Done closed")
+				return
+			}
+		}
+
+	}()
+	return c
 }

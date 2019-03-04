@@ -32,7 +32,6 @@ type Manager interface {
 	ListMultipartUploads(bucket string) (minio.ListMultipartsInfo, error)
 	SetPartLink(bucket, uploadID, partID, fileID string) error
 	ListPartsInfo(bucket, uploadID string) ([]minio.PartInfo, error)
-	ListPartsMeta(bucket, uploadID string) (map[int]*ObjectMeta, error)
 	CompleteMultipartUpload(bucket, object, uploadID string, parts []minio.CompletePart) (minio.ObjectInfo, error)
 	DeleteBlob(blob string) error
 	DeleteUploadDir(bucket, uploadID string) error
@@ -40,7 +39,8 @@ type Manager interface {
 	PutObjectPart(metaData *metatypes.Metadata, bucket, uploadID string, partID int) (minio.PartInfo, error)
 	PutObject(metaData *metatypes.Metadata, bucket, object string) (minio.ObjectInfo, error)
 	GetObjectInfo(bucket, object string) (minio.ObjectInfo, error)
-	StreamObjectMeta(done <-chan struct{}, bucket, object string) <-chan result
+	StreamObjectMeta(ctx context.Context, bucket, object string) <-chan metaStream
+	StreamPartsMeta(ctx context.Context, bucket, uploadID string) <-chan metaStream
 	ValidUpload(bucket, uploadID string) (bool, error)
 }
 

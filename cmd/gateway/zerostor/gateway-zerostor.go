@@ -20,7 +20,6 @@ import (
 	minio "github.com/minio/minio/cmd"
 	"github.com/minio/minio/cmd/gateway/zerostor/config"
 	"github.com/minio/minio/cmd/gateway/zerostor/meta"
-	"github.com/minio/minio/cmd/gateway/zerostor/utils"
 
 	"github.com/minio/minio/pkg/auth"
 	"github.com/minio/minio/pkg/policy"
@@ -380,7 +379,7 @@ func (zo *zerostorObjects) DeleteObject(ctx context.Context, bucket, object stri
 	zstor := zo.zsManager.Get()
 	defer zstor.Close()
 
-	c := zo.meta.StreamObjectMeta(done, bucket, object)
+	c := zo.meta.StreamObjectMeta(ctx, bucket, object)
 
 	for r := range c {
 		if r.Error != nil {
@@ -436,14 +435,12 @@ func (zo *zerostorObjects) GetObjectNInfo(ctx context.Context, bucket, object st
 
 func (zo *zerostorObjects) GetObject(ctx context.Context, bucket, object string, startOffset int64, length int64,
 	writer io.Writer, etag string, opts minio.ObjectOptions) error {
-	done := make(chan struct{})
-	defer close(done)
 
 	println("offset and size", startOffset, length)
 	zstor := zo.zsManager.Get()
 	defer zstor.Close()
 
-	c := zo.meta.StreamObjectMeta(done, bucket, object)
+	c := zo.meta.StreamObjectMeta(ctx, bucket, object)
 	for r := range c {
 		if r.Error != nil {
 			return r.Error
@@ -465,10 +462,6 @@ func (zo *zerostorObjects) GetObjectInfo(ctx context.Context, bucket, object str
 
 func (zo *zerostorObjects) ListObjects(ctx context.Context, bucket, prefix, marker, delimiter string,
 	maxKeys int) (result minio.ListObjectsInfo, err error) {
-	println("p", prefix)
-	println("mark", marker)
-	println("del", delimiter)
-	println("max", maxKeys)
 
 	println("list objects")
 	log.WithFields(log.Fields{
@@ -560,7 +553,7 @@ func (zo *zerostorObjects) PutObjectPart(ctx context.Context, bucket, object, up
 		return info, ErrReadOnlyZeroStor
 	}
 
-	if exists, err := zo.meta.ValidUpload(bucket, uploadID)); err != nil {
+	if exists, err := zo.meta.ValidUpload(bucket, uploadID); err != nil {
 		return info, err
 	} else if !exists {
 		return minio.PartInfo{}, minio.InvalidUploadID{UploadID: uploadID}
@@ -599,26 +592,24 @@ func (zo *zerostorObjects) CopyObjectPart(ctx context.Context, srcBucket, srcObj
 func (zo *zerostorObjects) CompleteMultipartUpload(ctx context.Context, bucket, object, uploadID string,
 	parts []minio.CompletePart, options minio.ObjectOptions) (info minio.ObjectInfo, err error) {
 	log.Print("COMPLETE MULTI UPLOAD ************")
-
 	if zo.isReadOnly() {
 		return info, ErrReadOnlyZeroStor
 	}
 
-	if exists, err := zo.meta.ValidUpload(bucket, uploadID)); err != nil {
+	if exists, err := zo.meta.ValidUpload(bucket, uploadID); err != nil {
 		return info, err
 	} else if !exists {
 		return info, minio.InvalidUploadID{UploadID: uploadID}
 	}
 
-
 	return zo.meta.CompleteMultipartUpload(bucket, object, uploadID, parts)
 }
 
 // AbortMultipartUpload implements minio.ObjectLayer.AbortMultipartUpload
-func (zo *zerostorObjects) AbortMultipartUpload(ctx context.Context, bucket, object, uploadID string) error {
+func (zo *zerostorObjects) AbortMultipartUpload(ctx context.Context, bucket, object, uploadID string) (err error) {
 	log.Print("AbortMultipartUpload ************")
 
-	if exists, err := zo.meta.ValidUpload(bucket, uploadID)); err != nil {
+	if exists, err := zo.meta.ValidUpload(bucket, uploadID); err != nil {
 		return err
 	} else if !exists {
 		return minio.InvalidUploadID{UploadID: uploadID}
@@ -627,16 +618,15 @@ func (zo *zerostorObjects) AbortMultipartUpload(ctx context.Context, bucket, obj
 	zstor := zo.zsManager.Get()
 	defer zstor.Close()
 
-	partsMap, err := zo.meta.ListPartsMeta(bucket, uploadID)
-	if err != nil {
-		return err
-	}
-	for _, info := range partsMap {
-		if err = zstor.Delete(*info.Metadata); err != nil {
+	c := zo.meta.StreamPartsMeta(ctx, bucket, uploadID)
+	for r := range c {
+		if r.Error != nil {
+			return r.Error
+		}
+		if err = zstor.Delete(*r.Obj.Metadata); err != nil {
 			return err
 		}
-		zo.meta.DeleteBlob(info.Filename)
-
+		zo.meta.DeleteBlob(r.Obj.Filename)
 	}
 
 	if err = zo.meta.DeleteUploadDir(bucket, uploadID); err != nil {
@@ -651,14 +641,14 @@ func (zo *zerostorObjects) AbortMultipartUpload(ctx context.Context, bucket, obj
 // we don't respect : prefix, keyMarker, uploadIDMarker, delimiter, and maxUploads
 func (zo *zerostorObjects) ListMultipartUploads(ctx context.Context, bucket, prefix, keyMarker, uploadIDMarker, delimiter string, maxUploads int) (result minio.ListMultipartsInfo, err error) {
 	log.Print("ListMultipartUploads ************")
-	return minio.ListMultipartsInfo{}, nil
+	return zo.meta.ListMultipartUploads(bucket)
 }
 
 // ListObjectParts implements ObjectLayer.ListObjectParts
 func (zo *zerostorObjects) ListObjectParts(ctx context.Context, bucket, object, uploadID string, partNumberMarker, maxParts int, opts minio.ObjectOptions) (result minio.ListPartsInfo, err error) {
 	log.Print("ListObjectParts ************")
 
-	if exists, err := zo.meta.ValidUpload(bucket, uploadID)); err != nil {
+	if exists, err := zo.meta.ValidUpload(bucket, uploadID); err != nil {
 		return result, err
 	} else if !exists {
 		return result, minio.InvalidUploadID{UploadID: uploadID}
@@ -680,7 +670,7 @@ func (zo *zerostorObjects) ListObjectParts(ctx context.Context, bucket, object, 
 
 // Shutdown implements ObjectLayer.Shutdown
 func (zo *zerostorObjects) Shutdown(ctx context.Context) error {
-	return nil
+	return zo.zsManager.Close()
 }
 
 // StorageInfo implements ObjectLayer.StorageInfo
