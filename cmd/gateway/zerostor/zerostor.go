@@ -9,6 +9,7 @@ import (
 
 	"github.com/minio/minio/cmd/gateway/zerostor/config"
 	"github.com/threefoldtech/0-stor/client"
+	"github.com/threefoldtech/0-stor/client/datastor"
 	"github.com/threefoldtech/0-stor/client/datastor/pipeline"
 	"github.com/threefoldtech/0-stor/client/datastor/zerodb"
 	"github.com/threefoldtech/0-stor/client/metastor/metatypes"
@@ -43,12 +44,9 @@ func (zc *zsClient) Write(bucket, object string, rd io.Reader, userDefMeta map[s
 }
 
 func (zc *zsClient) Read(metadata *metatypes.Metadata, writer io.Writer, offset, length int64) error {
-	if offset == 0 && (length <= 0 || length == metadata.Size) {
-		println("Read ", string(metadata.Key))
+	if offset == 0 && (length <= 0 || length >= metadata.Size) {
 		return zc.Client.Read(*metadata, writer)
 	}
-	return zc.Client.Read(*metadata, writer)
-
 	println("ReadRange ", string(metadata.Key))
 	return zc.Client.ReadRange(*metadata, writer, offset, length)
 }
@@ -61,6 +59,7 @@ func (zc *zsClient) getKey(bucket, object string) []byte {
 type zsClientManager struct {
 	zstorClient *zsClient
 	mux         sync.RWMutex
+	Cluster     datastor.Cluster
 }
 
 func (zm *zsClientManager) Get() *zsClient {
@@ -72,7 +71,7 @@ func (zm *zsClientManager) Open(cfg config.Config) error {
 	zm.mux.Lock()
 	defer zm.mux.Unlock()
 	zm.zstorClient.Client.Close()
-	client, err := createClient(cfg)
+	client, _, err := createClient(cfg)
 	if err != nil {
 		return nil
 	}
@@ -83,25 +82,26 @@ func (zm *zsClientManager) Open(cfg config.Config) error {
 func (zm *zsClientManager) Close() error {
 	zm.mux.Lock()
 	defer zm.mux.Unlock()
+
 	return zm.zstorClient.Client.Close()
 }
 
 // createClient creates a 0-stor client from a configuration file
-func createClient(cfg config.Config) (*client.Client, error) {
+func createClient(cfg config.Config) (*client.Client, datastor.Cluster, error) {
 	if cfg.Namespace == "" {
-		return nil, fmt.Errorf("empty namespace")
+		return nil, nil, fmt.Errorf("empty namespace")
 	}
 
 	cluster, err := zerodb.NewCluster(cfg.DataStor.Shards, cfg.Password, cfg.Namespace, nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// create data pipeline, using our datastor cluster
 	dataPipeline, err := pipeline.NewPipeline(cfg.DataStor.Pipeline, cluster, 0)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return client.NewClient(nil, dataPipeline), nil
+	return client.NewClient(nil, dataPipeline), cluster, nil
 }
