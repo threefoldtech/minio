@@ -62,7 +62,7 @@ type filesystemMeta struct {
 	uploadDir string
 }
 
-func (m *filesystemMeta) blobFile(fileID string) string {
+func (m *filesystemMeta) BlobFile(fileID string) string {
 	return filepath.Join(m.blobDir, fileID[0:2], fileID)
 }
 
@@ -288,33 +288,23 @@ func (m *filesystemMeta) createBlob(metaData *metatypes.Metadata, multiUpload bo
 		objMeta.ObjectUserMeta = metaData.UserDefined
 		objMeta.ObjectModTime = metaData.LastWriteEpoch
 	}
-	filename := m.blobFile(fileID)
+	filename := m.BlobFile(fileID)
 
 	if err := os.MkdirAll(filepath.Dir(filename), dirPerm); err != nil {
 		return fileID, ObjectMeta{}, err
 	}
 
-	file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		log.WithError(err).WithFields(log.Fields{
-			"subsystem": "disk",
-			"key":       string(metaData.Key),
-		}).Error("failed to write metadata")
-		return fileID, ObjectMeta{}, err
-	}
-	defer file.Close()
-
-	return fileID, objMeta, gob.NewEncoder(file).Encode(objMeta)
+	return fileID, objMeta, m.EncodeObjMeta(filename, &objMeta)
 }
 
 // DeleteBlob deletes a metadata blob file
 func (m *filesystemMeta) DeleteBlob(blob string) error {
-	blobFile := m.blobFile(blob)
-	if err := utils.RemoveFile(blobFile); err != nil {
+	BlobFile := m.BlobFile(blob)
+	if err := utils.RemoveFile(BlobFile); err != nil {
 		return err
 	}
 
-	blobDir := path.Dir(blobFile)
+	blobDir := path.Dir(BlobFile)
 	files, err := ioutil.ReadDir(blobDir)
 	if err != nil {
 		return nil
@@ -343,21 +333,21 @@ func (m *filesystemMeta) SetObjectLink(bucket, object, fileID string) error {
 	}
 
 	objectFile := m.objectFile(bucket, object)
-	blobFile := m.blobFile(fileID)
+	BlobFile := m.BlobFile(fileID)
 
 	if err := os.MkdirAll(filepath.Dir(objectFile), dirPerm); err != nil {
 		return err
 	}
-	return os.Symlink(blobFile, objectFile)
+	return os.Symlink(BlobFile, objectFile)
 }
 
 // SetPartLink links a multipart upload part to a metadata blob file
 func (m *filesystemMeta) SetPartLink(bucket, uploadID, partID, fileID string) error {
 
 	partFile := m.partFileName(bucket, uploadID, partID)
-	blobFile := m.blobFile(fileID)
+	BlobFile := m.BlobFile(fileID)
 
-	return os.Symlink(blobFile, partFile)
+	return os.Symlink(BlobFile, partFile)
 }
 
 // ListObjects lists objects in a bucket
@@ -648,7 +638,7 @@ func (m *filesystemMeta) decodeObjMeta(file string) (ObjectMeta, error) {
 
 }
 
-func (m *filesystemMeta) encodeObjMeta(file string, obj *ObjectMeta) error {
+func (m *filesystemMeta) EncodeObjMeta(file string, obj *ObjectMeta) error {
 
 	f, err := os.OpenFile(file, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filePerm)
 	if err != nil {
@@ -699,12 +689,12 @@ func (m *filesystemMeta) CompleteMultipartUpload(bucket, object, uploadID string
 			if ix == 1 {
 				firstPart = previousPart
 			} else {
-				m.encodeObjMeta(m.blobFile(previousPart.Filename), &previousPart)
+				m.EncodeObjMeta(m.BlobFile(previousPart.Filename), &previousPart)
 			}
 		}
 
 		if ix == len(parts)-1 {
-			m.encodeObjMeta(m.blobFile(metaObj.Filename), &metaObj)
+			m.EncodeObjMeta(m.BlobFile(metaObj.Filename), &metaObj)
 			modTime = metaObj.LastWriteEpoch
 		}
 		previousPart = metaObj
@@ -726,7 +716,7 @@ func (m *filesystemMeta) CompleteMultipartUpload(bucket, object, uploadID string
 	firstPart.ObjectUserMeta = uploadInfo.Metadata
 	firstPart.ObjectSize = totalSize
 	firstPart.ObjectModTime = modTime
-	if err := m.encodeObjMeta(m.blobFile(firstPart.Filename), &firstPart); err != nil {
+	if err := m.EncodeObjMeta(m.BlobFile(firstPart.Filename), &firstPart); err != nil {
 		return minio.ObjectInfo{}, err
 	}
 
@@ -748,8 +738,8 @@ func (m *filesystemMeta) GetObjectInfo(bucket, object string) (minio.ObjectInfo,
 }
 
 // StreamObjectMeta streams an object metadata blobs through a channel
-func (m *filesystemMeta) StreamObjectMeta(ctx context.Context, bucket, object string) <-chan metaStream {
-	c := make(chan metaStream)
+func (m *filesystemMeta) StreamObjectMeta(ctx context.Context, bucket, object string) <-chan Stream {
+	c := make(chan Stream)
 	go func() {
 		defer close(c)
 		metaFile := m.objectFile(bucket, object)
@@ -757,14 +747,73 @@ func (m *filesystemMeta) StreamObjectMeta(ctx context.Context, bucket, object st
 			objMeta, err := m.decodeObjMeta(metaFile)
 
 			select {
-			case c <- metaStream{objMeta, err}:
+			case c <- Stream{objMeta, err}:
 				if objMeta.NextBlob == "" {
 					return
 				}
-				metaFile = m.blobFile(objMeta.NextBlob)
+				metaFile = m.BlobFile(objMeta.NextBlob)
 
 			case <-ctx.Done():
 				return
+			}
+
+		}
+
+	}()
+	return c
+}
+
+// StreamObjectMeta streams an object metadata blobs through a channel
+func (m *filesystemMeta) StreamBlobs(ctx context.Context) <-chan Stream {
+	c := make(chan Stream)
+	go func() {
+		defer close(c)
+
+		f, err := os.Open(m.blobDir)
+		if err != nil {
+			log.Fatal(err)
+			return
+		}
+
+		dirs, err := f.Readdir(-1)
+		f.Close()
+		if err != nil {
+			log.Fatal(err)
+			return
+		}
+
+		for _, dir := range dirs {
+			if !dir.IsDir() {
+				continue
+			}
+			blobDir, err := os.Open(path.Join(m.blobDir, dir.Name()))
+			if err != nil {
+				log.Fatal(err)
+				return
+			}
+			blobs, err := blobDir.Readdir(-1)
+			blobDir.Close()
+			if err != nil {
+				log.Fatal(err)
+				return
+			}
+
+			for _, blob := range blobs {
+				if !dir.IsDir() {
+					continue
+				}
+				filename := m.BlobFile(blob.Name())
+				objMeta, err := m.decodeObjMeta(filename)
+				if err != nil {
+					log.WithFields(log.Fields{"file": filename}).WithError(err)
+				}
+
+				select {
+				case c <- Stream{objMeta, err}:
+				case <-ctx.Done():
+					return
+				}
+
 			}
 
 		}
@@ -821,8 +870,8 @@ func (m *filesystemMeta) ListMultipartUploads(bucket string) (minio.ListMultipar
 }
 
 // StreamPartsMeta streams parts metadata for a multiupload
-func (m *filesystemMeta) StreamPartsMeta(ctx context.Context, bucket, uploadID string) <-chan metaStream {
-	c := make(chan metaStream)
+func (m *filesystemMeta) StreamPartsMeta(ctx context.Context, bucket, uploadID string) <-chan Stream {
+	c := make(chan Stream)
 
 	go func() {
 		defer close(c)
@@ -834,7 +883,7 @@ func (m *filesystemMeta) StreamPartsMeta(ctx context.Context, bucket, uploadID s
 				"upload_id": uploadID,
 				"subsystem": "disk",
 			}).Error("failed to get multipart upload")
-			c <- metaStream{Error: err}
+			c <- Stream{Error: err}
 			return
 		}
 
@@ -847,7 +896,7 @@ func (m *filesystemMeta) StreamPartsMeta(ctx context.Context, bucket, uploadID s
 			objMeta, err := m.decodeObjMeta(m.partFileName(bucket, uploadID, file.Name()))
 
 			select {
-			case c <- metaStream{objMeta, err}:
+			case c <- Stream{objMeta, err}:
 				continue
 			case <-ctx.Done():
 				return

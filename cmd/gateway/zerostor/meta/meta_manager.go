@@ -31,6 +31,8 @@ var (
 
 // Manager interface for metadata managers
 type Manager interface {
+	BlobFile(fileID string) string
+	EncodeObjMeta(file string, obj *ObjectMeta) error
 	CreateBucket(string) error
 	GetBucket(name string) (*Bucket, error)
 	DeleteBucket(string) error
@@ -50,8 +52,9 @@ type Manager interface {
 	PutObjectPart(metaData *metatypes.Metadata, bucket, uploadID string, partID int) (minio.PartInfo, error)
 	PutObject(metaData *metatypes.Metadata, bucket, object string) (minio.ObjectInfo, error)
 	GetObjectInfo(bucket, object string) (minio.ObjectInfo, error)
-	StreamObjectMeta(ctx context.Context, bucket, object string) <-chan metaStream
-	StreamPartsMeta(ctx context.Context, bucket, uploadID string) <-chan metaStream
+	StreamObjectMeta(ctx context.Context, bucket, object string) <-chan Stream
+	StreamPartsMeta(ctx context.Context, bucket, uploadID string) <-chan Stream
+	StreamBlobs(ctx context.Context) <-chan Stream
 	ValidUpload(bucket, uploadID string) (bool, error)
 }
 
@@ -62,7 +65,7 @@ type Bucket struct {
 	Policy  policy.Policy `json:"policy"`
 }
 
-type metaStream struct {
+type Stream struct {
 	Obj   ObjectMeta
 	Error error
 }

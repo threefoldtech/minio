@@ -21,6 +21,7 @@ import (
 	minio "github.com/minio/minio/cmd"
 	"github.com/minio/minio/cmd/gateway/zerostor/config"
 	"github.com/minio/minio/cmd/gateway/zerostor/meta"
+	"github.com/minio/minio/cmd/gateway/zerostor/repair"
 
 	"github.com/minio/minio/pkg/auth"
 	"github.com/minio/minio/pkg/hash"
@@ -104,12 +105,12 @@ ENVIRONMENT VARIABLES:
 		CustomHelpTemplate: zerostorGatewayTemplate,
 	})
 
-	// minio.RegisterGatewayCommand(cli.Command{
-	// 	Name:               zerostorRepairBackend,
-	// 	Usage:              "checks all objects in the store and repair if necessary",
-	// 	Action:             zerostorRepairMain,
-	// 	CustomHelpTemplate: zerostorRepairTemplate,
-	// })
+	minio.RegisterGatewayCommand(cli.Command{
+		Name:               zerostorRepairBackend,
+		Usage:              "checks all objects in the store and repair if necessary",
+		Action:             zerostorRepairMain,
+		CustomHelpTemplate: zerostorRepairTemplate,
+	})
 
 	debugFlag = os.Getenv("MINIO_ZEROSTOR_DEBUG") == "1"
 }
@@ -144,25 +145,25 @@ func zerostorGatewayMain(ctx *cli.Context) {
 	})
 }
 
-// func zerostorRepairMain(ctx *cli.Context) {
-// 	setupZosLogging()
-// 	// config file
-// 	confFile := os.Getenv(minioZstorConfigFileVar)
-// 	if confFile == "" {
-// 		confFile = filepath.Join(ctx.String("config-dir"), "zerostor.yaml")
-// 	}
+func zerostorRepairMain(ctx *cli.Context) {
+	setupZosLogging()
+	// config file
+	confFile := os.Getenv(minioZstorConfigFileVar)
+	if confFile == "" {
+		confFile = filepath.Join(ctx.String("config-dir"), "zerostor.yaml")
+	}
 
-// 	// meta dir
-// 	metaDir := os.Getenv(minioZstorMetaDirVar)
-// 	if metaDir == "" {
-// 		metaDir = filepath.Join(ctx.String("config-dir"), "zerostor_meta")
-// 	}
+	// meta dir
+	metaDir := os.Getenv(minioZstorMetaDirVar)
+	if metaDir == "" {
+		metaDir = filepath.Join(ctx.String("config-dir"), "zerostor_meta")
+	}
 
-// 	if err := repair.CheckAndRepair(confFile, metaDir, os.Getenv(minioZstorMetaPrivKey)); err != nil {
-// 		log.Println("check and repair failed:", err)
-// 		os.Exit(1)
-// 	}
-// }
+	if err := repair.CheckAndRepair(confFile, metaDir, os.Getenv(minioZstorMetaPrivKey)); err != nil {
+		log.Println("check and repair failed:", err)
+		os.Exit(1)
+	}
+}
 
 // Zerostor implements minio.Gateway interface
 type Zerostor struct {
@@ -242,15 +243,16 @@ func (zo *zerostorObjects) handleConfigReload(confFile string) {
 
 	signal.Notify(sigCh, syscall.SIGHUP)
 
-	go func() error {
+	go func() {
 		for {
 			<-sigCh
 			log.Println("Got SIGHUP:reload the config")
-			cfg, _ := config.Load(confFile)
+			cfg, err := config.Load(confFile)
 			// @todo
-			// if err != nil {
-			// 	return nil, err
-			// }
+			if err != nil {
+				log.Println("Failed to reload the config file")
+				continue
+			}
 			zo.cfg = cfg
 			zo.zsManager.Open(cfg)
 		}
@@ -443,7 +445,6 @@ func (zo *zerostorObjects) CopyObject(ctx context.Context, srcBucket, srcObject,
 func (zo *zerostorObjects) GetObjectNInfo(ctx context.Context, bucket, object string, rs *minio.HTTPRangeSpec, h http.Header, lockType minio.LockType, opts minio.ObjectOptions) (reader *minio.GetObjectReader, err error) {
 	var objInfo minio.ObjectInfo
 	objInfo, err = zo.GetObjectInfo(ctx, bucket, object, opts)
-	println("size", objInfo.Size)
 	if err != nil {
 		return nil, err
 	}
@@ -703,7 +704,6 @@ func (zo *zerostorObjects) CopyObjectPart(ctx context.Context, srcBucket, srcObj
 	if zo.isReadOnly() {
 		return info, ErrReadOnlyZeroStor
 	}
-	println("copy object part")
 	storRd, storWr := io.Pipe()
 	defer storRd.Close()
 
