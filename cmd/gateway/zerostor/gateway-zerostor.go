@@ -9,9 +9,11 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/gomodule/redigo/redis"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/threefoldtech/0-stor/client/datastor"
@@ -35,6 +37,7 @@ const (
 	minioZstorMetaDirVar    = "MINIO_ZEROSTOR_META_DIR"
 	minioZstorMetaPrivKey   = "MINIO_ZEROSTOR_META_PRIVKEY"
 	minioZstorDebug         = "MINIO_ZEROSTOR_DEBUG"
+	defaultNamespaceMaxSize = 10e14 // default max size =  1PB
 )
 
 var (
@@ -828,7 +831,56 @@ func (zo *zerostorObjects) Shutdown(ctx context.Context) error {
 
 // StorageInfo implements ObjectLayer.StorageInfo
 func (zo *zerostorObjects) StorageInfo(ctx context.Context) (info minio.StorageInfo) {
-	return minio.StorageInfo{}
+	var used uint64
+
+	policy := zo.cfg.DataStor.Pipeline.Distribution
+
+	disks := len(zo.cfg.DataStor.Shards)
+	offline := 0
+
+	// iterate all shards, get info from each of it
+	// returns immediately once we got an answer
+	for _, shard := range zo.cfg.DataStor.Shards {
+		u, _, err := zo.shardUsage(shard)
+		if err != nil {
+			offline++
+			log.WithField("shard", shard).Error("failed to get shard info")
+		}
+		used += u
+	}
+
+	if policy.DataShardCount > 0 {
+		//multi shared with parity
+		used = (used * uint64(policy.DataShardCount)) / uint64(policy.ParityShardCount+policy.DataShardCount)
+	}
+
+	info = minio.StorageInfo{
+		Used: used,
+	}
+
+	info.Backend.Type = minio.BackendErasure
+	info.Backend.OnlineDisks = disks - offline
+	info.Backend.OfflineDisks = offline
+	info.Backend.StandardSCData = zo.cfg.DataStor.Pipeline.Distribution.DataShardCount
+	info.Backend.StandardSCParity = zo.cfg.DataStor.Pipeline.Distribution.ParityShardCount
+	return info
+}
+
+func (zo *zerostorObjects) shardUsage(shard string) (used uint64, total uint64, err error) {
+	// get conn
+	conn, err := redis.Dial("tcp", shard, redis.DialConnectTimeout(2*time.Second))
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+
+	// request the info
+	nsinfo, err := redis.String(conn.Do("NSINFO", zo.cfg.Namespace))
+	if err != nil {
+		return
+	}
+	total, used, err = parseNsInfo(nsinfo)
+	return
 }
 
 func (zo *zerostorObjects) IsCompressionSupported() bool {
@@ -888,4 +940,29 @@ func zstorToObjectErr(err error, op Operation, params ...string) error {
 	}
 
 	return cause
+}
+
+func parseNsInfo(nsinfo string) (total, used uint64, err error) {
+	// parse the info
+	for _, line := range strings.Split(nsinfo, "\n") {
+		elems := strings.Split(line, ":")
+		if len(elems) != 2 {
+			continue
+		}
+		val := strings.TrimSpace(elems[1])
+		switch strings.TrimSpace(elems[0]) {
+		case "data_size_bytes":
+			used, err = strconv.ParseUint(val, 10, 64)
+		case "data_limits_bytes":
+			total, err = strconv.ParseUint(val, 10, 64)
+		}
+		if err != nil {
+			return total, used, err
+		}
+	}
+	if total == 0 {
+		total = defaultNamespaceMaxSize
+	}
+
+	return total, used, err
 }
