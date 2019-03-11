@@ -38,6 +38,7 @@ const (
 	minioZstorMetaPrivKey   = "MINIO_ZEROSTOR_META_PRIVKEY"
 	minioZstorDebug         = "MINIO_ZEROSTOR_DEBUG"
 	defaultNamespaceMaxSize = 10e14 // default max size =  1PB
+	partMaxSize             = 67108864
 )
 
 var (
@@ -619,17 +620,36 @@ func (zo *zerostorObjects) putObject(ctx context.Context, bucket, object string,
 	zstor := zo.zsManager.Get()
 	defer zstor.Close()
 
-	metaData, err := zstor.Write(bucket, object, data.Reader, opts.UserDefined)
-	if err != nil {
-		err = zstorToObjectErr(errors.WithStack(err), Operation("PutObject"), bucket, object)
+	// file does not need to be split
+	if data.Reader.Size() <= partMaxSize {
+		metaData, err := zstor.Write(bucket, object, data.Reader, opts.UserDefined)
+		if err != nil {
+			err = zstorToObjectErr(errors.WithStack(err), Operation("PutObject"), bucket, object)
+			return objInfo, err
+		}
+		objInfo, err = zo.meta.PutObject(metaData, bucket, object)
+		if err != nil {
+			err = zstorToObjectErr(errors.WithStack(err), Operation("PutObject"), bucket, object)
+		}
 		return objInfo, err
 	}
 
-	objInfo, err = zo.meta.PutObject(metaData, bucket, object)
+	// part := 0
+	// limitedReader := &io.LimitedReader{R: data.Reader, N: partMaxSize}
+	// for limitedReader.N > 0 {
+	// 	metaData, err := zstor.Write(bucket, object+strconv.Itoa(part), limitedReader, opts.UserDefined)
+	// 	if err != nil {
+	// 		err = zstorToObjectErr(errors.WithStack(err), Operation("PutObject"), bucket, object)
+	// 		return objInfo, err
+	// 	}
 
-	if err != nil {
-		err = zstorToObjectErr(errors.WithStack(err), Operation("PutObject"), bucket, object)
-	}
+	// }
+
+	// objInfo, err = zo.meta.GetObjectInfo(bucket, object)
+
+	// if err != nil {
+	// 	err = zstorToObjectErr(errors.WithStack(err), Operation("PutObject"), bucket, object)
+	// }
 	return objInfo, err
 
 }
@@ -666,6 +686,7 @@ func (zo *zerostorObjects) PutObjectPart(ctx context.Context, bucket, object, up
 		"uploadID": uploadID,
 		"partID":   partID,
 	}).Debug("PutObjectPart")
+	println("SIZE", data.Size())
 
 	return zo.putObjectPart(ctx, bucket, object, uploadID, partID, data, opts)
 }
@@ -928,14 +949,6 @@ func zstorToObjectErr(err error, op Operation, params ...string) error {
 		cause = minio.ObjectNotFound{
 			Bucket: bucket,
 			Object: object,
-		}
-	case errBucketNotFound:
-		cause = minio.BucketNotFound{
-			Bucket: bucket,
-		}
-	case errBucketExists:
-		cause = minio.BucketExists{
-			Bucket: bucket,
 		}
 	}
 

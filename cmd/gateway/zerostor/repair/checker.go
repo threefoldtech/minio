@@ -49,16 +49,14 @@ func (c *checker) checkAndRepair(metaDir string) error {
 	for blob := range blobs {
 		if blob.Error != nil {
 			result, err = repairResultFailed, errors.Wrap(blob.Error, "load meta failed")
-			// if err != nil {
-
-			// 	log.WithFields(log.Fields{"file": wp.Path(), "key": wp.Key()}).WithError(err)
-			// }
+			if err != nil {
+				log.WithFields(log.Fields{"blob": blob.Obj.Filename, "key": blob.Obj.Key}).WithError(err)
+			}
 		} else {
-			filename := c.meta.BlobFile(blob.Obj.Filename)
-			log.WithFields(log.Fields{"file": filename}).Infof("checking file")
+			log.WithFields(log.Fields{"blob": blob.Obj.Filename}).Infof("checking blob")
 			result, err = c.checkAndRepairMeta(blob.Obj)
 			if err != nil {
-				log.WithFields(log.Fields{"file": filename, "key": blob.Obj.Key}).WithError(err).Warn("failed to fix file")
+				log.WithFields(log.Fields{"blob": blob.Obj.Filename, "key": blob.Obj.Key}).WithError(err).Warn("failed to fix blob")
 			}
 		}
 
@@ -102,7 +100,7 @@ func (c *checker) checkAndRepairMeta(objMeta meta.ObjectMeta) (repairResult, err
 	}
 	objMeta.Metadata = fixed
 
-	if err := c.meta.EncodeObjMeta(c.meta.BlobFile(objMeta.Filename), &objMeta); err != nil {
+	if err := c.meta.WriteObjMeta(&objMeta); err != nil {
 		return repairResultFailed, err
 	}
 
@@ -116,13 +114,3 @@ func (c *checker) checkAndRepairMeta(objMeta meta.ObjectMeta) (repairResult, err
 
 	return repairResultSucceed, nil
 }
-
-// func (c *checker) loadMeta(path string) (*metatypes.Metadata, error) {
-// 	bytes, err := ioutil.ReadFile(path)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	var m metatypes.Metadata
-// 	return &m, c.marshaler.Unmarshal(bytes, &m)
-// }

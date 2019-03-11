@@ -31,15 +31,14 @@ var (
 
 // Manager interface for metadata managers
 type Manager interface {
-	BlobFile(fileID string) string
-	EncodeObjMeta(file string, obj *ObjectMeta) error
+	WriteObjMeta(obj *ObjectMeta) error
 	CreateBucket(string) error
 	GetBucket(name string) (*Bucket, error)
 	DeleteBucket(string) error
 	ListBuckets() (map[string]*Bucket, error)
 	SetBucketPolicy(name string, policy *policy.Policy) error
-	SetObjectLink(bucket, object, fileID string) error
-	SetPartLink(bucket, uploadID, partID, fileID string) error
+	SetObjectLink(bucket, object, blob string) error
+	SetPartLink(bucket, uploadID, partID, blob string) error
 	ListObjects(ctx context.Context, bucket, prefix, marker, delimiter string, maxKeys int) (minio.ListObjectsInfo, error)
 	ListObjectsV2(ctx context.Context, bucket, prefix, continuationToken, delimiter string, maxKeys int, fetchOwner bool, startAfter string) (minio.ListObjectsV2Info, error)
 	NewMultipartUpload(bucket, object string, opts minio.ObjectOptions) (string, error)
@@ -56,6 +55,7 @@ type Manager interface {
 	StreamPartsMeta(ctx context.Context, bucket, uploadID string) <-chan Stream
 	StreamBlobs(ctx context.Context) <-chan Stream
 	ValidUpload(bucket, uploadID string) (bool, error)
+	WriteMetaStream(ctx context.Context, c <-chan metatypes.Metadata) <-chan error
 }
 
 // Bucket defines a bucket
