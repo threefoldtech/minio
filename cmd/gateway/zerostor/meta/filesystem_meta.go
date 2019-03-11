@@ -40,7 +40,7 @@ var (
 
 // ObjectMeta defines meta for an object
 type ObjectMeta struct {
-	*metatypes.Metadata
+	metatypes.Metadata
 	NextBlob       string
 	ObjectSize     int64
 	ObjectModTime  int64
@@ -243,12 +243,12 @@ func (m *filesystemMeta) SetBucketPolicy(name string, policy *policy.Policy) err
 
 // PutObject creates metadata for an object
 func (m *filesystemMeta) PutObject(metaData *metatypes.Metadata, bucket, object string) (minio.ObjectInfo, error) {
-	fileID, objMeta, err := m.createBlob(metaData, false)
+	objMeta, err := m.createBlob(metaData, false)
 	if err != nil {
 		return minio.ObjectInfo{}, err
 	}
 
-	if err = m.SetObjectLink(bucket, object, fileID); err != nil {
+	if err = m.SetObjectLink(bucket, object, objMeta.Filename); err != nil {
 		return minio.ObjectInfo{}, err
 	}
 
@@ -257,12 +257,12 @@ func (m *filesystemMeta) PutObject(metaData *metatypes.Metadata, bucket, object 
 
 // PutObjectPart creates metadata for an object upload part
 func (m *filesystemMeta) PutObjectPart(metaData *metatypes.Metadata, bucket, uploadID string, partID int) (minio.PartInfo, error) {
-	fileID, _, err := m.createBlob(metaData, true)
+	objMeta, err := m.createBlob(metaData, true)
 	if err != nil {
 		return minio.PartInfo{}, err
 	}
 
-	if err = m.SetPartLink(bucket, uploadID, strconv.Itoa(partID), fileID); err != nil {
+	if err = m.SetPartLink(bucket, uploadID, strconv.Itoa(partID), objMeta.Filename); err != nil {
 		return minio.PartInfo{}, err
 	}
 
@@ -274,20 +274,10 @@ func (m *filesystemMeta) PutObjectPart(metaData *metatypes.Metadata, bucket, upl
 	}, nil
 }
 
-// createBlob saves the metadata to a file under /blobs and returns the file id
-func (m *filesystemMeta) InitBlob(metaData *metatypes.Metadata) ObjectMeta {
-	return ObjectMeta{
-		Metadata: metaData,
-		Filename: uuid.NewV4().String(),
-	}
-}
-
-// createBlob saves the metadata to a file under /blobs and returns the file id
-func (m *filesystemMeta) createBlob(metaData *metatypes.Metadata, multiUpload bool) (string, ObjectMeta, error) {
-	fileID := uuid.NewV4().String()
+func (m *filesystemMeta) initBlob(metaData *metatypes.Metadata, multiUpload bool) ObjectMeta {
 	objMeta := ObjectMeta{
-		Metadata: metaData,
-		Filename: fileID,
+		Metadata: *metaData,
+		Filename: uuid.NewV4().String(),
 	}
 
 	if !multiUpload {
@@ -297,7 +287,13 @@ func (m *filesystemMeta) createBlob(metaData *metatypes.Metadata, multiUpload bo
 		objMeta.ObjectModTime = metaData.LastWriteEpoch
 	}
 
-	return fileID, objMeta, m.WriteObjMeta(&objMeta)
+	return objMeta
+}
+
+// createBlob saves the metadata to a file under /blobs and returns the file id
+func (m *filesystemMeta) createBlob(metaData *metatypes.Metadata, multiUpload bool) (ObjectMeta, error) {
+	objMeta := m.initBlob(metaData, multiUpload)
+	return objMeta, m.WriteObjMeta(&objMeta)
 }
 
 // DeleteBlob deletes a metadata blob file
@@ -558,7 +554,7 @@ func (m *filesystemMeta) NewMultipartUpload(bucket, object string, opts minio.Ob
 	return uploadID, gob.NewEncoder(f).Encode(info)
 }
 
-// ListPartInfo lists multipart uploat parts
+// ListPartInfo lists multipart upload parts
 func (m *filesystemMeta) ListPartsInfo(bucket, uploadID string) ([]minio.PartInfo, error) {
 	files, err := ioutil.ReadDir(m.uploadDirName(bucket, uploadID))
 	if err != nil {
@@ -628,7 +624,7 @@ func (m *filesystemMeta) decodeObjMeta(file string) (ObjectMeta, error) {
 	}
 	if !stat.IsDir() {
 		objMeta := new(ObjectMeta)
-		objMeta.Metadata = new(metatypes.Metadata)
+		objMeta.Metadata = *new(metatypes.Metadata)
 		err = gob.NewDecoder(f).Decode(objMeta)
 		return *objMeta, err
 	}
@@ -753,14 +749,13 @@ func (m *filesystemMeta) StreamObjectMeta(ctx context.Context, bucket, object st
 			objMeta, err := m.decodeObjMeta(metaFile)
 
 			select {
+			case <-ctx.Done():
+				return
 			case c <- Stream{objMeta, err}:
 				if objMeta.NextBlob == "" {
 					return
 				}
 				metaFile = m.blobFile(objMeta.NextBlob)
-
-			case <-ctx.Done():
-				return
 			}
 
 		}
@@ -769,15 +764,59 @@ func (m *filesystemMeta) StreamObjectMeta(ctx context.Context, bucket, object st
 	return c
 }
 
-func (m *filesystemMeta) WriteMetaStream(ctx context.Context, c <-chan metatypes.Metadata) <-chan error {
-	err := make(chan error)
+func (m *filesystemMeta) WriteMetaStream(ctx context.Context, c <-chan *metatypes.Metadata, bucket, object string) <-chan error {
+	errc := make(chan error)
 	go func() {
-		defer close(err)
-		for true {
+		var totalSize int64
+		var modTime int64
+		var previousPart ObjectMeta
+		var firstPart ObjectMeta
+		var objMeta ObjectMeta
+		counter := 0
+
+		defer close(errc)
+		for metaData := range c {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
+			totalSize += metaData.Size
+			modTime = metaData.LastWriteEpoch
+			objMeta = m.initBlob(metaData, true)
+
+			if counter > 0 {
+				previousPart.NextBlob = objMeta.Filename
+				if err := m.WriteObjMeta(&previousPart); err != nil {
+					errc <- err
+				}
+				if counter == 1 {
+					// link the first blob
+					firstPart = previousPart
+					if err := m.SetObjectLink(bucket, object, firstPart.Filename); err != nil {
+						errc <- err
+					}
+				}
+			}
+			previousPart = objMeta
+			counter++
 		}
 
+		// write the meta of the last received metadata
+		if err := m.WriteObjMeta(&objMeta); err != nil {
+			errc <- err
+		}
+		firstPart.ObjectSize = totalSize
+		firstPart.ObjectModTime = modTime
+		firstPart.ObjectUserMeta = firstPart.UserDefined
+
+		// update the the first meta part with the size and mod time
+		if err := m.WriteObjMeta(&firstPart); err != nil {
+			errc <- err
+		}
 	}()
-	return err
+	return errc
 }
 
 // StreamObjectMeta streams an object metadata blobs through a channel
@@ -886,8 +925,8 @@ func (m *filesystemMeta) ListMultipartUploads(bucket string) (minio.ListMultipar
 	return *info, nil
 }
 
-// StreamPartsMeta streams parts metadata for a multiupload
-func (m *filesystemMeta) StreamPartsMeta(ctx context.Context, bucket, uploadID string) <-chan Stream {
+// StreamMultiPartsMeta streams parts metadata for a multiupload
+func (m *filesystemMeta) StreamMultiPartsMeta(ctx context.Context, bucket, uploadID string) <-chan Stream {
 	c := make(chan Stream)
 
 	go func() {

@@ -18,6 +18,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/threefoldtech/0-stor/client/datastor"
 	"github.com/threefoldtech/0-stor/client/metastor"
+	"github.com/threefoldtech/0-stor/client/metastor/metatypes"
 
 	"github.com/minio/cli"
 	minio "github.com/minio/minio/cmd"
@@ -252,7 +253,6 @@ func (zo *zerostorObjects) handleConfigReload(confFile string) {
 			<-sigCh
 			log.Println("Got SIGHUP:reload the config")
 			cfg, err := config.Load(confFile)
-			// @todo
 			if err != nil {
 				log.Println("Failed to reload the config file")
 				continue
@@ -396,8 +396,9 @@ func (zo *zerostorObjects) DeleteObject(ctx context.Context, bucket, object stri
 		if r.Error != nil {
 			return zstorToObjectErr(errors.WithStack(r.Error), Operation("DeleteObject"), bucket, object)
 		}
-		if err := zstor.Delete(*r.Obj.Metadata); err != nil {
-			return zstorToObjectErr(errors.WithStack(err), Operation("DeleteObject"), bucket, object)
+		if err := zstor.Delete(r.Obj.Metadata); err != nil {
+			// @todo should I delete the meta anyway?
+			// return zstorToObjectErr(errors.WithStack(err), Operation("DeleteObject"), bucket, object)
 		}
 		if err := zo.meta.DeleteBlob(r.Obj.Filename); err != nil {
 			return zstorToObjectErr(errors.WithStack(err), Operation("DeleteObject"), bucket, object)
@@ -489,7 +490,7 @@ func (zo *zerostorObjects) GetObject(ctx context.Context, bucket, object string,
 	firstPart := true
 
 	if startOffset == 0 && (length <= 0 || length == objMeta.Size) {
-		streamAll = false
+		streamAll = true
 	}
 
 	c := zo.meta.StreamObjectMeta(ctx, bucket, object)
@@ -499,7 +500,8 @@ func (zo *zerostorObjects) GetObject(ctx context.Context, bucket, object string,
 		}
 
 		if streamAll {
-			if err := zstor.Read(r.Obj.Metadata, writer, 0, 0); err != nil {
+			if err := zstor.Read(&r.Obj.Metadata, writer, 0, 0); err != nil {
+
 				return err
 			}
 		} else {
@@ -522,7 +524,7 @@ func (zo *zerostorObjects) GetObject(ctx context.Context, bucket, object string,
 					readLength = remaingLength
 				}
 
-				if err := zstor.Read(r.Obj.Metadata, writer, offset, readLength); err != nil {
+				if err := zstor.Read(&r.Obj.Metadata, writer, offset, readLength); err != nil {
 					return err
 				}
 				remaingLength -= readLength
@@ -620,8 +622,10 @@ func (zo *zerostorObjects) putObject(ctx context.Context, bucket, object string,
 	zstor := zo.zsManager.Get()
 	defer zstor.Close()
 
+	println("***********")
+	println(data.Reader.Size())
 	// file does not need to be split
-	if data.Reader.Size() <= partMaxSize {
+	if data.Reader.Size() < partMaxSize {
 		metaData, err := zstor.Write(bucket, object, data.Reader, opts.UserDefined)
 		if err != nil {
 			err = zstorToObjectErr(errors.WithStack(err), Operation("PutObject"), bucket, object)
@@ -634,24 +638,38 @@ func (zo *zerostorObjects) putObject(ctx context.Context, bucket, object string,
 		return objInfo, err
 	}
 
-	// part := 0
-	// limitedReader := &io.LimitedReader{R: data.Reader, N: partMaxSize}
-	// for limitedReader.N > 0 {
-	// 	metaData, err := zstor.Write(bucket, object+strconv.Itoa(part), limitedReader, opts.UserDefined)
-	// 	if err != nil {
-	// 		err = zstorToObjectErr(errors.WithStack(err), Operation("PutObject"), bucket, object)
-	// 		return objInfo, err
-	// 	}
+	part := 0
+	c := make(chan *metatypes.Metadata)
+	defer close(c)
 
-	// }
+	errc := zo.meta.WriteMetaStream(ctx, c, bucket, object)
+	limitedReader := &io.LimitedReader{R: data.Reader, N: partMaxSize}
+	for limitedReader.N > 0 {
+		println("write metadata to 0-stor", object+strconv.Itoa(part))
+		metaData, err := zstor.Write(bucket, object+strconv.Itoa(part), limitedReader, opts.UserDefined)
+		if err != nil {
+			println(err)
+			err = zstorToObjectErr(errors.WithStack(err), Operation("PutObject"), bucket, object)
+			return objInfo, err
+		}
+		part++
+		c <- metaData
+		select {
+		case err := <-errc:
+			err = zstorToObjectErr(errors.WithStack(err), Operation("PutObject"), bucket, object)
+			return objInfo, err
+		default:
+		}
+		println("limitreader ", limitedReader.N)
+		if limitedReader.N <= 0 {
+			println("reset limitreader")
+			limitedReader.N = partMaxSize
+		} else {
+			break
+		}
+	}
 
-	// objInfo, err = zo.meta.GetObjectInfo(bucket, object)
-
-	// if err != nil {
-	// 	err = zstorToObjectErr(errors.WithStack(err), Operation("PutObject"), bucket, object)
-	// }
-	return objInfo, err
-
+	return zo.meta.GetObjectInfo(bucket, object)
 }
 
 // NewMultipartUpload implements minio.ObjectLayer.NewMultipartUpload
@@ -786,13 +804,13 @@ func (zo *zerostorObjects) AbortMultipartUpload(ctx context.Context, bucket, obj
 	zstor := zo.zsManager.Get()
 	defer zstor.Close()
 
-	c := zo.meta.StreamPartsMeta(ctx, bucket, uploadID)
+	c := zo.meta.StreamMultiPartsMeta(ctx, bucket, uploadID)
 	for r := range c {
 		if r.Error != nil {
 			err = r.Error
 			break
 		}
-		if err = zstor.Delete(*r.Obj.Metadata); err != nil {
+		if err = zstor.Delete(r.Obj.Metadata); err != nil {
 			break
 		}
 		zo.meta.DeleteBlob(r.Obj.Filename)

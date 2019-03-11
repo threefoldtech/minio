@@ -52,10 +52,10 @@ type Manager interface {
 	PutObject(metaData *metatypes.Metadata, bucket, object string) (minio.ObjectInfo, error)
 	GetObjectInfo(bucket, object string) (minio.ObjectInfo, error)
 	StreamObjectMeta(ctx context.Context, bucket, object string) <-chan Stream
-	StreamPartsMeta(ctx context.Context, bucket, uploadID string) <-chan Stream
+	StreamMultiPartsMeta(ctx context.Context, bucket, uploadID string) <-chan Stream
 	StreamBlobs(ctx context.Context) <-chan Stream
 	ValidUpload(bucket, uploadID string) (bool, error)
-	WriteMetaStream(ctx context.Context, c <-chan metatypes.Metadata) <-chan error
+	WriteMetaStream(ctx context.Context, c <-chan *metatypes.Metadata, bucket, object string) <-chan error
 }
 
 // Bucket defines a bucket

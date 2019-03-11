@@ -77,7 +77,7 @@ func (c *checker) checkAndRepair(metaDir string) error {
 
 func (c *checker) checkAndRepairMeta(objMeta meta.ObjectMeta) (repairResult, error) {
 
-	status, err := c.client.Check(*objMeta.Metadata, false)
+	status, err := c.client.Check(objMeta.Metadata, false)
 	if err != nil {
 		return repairResultFailed, errors.Wrap(err, "client repair: error during file check")
 	}
@@ -85,7 +85,7 @@ func (c *checker) checkAndRepairMeta(objMeta meta.ObjectMeta) (repairResult, err
 	log.WithFields(log.Fields{"key": string(objMeta.Key), "status": status.String()}).Infoln("file status")
 	if status == storage.CheckStatusOptimal {
 		buf := &bytes.Buffer{}
-		err = c.client.Read(*objMeta.Metadata, buf)
+		err = c.client.Read(objMeta.Metadata, buf)
 		if err == nil {
 			//nothing to do here
 			return repairResultNotNeeded, nil
@@ -94,11 +94,11 @@ func (c *checker) checkAndRepairMeta(objMeta meta.ObjectMeta) (repairResult, err
 
 	log.WithFields(log.Fields{"key": string(objMeta.Key)}).Debug("start file repair")
 	//otherwise we do a repair
-	fixed, err := c.client.Repair(*objMeta.Metadata)
+	fixed, err := c.client.Repair(objMeta.Metadata)
 	if err != nil {
 		return repairResultFailed, errors.Wrap(err, "client repair")
 	}
-	objMeta.Metadata = fixed
+	objMeta.Metadata = *fixed
 
 	if err := c.meta.WriteObjMeta(&objMeta); err != nil {
 		return repairResultFailed, err
