@@ -10,8 +10,6 @@
 package repair
 
 import (
-	"fmt"
-
 	log "github.com/sirupsen/logrus"
 
 	"github.com/minio/minio/cmd/gateway/zerostor/config"
@@ -33,10 +31,6 @@ func valid(cfg *config.Config) error {
 		//running as slave
 		log.Info("running in slave mode, nothing to do here")
 		return nil
-	}
-
-	if len(cfg.Minio.ZerostorMeta.Type) != 0 && cfg.Minio.ZerostorMeta.Type != config.MetaTypeFile {
-		return fmt.Errorf("support only file metastore")
 	}
 
 	return nil

@@ -404,13 +404,13 @@ func (zo *zerostorObjects) DeleteObject(ctx context.Context, bucket, object stri
 			return zstorToObjectErr(errors.WithStack(err), Operation("DeleteObject"), bucket, object)
 		}
 		if r.Obj.NextBlob != "" {
-			if err := zo.meta.SetObjectLink(bucket, object, r.Obj.NextBlob); err != nil {
+			if err := zo.meta.LinkObject(bucket, object, r.Obj.NextBlob); err != nil {
 				return zstorToObjectErr(errors.WithStack(err), Operation("DeleteObject"), bucket, object)
 			}
 		}
 	}
 
-	err := zo.meta.DeleteObjectFile(bucket, object)
+	err := zo.meta.DeleteObject(bucket, object)
 	return zstorToObjectErr(errors.WithStack(err), Operation("DeleteObject"), bucket, object)
 }
 
@@ -622,8 +622,6 @@ func (zo *zerostorObjects) putObject(ctx context.Context, bucket, object string,
 	zstor := zo.zsManager.Get()
 	defer zstor.Close()
 
-	println("***********")
-	println(data.Reader.Size())
 	// file does not need to be split
 	if data.Reader.Size() < partMaxSize {
 		metaData, err := zstor.Write(bucket, object, data.Reader, opts.UserDefined)
@@ -644,11 +642,10 @@ func (zo *zerostorObjects) putObject(ctx context.Context, bucket, object string,
 
 	errc := zo.meta.WriteMetaStream(ctx, c, bucket, object)
 	limitedReader := &io.LimitedReader{R: data.Reader, N: partMaxSize}
+
 	for limitedReader.N > 0 {
-		println("write metadata to 0-stor", object+strconv.Itoa(part))
 		metaData, err := zstor.Write(bucket, object+strconv.Itoa(part), limitedReader, opts.UserDefined)
 		if err != nil {
-			println(err)
 			err = zstorToObjectErr(errors.WithStack(err), Operation("PutObject"), bucket, object)
 			return objInfo, err
 		}
@@ -660,9 +657,8 @@ func (zo *zerostorObjects) putObject(ctx context.Context, bucket, object string,
 			return objInfo, err
 		default:
 		}
-		println("limitreader ", limitedReader.N)
+
 		if limitedReader.N <= 0 {
-			println("reset limitreader")
 			limitedReader.N = partMaxSize
 		} else {
 			break
@@ -704,7 +700,6 @@ func (zo *zerostorObjects) PutObjectPart(ctx context.Context, bucket, object, up
 		"uploadID": uploadID,
 		"partID":   partID,
 	}).Debug("PutObjectPart")
-	println("SIZE", data.Size())
 
 	return zo.putObjectPart(ctx, bucket, object, uploadID, partID, data, opts)
 }
@@ -819,11 +814,11 @@ func (zo *zerostorObjects) AbortMultipartUpload(ctx context.Context, bucket, obj
 		return zstorToObjectErr(errors.WithStack(err), Operation("AbortMultipartUpload"), bucket, object)
 	}
 
-	if err = zo.meta.DeleteUploadDir(bucket, uploadID); err != nil {
+	if err = zo.meta.DeleteUpload(bucket, uploadID); err != nil {
 		return zstorToObjectErr(errors.WithStack(err), Operation("AbortMultipartUpload"), bucket, object)
 	}
 
-	err = zo.meta.DeleteObjectFile(bucket, object)
+	err = zo.meta.DeleteObject(bucket, object)
 	if err != nil {
 		err = zstorToObjectErr(errors.WithStack(err), Operation("AbortMultipartUpload"), bucket, object)
 	}
@@ -849,7 +844,7 @@ func (zo *zerostorObjects) ListObjectParts(ctx context.Context, bucket, object, 
 		return result, minio.InvalidUploadID{UploadID: uploadID}
 	}
 
-	parts, err := zo.meta.ListPartsInfo(bucket, uploadID)
+	parts, err := zo.meta.ListUploadParts(bucket, uploadID)
 	if err != nil {
 		return result, zstorToObjectErr(err, Operation("ListObjectParts"), bucket, object)
 	}

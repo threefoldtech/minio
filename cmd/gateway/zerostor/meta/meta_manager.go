@@ -37,17 +37,17 @@ type Manager interface {
 	DeleteBucket(string) error
 	ListBuckets() (map[string]*Bucket, error)
 	SetBucketPolicy(name string, policy *policy.Policy) error
-	SetObjectLink(bucket, object, blob string) error
-	SetPartLink(bucket, uploadID, partID, blob string) error
+	LinkObject(bucket, object, blob string) error
+	LinkPark(bucket, uploadID, partID, blob string) error
 	ListObjects(ctx context.Context, bucket, prefix, marker, delimiter string, maxKeys int) (minio.ListObjectsInfo, error)
 	ListObjectsV2(ctx context.Context, bucket, prefix, continuationToken, delimiter string, maxKeys int, fetchOwner bool, startAfter string) (minio.ListObjectsV2Info, error)
 	NewMultipartUpload(bucket, object string, opts minio.ObjectOptions) (string, error)
 	ListMultipartUploads(bucket string) (minio.ListMultipartsInfo, error)
-	DeleteUploadDir(bucket, uploadID string) error
-	ListPartsInfo(bucket, uploadID string) ([]minio.PartInfo, error)
+	DeleteUpload(bucket, uploadID string) error
+	ListUploadParts(bucket, uploadID string) ([]minio.PartInfo, error)
 	CompleteMultipartUpload(bucket, object, uploadID string, parts []minio.CompletePart) (minio.ObjectInfo, error)
 	DeleteBlob(blob string) error
-	DeleteObjectFile(bucket, object string) error
+	DeleteObject(bucket, object string) error
 	PutObjectPart(metaData *metatypes.Metadata, bucket, uploadID string, partID int) (minio.PartInfo, error)
 	PutObject(metaData *metatypes.Metadata, bucket, object string) (minio.ObjectInfo, error)
 	GetObjectInfo(bucket, object string) (minio.ObjectInfo, error)

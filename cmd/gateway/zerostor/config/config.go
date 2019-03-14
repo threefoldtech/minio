@@ -19,10 +19,8 @@ type Config struct {
 	client.Config `yaml:",inline"`
 
 	Minio struct {
-		ZerostorMeta  Meta  `yaml:"zerostor_meta"`
-		MultipartMeta Meta  `yaml:"multipart_meta"`
-		TLog          *TLog `yaml:"tlog,omitempty"`
-		Master        *TLog `yaml:"master,omitempty"`
+		TLog   *TLog `yaml:"tlog,omitempty"`
+		Master *TLog `yaml:"master,omitempty"`
 	} `yaml:"minio"`
 }
 
@@ -31,11 +29,6 @@ type TLog struct {
 	Address   string `yaml:"address"`
 	Namespace string `yaml:"namespace"`
 	Password  string `yaml:"password"`
-}
-
-// Meta defines configuration of minio 0-stor gateway metadata
-type Meta struct {
-	Type string `yaml:"type"`
 }
 
 //Load loads config from confFile
