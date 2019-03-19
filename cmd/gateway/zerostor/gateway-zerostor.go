@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -25,6 +26,7 @@ import (
 	"github.com/minio/minio/cmd/gateway/zerostor/config"
 	"github.com/minio/minio/cmd/gateway/zerostor/meta"
 	"github.com/minio/minio/cmd/gateway/zerostor/repair"
+	"github.com/minio/minio/cmd/gateway/zerostor/tlog"
 
 	"github.com/minio/minio/pkg/auth"
 	"github.com/minio/minio/pkg/hash"
@@ -209,22 +211,73 @@ func (z *Zerostor) NewGatewayLayer(creds auth.Credentials) (minio.ObjectLayer, e
 		return nil, err
 	}
 
+	var zoMetaManager meta.Manager
+
 	zsClient := zsClient{
 		zstor,
 		&zsManager.mux,
 	}
 	zsManager.zstorClient = &zsClient
 	zsManager.Cluster = cluster
-	metaManager, err := meta.InitializeMetaManager(z.metaDir)
+	metaManager, err := meta.InitializeMetaManager(z.metaDir, z.metaPrivKey)
 	if err != nil {
 		log.Println("failed to create meta manager: ", err.Error())
 		return nil, err
+	}
+	zoMetaManager = metaManager
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	if cfg.Minio.TLog != nil {
+		tlogCfg := cfg.Minio.TLog
+		tlogMetaManager, err := tlog.InitializeMetaManager(tlogCfg.Address, tlogCfg.Namespace, tlogCfg.Password, path.Join(z.metaDir, tlog.StateDir), metaManager)
+		if err != nil {
+			log.Println("failed to create tlog meta manager: ", err.Error())
+			return nil, err
+		}
+
+		err = tlogMetaManager.Sync()
+		if err != nil {
+			log.WithError(err).WithFields(log.Fields{
+				"tlog":      tlogCfg.Address,
+				"namespace": tlogCfg.Namespace,
+			}).Error("failed to synchronize transaction logger with local meta")
+			return nil, err
+		}
+
+		go tlogMetaManager.HealthChecker(ctx) //start tlog health checker
+		zoMetaManager = tlogMetaManager
+
+	}
+
+	if cfg.Minio.Master != nil { //check if master is configure
+		//start synchronizing with master zdb
+		masterCfg := cfg.Minio.Master
+		syncher := tlog.NewSyncher(masterCfg.Address, masterCfg.Namespace, masterCfg.Password, path.Join(z.metaDir, "master.state"), metaManager)
+		go func() {
+			for {
+				if err := syncher.Sync(ctx); err != nil {
+					log.WithError(err).WithFields(log.Fields{
+						"subsystem": "sync",
+						"tlog":      masterCfg.Address,
+						"namespace": masterCfg.Namespace,
+						"master":    true,
+					}).Error("failed to do master synching")
+					<-time.After(3 * time.Second)
+					continue
+				}
+
+				//zerostor shutting down. (cancel function called)
+				break
+			}
+		}()
 	}
 
 	zo := &zerostorObjects{
 		zsManager: &zsManager,
 		cfg:       cfg,
-		meta:      metaManager,
+		meta:      zoMetaManager,
+		cancel:    cancel,
 	}
 
 	go zo.handleConfigReload(z.confFile)
@@ -237,6 +290,7 @@ type zerostorObjects struct {
 	zsManager *zsClientManager
 	cfg       config.Config
 	meta      meta.Manager
+	cancel    func()
 }
 
 func (zo *zerostorObjects) isReadOnly() bool {
@@ -860,6 +914,7 @@ func (zo *zerostorObjects) ListObjectParts(ctx context.Context, bucket, object, 
 
 // Shutdown implements ObjectLayer.Shutdown
 func (zo *zerostorObjects) Shutdown(ctx context.Context) error {
+	zo.cancel()
 	return zo.zsManager.Close()
 }
 

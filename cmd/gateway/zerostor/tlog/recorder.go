@@ -3,12 +3,17 @@ package tlog
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"sync"
 
+	"github.com/threefoldtech/0-stor/client/metastor/metatypes"
+
 	"github.com/garyburd/redigo/redis"
+	minio "github.com/minio/minio/cmd"
 	"github.com/minio/minio/cmd/gateway/zerostor/meta"
+	"github.com/minio/minio/pkg/policy"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack"
 )
@@ -60,6 +65,19 @@ func (r Record) String(at int) string {
 	return ""
 }
 
+//Int returns int entry at index (starts at one)
+func (r Record) Int(at int) int {
+	if len(r) <= at {
+		panic("entry out of range")
+	}
+
+	if o := r.At(at); o != nil {
+		return o.(int)
+	}
+
+	return 0
+}
+
 //Bytes returns byte slice entry at index (starts at one)
 func (r Record) Bytes(at int) []byte {
 	if len(r) <= at {
@@ -78,35 +96,65 @@ func (r Record) JSON(at int, o interface{}) error {
 	return json.Unmarshal(r.Bytes(at), o)
 }
 
-//Play plays the record on the given meta sotre. Note that error is only
-//returned if the underlying bucket or storage manager return an error. A panic
+//Play plays the record on the given meta manager. Note that error is only
+//returned if the underlying meta manager return an error. A panic
 //is thrown if the record is corrupt
 func (r Record) Play(meta meta.Manager) error {
 	var err error
-	// switch r.Action() {
-	// case OperationBucketCreate:
-	// 	err = bucket.Create(r.String(1))
-	// 	if err == meta.ErrReservedBucketName {
-	// 		err = Warning{err}
-	// 	} else if _, ok := err.(minio.BucketExists); ok {
-	// 		err = Warning{err}
-	// 	}
-	// case OperationBucketDelete:
-	// 	err = bucket.Del(r.String(1))
-	// case OperationBucketSetPolicy:
-	// 	var pol policy.Policy
-	// 	if err = r.JSON(2, &pol); err != nil {
-	// 		return err
-	// 	}
-	// 	err = bucket.SetPolicy(r.String(1), pol)
-	// case OperationObjectSet:
-	// 	err = storage.Set(r.Bytes(1), r.Bytes(2), r.Bytes(3))
-	// case OperationObjectDel:
-	// 	err = storage.Delete(r.Bytes(1), r.Bytes(2))
-	// case OperationTest:
-	// default:
-	// 	err = fmt.Errorf("unknown record action: %s", r.Action())
-	// }
+	switch r.Action() {
+	case OperationBucketCreate:
+		err = meta.CreateBucket(r.String(1))
+	case OperationBucketDelete:
+		err = meta.DeleteBucket(r.String(1))
+	case OperationBucketSetPolicy:
+		var pol policy.Policy
+		if err = r.JSON(2, &pol); err != nil {
+			return err
+		}
+		err = meta.SetBucketPolicy(r.String(1), &pol)
+	case OperationPartPut:
+		var metaData metatypes.Metadata
+		if err = r.JSON(1, &metaData); err != nil {
+			return err
+		}
+		_, err = meta.PutObjectPart(&metaData, r.String(2), r.String(3), r.Int(4))
+	case OperationPartLink:
+		err = meta.LinkPart(r.String(1), r.String(2), r.String(3), r.String(4))
+	case OperationBlobDelete:
+		err = meta.DeleteBlob(r.String(1))
+	case OperationObjectDelete:
+		err = meta.DeleteObject(r.String(1), r.String(2))
+	case OperationObjectLink:
+		err = meta.LinkObject(r.String(1), r.String(2), r.String(3))
+	case OperationObjectPut:
+		var metaData metatypes.Metadata
+		if err = r.JSON(1, &metaData); err != nil {
+			return err
+		}
+		_, err = meta.PutObject(&metaData, r.String(2), r.String(3))
+	case OperationObjectWriteMeta:
+		var metaData metatypes.Metadata
+		if err = r.JSON(1, &metaData); err != nil {
+			return err
+		}
+	case OperationUploadNew:
+		var opts minio.ObjectOptions
+		if err = r.JSON(3, &opts); err != nil {
+			return err
+		}
+		_, err = meta.NewMultipartUpload(r.String(1), r.String(2), opts)
+	case OperationUploadDelete:
+		err = meta.DeleteUpload(r.String(1), r.String(2))
+	case OperationUploadComplete:
+		var parts []minio.CompletePart
+		if err = r.JSON(4, &parts); err != nil {
+			return err
+		}
+		_, err = meta.CompleteMultipartUpload(r.String(1), r.String(2), r.String(3), parts)
+	case OperationTest:
+	default:
+		err = fmt.Errorf("unknown record action: %s", r.Action())
+	}
 
 	return err
 }
@@ -135,7 +183,7 @@ func (z *zdbRecorder) test() error {
 		fail. To avoid confusing an actual corrupt data with test data we introduced a test
 		record witch is just ignored by the syncher
 	*/
-	key, err := z.Record(Record{OperationTest})
+	key, err := z.Record(Record{OperationTest}, false)
 	if err != nil {
 		return err
 	}
@@ -146,7 +194,7 @@ func (z *zdbRecorder) test() error {
 	return con.Send("DEL", key)
 }
 
-func (z *zdbRecorder) Record(record Record) ([]byte, error) {
+func (z *zdbRecorder) Record(record Record, setState bool) ([]byte, error) {
 	con := z.p.Get()
 	defer con.Close()
 
@@ -164,9 +212,14 @@ func (z *zdbRecorder) Record(record Record) ([]byte, error) {
 			"namespace": z.p.namespace,
 			"master":    false,
 		}).WithError(err).Error("failed to write transaction log")
+		return nil, err
 	}
 
-	return bytes, err
+	if setState {
+		return bytes, z.SetState(bytes)
+	}
+
+	return bytes, nil
 }
 
 func (z *zdbRecorder) Begin() {

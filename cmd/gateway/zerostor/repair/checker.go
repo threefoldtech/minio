@@ -11,7 +11,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/threefoldtech/0-stor/client"
 	"github.com/threefoldtech/0-stor/client/datastor/pipeline/storage"
-	"github.com/threefoldtech/0-stor/client/metastor/encoding"
 )
 
 type repairResult int
@@ -26,9 +25,7 @@ const (
 type checker struct {
 	namespace []byte
 	client    *client.Client
-	marshaler *encoding.MarshalFuncPair
-	// tlog      *tlog.TLogger
-	meta meta.Manager
+	meta      meta.Manager
 }
 
 type repairStats struct {
@@ -103,14 +100,6 @@ func (c *checker) checkAndRepairMeta(objMeta meta.ObjectMeta) (repairResult, err
 	if err := c.meta.WriteObjMeta(&objMeta); err != nil {
 		return repairResultFailed, err
 	}
-
-	// if c.tlog != nil {
-	// 	c.tlog.Storage().Set(
-	// 		c.namespace,
-	// 		[]byte(file.Key()),
-	// 		bytes,
-	// 	)
-	// }
 
 	return repairResultSucceed, nil
 }

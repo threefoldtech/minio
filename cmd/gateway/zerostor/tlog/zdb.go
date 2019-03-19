@@ -91,7 +91,7 @@ type scan struct {
 	Err       error
 }
 
-//scan is a generic zdb scan method that takes a cursor and keey scanning the given cursor until
+// scan is a generic zdb scan method that takes a cursor and key scanning the given cursor until
 //ctx is canceled or no more records to retrieve
 func (z *Pool) scan(ctx context.Context, con redis.Conn, cursor []byte) <-chan scan {
 	result := make(chan scan)

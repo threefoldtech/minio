@@ -1,10 +1,15 @@
 package meta
 
 import (
+	"bytes"
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/gob"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path"
@@ -38,18 +43,8 @@ var (
 	filePerm = os.FileMode(0644)
 )
 
-// ObjectMeta defines meta for an object
-type ObjectMeta struct {
-	metatypes.Metadata
-	NextBlob       string
-	ObjectSize     int64
-	ObjectModTime  int64
-	ObjectUserMeta map[string]string
-	Filename       string
-}
-
-// MultiPartInfo represents info/metadata of a multipart upload
-type MultiPartInfo struct {
+// multiPartInfo represents info/metadata of a multipart upload
+type multiPartInfo struct {
 	minio.MultipartInfo
 	Metadata map[string]string
 }
@@ -60,6 +55,8 @@ type filesystemMeta struct {
 	objDir    string
 	blobDir   string
 	uploadDir string
+	key       string
+	gcm       cipher.AEAD
 }
 
 // CreateBucket creates bucket given its name
@@ -167,7 +164,7 @@ func (m *filesystemMeta) PutObjectPart(metaData *metatypes.Metadata, bucket, upl
 		return minio.PartInfo{}, err
 	}
 
-	if err = m.LinkPark(bucket, uploadID, strconv.Itoa(partID), objMeta.Filename); err != nil {
+	if err = m.LinkPart(bucket, uploadID, strconv.Itoa(partID), objMeta.Filename); err != nil {
 		return minio.PartInfo{}, err
 	}
 
@@ -223,8 +220,8 @@ func (m *filesystemMeta) LinkObject(bucket, object, fileID string) error {
 	return os.Symlink(blobFile, objectFile)
 }
 
-// LinkPark links a multipart upload part to a metadata blob file
-func (m *filesystemMeta) LinkPark(bucket, uploadID, partID, fileID string) error {
+// LinkPart links a multipart upload part to a metadata blob file
+func (m *filesystemMeta) LinkPart(bucket, uploadID, partID, fileID string) error {
 
 	partFile := m.partFileName(bucket, uploadID, partID)
 	blobFile := m.blobFile(fileID)
@@ -311,7 +308,7 @@ func (m *filesystemMeta) WriteObjMeta(obj *ObjectMeta) error {
 	}
 	defer f.Close()
 
-	return gob.NewEncoder(f).Encode(obj)
+	return m.encodeData(f, obj)
 }
 
 // CompleteMultipartUpload completes a multipart upload by linking all metadata blobs
@@ -367,8 +364,8 @@ func (m *filesystemMeta) CompleteMultipartUpload(bucket, object, uploadID string
 	}
 	defer f.Close()
 
-	uploadInfo := MultiPartInfo{}
-	err = gob.NewDecoder(f).Decode(&uploadInfo)
+	uploadInfo := multiPartInfo{}
+	err = m.decodeData(f, &uploadInfo)
 	if err != nil {
 		return minio.ObjectInfo{}, err
 	}
@@ -569,9 +566,9 @@ func (m *filesystemMeta) ListMultipartUploads(bucket string) (minio.ListMultipar
 		}
 		defer f.Close()
 
-		uploadInfo := MultiPartInfo{}
+		uploadInfo := multiPartInfo{}
 
-		if err = gob.NewDecoder(f).Decode(&uploadInfo); err != nil {
+		if err = m.decodeData(f, &uploadInfo); err != nil {
 			return minio.ListMultipartsInfo{}, err
 		}
 
@@ -630,7 +627,7 @@ func (m *filesystemMeta) NewMultipartUpload(bucket, object string, opts minio.Ob
 	// create upload ID
 	uploadID := uuid.NewV4().String()
 
-	info := MultiPartInfo{
+	info := multiPartInfo{
 		MultipartInfo: minio.MultipartInfo{
 			UploadID:  uploadID,
 			Object:    object,
@@ -659,7 +656,7 @@ func (m *filesystemMeta) NewMultipartUpload(bucket, object string, opts minio.Ob
 	}
 	defer f.Close()
 
-	return uploadID, gob.NewEncoder(f).Encode(info)
+	return uploadID, m.encodeData(f, &info)
 }
 
 // ListPartInfo lists multipart upload parts
@@ -739,7 +736,7 @@ func (m *filesystemMeta) partFileName(bucket, uploadID, partID string) string {
 	return filepath.Join(m.uploadDir, bucket, uploadID, partID)
 }
 
-func (m *filesystemMeta) createDirs() error {
+func (m *filesystemMeta) initialize() error {
 	// initialize buckets dir, if not exist
 	if err := os.MkdirAll(m.bucketDir, dirPerm); err != nil {
 		return err
@@ -755,7 +752,62 @@ func (m *filesystemMeta) createDirs() error {
 		return err
 	}
 
+	if m.key != "" {
+		c, err := aes.NewCipher([]byte(m.key))
+		if err != nil {
+			return err
+		}
+		gcm, err := cipher.NewGCM(c)
+		if err != nil {
+			return err
+		}
+
+		m.gcm = gcm
+	}
+
 	return nil
+}
+
+func (m *filesystemMeta) encodeData(w io.Writer, object interface{}) error {
+
+	if m.key != "" {
+		nonce := make([]byte, m.gcm.NonceSize())
+		if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+			return err
+		}
+		var buffer bytes.Buffer
+		if err := gob.NewEncoder(&buffer).Encode(object); err != nil {
+			return err
+		}
+		return gob.NewEncoder(w).Encode(m.gcm.Seal(nonce, nonce, buffer.Bytes(), nil))
+	}
+
+	return gob.NewEncoder(w).Encode(object)
+}
+
+func (m *filesystemMeta) decodeData(r io.Reader, object interface{}) error {
+
+	if m.key != "" {
+		var cipheredData []byte
+		if err := gob.NewDecoder(r).Decode(&cipheredData); err != nil {
+			return err
+		}
+
+		nonceSize := m.gcm.NonceSize()
+		nonce, cipheredData := cipheredData[:nonceSize], cipheredData[nonceSize:]
+		data, err := m.gcm.Open(nil, nonce, cipheredData, nil)
+		if err != nil {
+			return err
+		}
+
+		var buffer bytes.Buffer
+		if _, err := buffer.Write(data); err != nil {
+			return err
+		}
+		return gob.NewDecoder(&buffer).Decode(object)
+	}
+
+	return gob.NewDecoder(r).Decode(object)
 }
 
 func (m *filesystemMeta) createBucket(name string) error {
@@ -780,9 +832,7 @@ func (m *filesystemMeta) saveBucket(bkt *Bucket) error {
 	}
 
 	defer f.Close()
-	enc := gob.NewEncoder(f)
-	// enc.SetIndent("", "  ")
-	return enc.Encode(bkt)
+	return m.encodeData(f, bkt)
 }
 
 func (m *filesystemMeta) getBucket(name string) (*Bucket, error) {
@@ -803,7 +853,7 @@ func (m *filesystemMeta) getBucket(name string) (*Bucket, error) {
 	defer f.Close()
 
 	var bkt Bucket
-	return &bkt, gob.NewDecoder(f).Decode(&bkt)
+	return &bkt, m.decodeData(f, &bkt)
 }
 
 func (m *filesystemMeta) initBlob(metaData *metatypes.Metadata, multiUpload bool) ObjectMeta {
@@ -964,8 +1014,7 @@ func (m *filesystemMeta) decodeObjMeta(file string) (ObjectMeta, error) {
 	if !stat.IsDir() {
 		objMeta := new(ObjectMeta)
 		objMeta.Metadata = *new(metatypes.Metadata)
-		err = gob.NewDecoder(f).Decode(objMeta)
-		return *objMeta, err
+		return *objMeta, m.decodeData(f, objMeta)
 	}
 	epoch := stat.ModTime().UnixNano()
 

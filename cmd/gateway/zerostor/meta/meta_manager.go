@@ -38,7 +38,7 @@ type Manager interface {
 	ListBuckets() (map[string]*Bucket, error)
 	SetBucketPolicy(name string, policy *policy.Policy) error
 	LinkObject(bucket, object, blob string) error
-	LinkPark(bucket, uploadID, partID, blob string) error
+	LinkPart(bucket, uploadID, partID, blob string) error
 	ListObjects(ctx context.Context, bucket, prefix, marker, delimiter string, maxKeys int) (minio.ListObjectsInfo, error)
 	ListObjectsV2(ctx context.Context, bucket, prefix, continuationToken, delimiter string, maxKeys int, fetchOwner bool, startAfter string) (minio.ListObjectsV2Info, error)
 	NewMultipartUpload(bucket, object string, opts minio.ObjectOptions) (string, error)
@@ -58,28 +58,40 @@ type Manager interface {
 	WriteMetaStream(ctx context.Context, c <-chan *metatypes.Metadata, bucket, object string) <-chan error
 }
 
-// Bucket defines a bucket
+// Bucket defines a minio bucket
 type Bucket struct {
 	Name    string        `json:"name"`
 	Created time.Time     `json:"created"`
 	Policy  policy.Policy `json:"policy"`
 }
 
+// ObjectMeta defines meta for an object
+type ObjectMeta struct {
+	metatypes.Metadata
+	NextBlob       string
+	ObjectSize     int64
+	ObjectModTime  int64
+	ObjectUserMeta map[string]string
+	Filename       string
+}
+
+// Stream is used to stream ObjMeta through a chan
 type Stream struct {
 	Obj   ObjectMeta
 	Error error
 }
 
 // InitializeMetaManager creates the the meta manager and loads the buckets
-func InitializeMetaManager(dir string) (Manager, error) {
+func InitializeMetaManager(dir string, key string) (Manager, error) {
 	meta := &filesystemMeta{
 		objDir:    filepath.Join(dir, objectDir),
 		bucketDir: filepath.Join(dir, bucketDir),
 		blobDir:   filepath.Join(dir, blobDir),
 		uploadDir: filepath.Join(dir, uploadDir),
+		key:       key,
 	}
 
-	return meta, meta.createDirs()
+	return meta, meta.initialize()
 }
 
 func getUserMetadataValue(key string, userMeta map[string]string) string {

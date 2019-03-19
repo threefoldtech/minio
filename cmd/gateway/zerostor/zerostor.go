@@ -47,7 +47,6 @@ func (zc *zsClient) Read(metadata *metatypes.Metadata, writer io.Writer, offset,
 	if offset == 0 && (length <= 0 || length >= metadata.Size) {
 		return zc.Client.Read(*metadata, writer)
 	}
-	println("ReadRange ", string(metadata.Key))
 	return zc.Client.ReadRange(*metadata, writer, offset, length)
 }
 

@@ -10,15 +10,15 @@
 package repair
 
 import (
+	"path"
+
 	log "github.com/sirupsen/logrus"
 
 	"github.com/minio/minio/cmd/gateway/zerostor/config"
 	"github.com/minio/minio/cmd/gateway/zerostor/meta"
+	"github.com/minio/minio/cmd/gateway/zerostor/tlog"
 	"github.com/pkg/errors"
 	"github.com/threefoldtech/0-stor/client"
-	"github.com/threefoldtech/0-stor/client/metastor/encoding"
-	"github.com/threefoldtech/0-stor/client/metastor/metatypes"
-	"github.com/threefoldtech/0-stor/client/processing"
 )
 
 const (
@@ -36,13 +36,6 @@ func valid(cfg *config.Config) error {
 	return nil
 }
 
-// func getTLogger(cfg *config.TLog) (*tlog.TLogger, error) {
-// 	return tlog.NewZDBTLogger(
-// 		cfg.Address, cfg.Namespace, cfg.Password,
-// 		TmpStateFile, nil, nil, multipart.MultipartBucket,
-// 	)
-// }
-
 // CheckAndRepair is entry point for the repair tool
 func CheckAndRepair(confFile, metaDir, privKey string) error {
 	// - Create a 0-stor client based on given config
@@ -57,78 +50,35 @@ func CheckAndRepair(confFile, metaDir, privKey string) error {
 		return errors.Wrap(err, "config validatin failed")
 	}
 
-	marshaler, err := getMarshalFuncPair(privKey)
 	if err != nil {
 		return errors.Wrap(err, "getting marshalar pair failed")
 	}
 
 	client, err := client.NewClientFromConfig(cfg.Config, nil, 0)
-	//defer client.Close()
+	defer client.Close()
 	if err != nil {
 		return errors.Wrap(err, "client creation failed")
 	}
 
-	// var logger *tlog.TLogger
+	metaManager, err := meta.InitializeMetaManager(metaDir, privKey)
+	if err != nil {
+		log.Println("failed to create meta manager: ", err.Error())
+		return err
+	}
 
-	// if cfg.Minio.TLog != nil {
-	// 	var err error
-	// 	logger, err = getTLogger(cfg.Minio.TLog)
-	// 	if err != nil {
-	// 		return errors.Wrap(err, "getting tlogger failed")
-	// 	}
-	// }
-
-	metaManager, err := meta.InitializeMetaManager(metaDir)
+	if cfg.Minio.TLog != nil {
+		metaManager, err = tlog.InitializeMetaManager(cfg.Minio.TLog.Address, cfg.Minio.TLog.Namespace, cfg.Minio.TLog.Password, path.Join(metaDir, tlog.StateDir), metaManager)
+		if err != nil {
+			log.Println("failed to create tlog meta manager: ", err.Error())
+			return err
+		}
+	}
 
 	c := checker{
 		namespace: []byte(cfg.Namespace),
 		client:    client,
-		marshaler: marshaler,
 		meta:      metaManager,
-		// tlog:      logger,
 	}
 
 	return c.checkAndRepair(metaDir)
-}
-
-func getMarshalFuncPair(privKey string) (*encoding.MarshalFuncPair, error) {
-	pair, err := encoding.NewMarshalFuncPair(encoding.DefaultMarshalType)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(privKey) == 0 {
-		return pair, nil
-	}
-
-	encode := func(md metatypes.Metadata) ([]byte, error) {
-		processor, err := processing.NewEncrypterDecrypter(
-			processing.DefaultEncryptionType, []byte(privKey),
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		bytes, err := pair.Marshal(md)
-		if err != nil {
-			return nil, err
-		}
-		return processor.WriteProcess(bytes)
-	}
-
-	decode := func(bytes []byte, md *metatypes.Metadata) error {
-		processor, err := processing.NewEncrypterDecrypter(
-			processing.DefaultEncryptionType, []byte(privKey),
-		)
-		if err != nil {
-			return err
-		}
-		bytes, err = processor.ReadProcess(bytes)
-		if err != nil {
-			return err
-		}
-		return pair.Unmarshal(bytes, md)
-	}
-
-	return &encoding.MarshalFuncPair{Marshal: encode, Unmarshal: decode}, nil
 }
