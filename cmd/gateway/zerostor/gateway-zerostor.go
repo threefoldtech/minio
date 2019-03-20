@@ -41,7 +41,7 @@ const (
 	minioZstorMetaDirVar    = "MINIO_ZEROSTOR_META_DIR"
 	minioZstorMetaPrivKey   = "MINIO_ZEROSTOR_META_PRIVKEY"
 	minioZstorDebug         = "MINIO_ZEROSTOR_DEBUG"
-	defaultNamespaceMaxSize = 10e14 // default max size =  1PB
+	defaultNamespaceMaxSize = 10e14   // default max size =  1PB
 	metaMaxSize             = 1048576 // max size allowed for meta
 )
 
@@ -1057,14 +1057,24 @@ func parseNsInfo(nsinfo string) (total, used uint64, err error) {
 }
 
 func maxFileSizeFromConfig(cfg config.Config) int64 {
-	// max size of meta without chunks based on the meta struct
+	// max size of meta without chunks. This includes the follwoing attributes:
+	// Namespace, Key, Size, StorageSize, CreateEpoch, LastWriteEpoch, ChunkSize, PreviousKey and NextKey.
+	// any change to the metatypes.MetaData or relevant 0-stor implementation, requires an update in this value
 	metaWithoutChunks := 96
-	// max size of Objects[] in each chunk metatypes.MetaData.Chunks
-	maxChunkObjects := 26 * (cfg.DataStor.Pipeline.Distribution.DataShardCount + cfg.DataStor.Pipeline.Distribution.ParityShardCount)
-	// max field size of metatypes.MetaData.Chunks
-	maxChunkSize := 8 + 32 + maxChunkObjects
 
-	// max file size that can be uploaded with the current config
-	maxFileSize := ((metaMaxSize - metaWithoutChunks) / maxChunkSize) * cfg.DataStor.Pipeline.BlockSize
+	// max size of metatypes.Object. This includes the fields: Key and ShardID
+	objectSize := 26
+	// max number of objects in each chunk
+	objectCount := (cfg.DataStor.Pipeline.Distribution.DataShardCount + cfg.DataStor.Pipeline.Distribution.ParityShardCount)
+
+	// max size of each chunk. This includes the fields: Size, Object[], Hash
+	chunkSize := 8 + 32 + (objectCount * objectSize)
+
+	// total metadata size = metaWithoutChunks + (chunkSize * chunkCount)
+	// and chunkCount = filesize/blocksize
+	// we use this to figure out the maximum filesize that can be stored in 0-stor without the metadata exceeding metaMaxSize
+	maxFileSize := ((metaMaxSize - metaWithoutChunks) / chunkSize) * cfg.DataStor.Pipeline.BlockSize
+
 	return int64(maxFileSize)
+
 }
