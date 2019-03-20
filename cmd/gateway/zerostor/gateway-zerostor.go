@@ -3,6 +3,7 @@ package zerostor
 import (
 	"context"
 	goerrors "errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -41,7 +42,7 @@ const (
 	minioZstorMetaPrivKey   = "MINIO_ZEROSTOR_META_PRIVKEY"
 	minioZstorDebug         = "MINIO_ZEROSTOR_DEBUG"
 	defaultNamespaceMaxSize = 10e14 // default max size =  1PB
-	partMaxSize             = 67108864
+	metaMaxSize             = 1048576 // max size allowed for meta
 )
 
 var (
@@ -274,10 +275,11 @@ func (z *Zerostor) NewGatewayLayer(creds auth.Credentials) (minio.ObjectLayer, e
 	}
 
 	zo := &zerostorObjects{
-		zsManager: &zsManager,
-		cfg:       cfg,
-		meta:      zoMetaManager,
-		cancel:    cancel,
+		zsManager:   &zsManager,
+		cfg:         cfg,
+		meta:        zoMetaManager,
+		cancel:      cancel,
+		maxFileSize: maxFileSizeFromConfig(cfg),
 	}
 
 	go zo.handleConfigReload(z.confFile)
@@ -287,10 +289,11 @@ func (z *Zerostor) NewGatewayLayer(creds auth.Credentials) (minio.ObjectLayer, e
 
 type zerostorObjects struct {
 	//minio.GatewayUnsupported
-	zsManager *zsClientManager
-	cfg       config.Config
-	meta      meta.Manager
-	cancel    func()
+	zsManager   *zsClientManager
+	cfg         config.Config
+	meta        meta.Manager
+	cancel      func()
+	maxFileSize int64
 }
 
 func (zo *zerostorObjects) isReadOnly() bool {
@@ -312,6 +315,7 @@ func (zo *zerostorObjects) handleConfigReload(confFile string) {
 				continue
 			}
 			zo.cfg = cfg
+			zo.maxFileSize = maxFileSizeFromConfig(cfg)
 			zo.zsManager.Open(cfg)
 		}
 	}()
@@ -677,7 +681,7 @@ func (zo *zerostorObjects) putObject(ctx context.Context, bucket, object string,
 	defer zstor.Close()
 
 	// file does not need to be split
-	if data.Reader.Size() < partMaxSize {
+	if data.Reader.Size() < zo.maxFileSize {
 		metaData, err := zstor.Write(bucket, object, data.Reader, opts.UserDefined)
 		if err != nil {
 			err = zstorToObjectErr(errors.WithStack(err), Operation("PutObject"), bucket, object)
@@ -695,7 +699,7 @@ func (zo *zerostorObjects) putObject(ctx context.Context, bucket, object string,
 	defer close(c)
 
 	errc := zo.meta.WriteMetaStream(ctx, c, bucket, object)
-	limitedReader := &io.LimitedReader{R: data.Reader, N: partMaxSize}
+	limitedReader := &io.LimitedReader{R: data.Reader, N: zo.maxFileSize}
 
 	for limitedReader.N > 0 {
 		metaData, err := zstor.Write(bucket, object+strconv.Itoa(part), limitedReader, opts.UserDefined)
@@ -713,7 +717,7 @@ func (zo *zerostorObjects) putObject(ctx context.Context, bucket, object string,
 		}
 
 		if limitedReader.N <= 0 {
-			limitedReader.N = partMaxSize
+			limitedReader.N = zo.maxFileSize
 		} else {
 			break
 		}
@@ -746,6 +750,10 @@ func (zo *zerostorObjects) NewMultipartUpload(ctx context.Context, bucket, objec
 func (zo *zerostorObjects) PutObjectPart(ctx context.Context, bucket, object, uploadID string, partID int, data *minio.PutObjReader, opts minio.ObjectOptions) (info minio.PartInfo, err error) {
 	if zo.isReadOnly() {
 		return info, ErrReadOnlyZeroStor
+	}
+
+	if data.Size() > zo.maxFileSize {
+		return info, fmt.Errorf("Multipart uploads with parts larger than %v are not supported", zo.maxFileSize)
 	}
 
 	log.WithFields(log.Fields{
@@ -1046,4 +1054,17 @@ func parseNsInfo(nsinfo string) (total, used uint64, err error) {
 	}
 
 	return total, used, err
+}
+
+func maxFileSizeFromConfig(cfg config.Config) int64 {
+	// max size of meta without chunks based on the meta struct
+	metaWithoutChunks := 96
+	// max size of Objects[] in each chunk metatypes.MetaData.Chunks
+	maxChunkObjects := 26 * (cfg.DataStor.Pipeline.Distribution.DataShardCount + cfg.DataStor.Pipeline.Distribution.ParityShardCount)
+	// max field size of metatypes.MetaData.Chunks
+	maxChunkSize := 8 + 32 + maxChunkObjects
+
+	// max file size that can be uploaded with the current config
+	maxFileSize := ((metaMaxSize - metaWithoutChunks) / maxChunkSize) * cfg.DataStor.Pipeline.BlockSize
+	return int64(maxFileSize)
 }
