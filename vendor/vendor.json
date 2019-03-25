@@ -969,6 +969,12 @@
 			"revisionTime": "2019-02-15T13:24:22Z"
 		},
 		{
+			"checksumSHA1": "dipo0bmEL6MEnYxuZrGApByexAw=",
+			"path": "github.com/threefoldtech/0-stor/client/datastor/zerodb/test",
+			"revision": "7cd642bb3bc414b6b8a57e62701b91263f3784b4",
+			"revisionTime": "2019-02-15T13:24:22Z"
+		},
+		{
 			"checksumSHA1": "+ay6ymcWpjIRoL4zxWYY9oN6vpg=",
 			"path": "github.com/threefoldtech/0-stor/client/metastor",
 			"revision": "7cd642bb3bc414b6b8a57e62701b91263f3784b4",
