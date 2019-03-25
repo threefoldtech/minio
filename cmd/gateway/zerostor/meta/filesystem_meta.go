@@ -35,7 +35,6 @@ const (
 	blobDir        = "blobs"
 	uploadDir      = "uploads"
 	uploadMetaFile = ".meta"
-	nextBlobKey    = "next-blob"
 )
 
 var (
@@ -401,7 +400,7 @@ func (m *filesystemMeta) StreamObjectMeta(ctx context.Context, bucket, object st
 	go func() {
 		defer close(c)
 		metaFile := m.objectFile(bucket, object)
-		for true {
+		for {
 			objMeta, err := m.decodeObjMeta(metaFile)
 
 			select {
@@ -854,22 +853,6 @@ func (m *filesystemMeta) getBucket(name string) (*Bucket, error) {
 
 	var bkt Bucket
 	return &bkt, m.decodeData(f, &bkt)
-}
-
-func (m *filesystemMeta) initBlob(metaData *metatypes.Metadata, multiUpload bool) ObjectMeta {
-	objMeta := ObjectMeta{
-		Metadata: *metaData,
-		Filename: uuid.NewV4().String(),
-	}
-
-	if !multiUpload {
-		objMeta.ObjectSize = metaData.Size
-
-		objMeta.ObjectUserMeta = metaData.UserDefined
-		objMeta.ObjectModTime = metaData.LastWriteEpoch
-	}
-
-	return objMeta
 }
 
 // createBlob saves the metadata to a file under /blobs and returns the file id

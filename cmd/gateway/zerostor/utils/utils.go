@@ -15,6 +15,7 @@ func Exists(name string) (bool, error) {
 	return err == nil, err
 }
 
+// RemoveFile removes a file if it exists
 func RemoveFile(path string) error {
 	if err := os.Remove(path); err != nil {
 		if os.IsNotExist(err) {

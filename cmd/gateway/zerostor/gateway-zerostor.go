@@ -2,7 +2,6 @@ package zerostor
 
 import (
 	"context"
-	goerrors "errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -43,11 +42,6 @@ const (
 	minioZstorDebug         = "MINIO_ZEROSTOR_DEBUG"
 	defaultNamespaceMaxSize = 10e14   // default max size =  1PB
 	metaMaxSize             = 1048576 // max size allowed for meta
-)
-
-var (
-	errBucketNotFound = goerrors.New("bucket not found")
-	errBucketExists   = goerrors.New("bucket already exists")
 )
 
 var (
@@ -178,8 +172,6 @@ type Zerostor struct {
 	confFile    string
 	metaDir     string
 	metaPrivKey string
-	zo          *zerostorObjects
-	cluster     datastor.Cluster
 }
 
 // Name implements minio.Gateway.Name interface
@@ -227,7 +219,8 @@ func (z *Zerostor) NewGatewayLayer(creds auth.Credentials) (minio.ObjectLayer, e
 	}
 	zoMetaManager = metaManager
 
-	ctx, cancel := context.WithCancel(context.Background())
+	var ctx context.Context
+	var cancel context.CancelFunc
 
 	if cfg.Minio.TLog != nil {
 		tlogCfg := cfg.Minio.TLog
@@ -245,6 +238,8 @@ func (z *Zerostor) NewGatewayLayer(creds auth.Credentials) (minio.ObjectLayer, e
 			}).Error("failed to synchronize transaction logger with local meta")
 			return nil, err
 		}
+
+		ctx, cancel = context.WithCancel(context.Background())
 
 		go tlogMetaManager.HealthChecker(ctx) //start tlog health checker
 		zoMetaManager = tlogMetaManager
@@ -283,6 +278,7 @@ func (z *Zerostor) NewGatewayLayer(creds auth.Credentials) (minio.ObjectLayer, e
 	}
 
 	go zo.handleConfigReload(z.confFile)
+	go zo.healthReporter()
 
 	return zo, nil
 }
@@ -456,7 +452,7 @@ func (zo *zerostorObjects) DeleteObject(ctx context.Context, bucket, object stri
 		}
 		if err := zstor.Delete(r.Obj.Metadata); err != nil {
 			// @todo should I delete the meta anyway?
-			// return zstorToObjectErr(errors.WithStack(err), Operation("DeleteObject"), bucket, object)
+			return zstorToObjectErr(errors.WithStack(err), Operation("DeleteObject"), bucket, object)
 		}
 		if err := zo.meta.DeleteBlob(r.Obj.Filename); err != nil {
 			return zstorToObjectErr(errors.WithStack(err), Operation("DeleteObject"), bucket, object)

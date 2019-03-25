@@ -95,7 +95,7 @@ func InitializeMetaManager(dir string, key string) (Manager, error) {
 }
 
 func getUserMetadataValue(key string, userMeta map[string]string) string {
-	v, _ := userMeta[key]
+	v := userMeta[key]
 	return v
 }
 

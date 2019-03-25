@@ -55,10 +55,10 @@ func CheckAndRepair(confFile, metaDir, privKey string) error {
 	}
 
 	client, err := client.NewClientFromConfig(cfg.Config, nil, 0)
-	defer client.Close()
 	if err != nil {
 		return errors.Wrap(err, "client creation failed")
 	}
+	defer client.Close()
 
 	metaManager, err := meta.InitializeMetaManager(metaDir, privKey)
 	if err != nil {
