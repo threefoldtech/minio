@@ -909,10 +909,22 @@
 			"revisionTime": "2016-03-11T21:55:03Z"
 		},
 		{
+			"checksumSHA1": "ptWgaqBa5I2NacVG6JiB5m0UxDE=",
+			"path": "github.com/templexxx/cpu",
+			"revision": "8b437a7a2c8787e84daee7d67c52359411988ce3",
+			"revisionTime": "2018-07-24T03:07:38Z"
+		},
+		{
 			"checksumSHA1": "PFX1vGJqLmncwpWD7AXbuP62bLQ=",
 			"path": "github.com/templexxx/reedsolomon",
 			"revision": "957cb02db396e7e9810e7a6e0177a6e195f72fd4",
 			"revisionTime": "2018-11-04T14:30:39Z"
+		},
+		{
+			"checksumSHA1": "yjx/IjWX6/3OQjPduFrqK+sGwJ4=",
+			"path": "github.com/templexxx/xorsimd",
+			"revision": "9b4a941c186ecfbed846886257858167439b735d",
+			"revisionTime": "2018-11-04T12:47:56Z"
 		},
 		{
 			"checksumSHA1": "njhigfz4hGZICcm8LA/grlHI4Cg=",
