@@ -782,16 +782,22 @@
 			"revisionTime": "2018-10-28T19:52:56Z"
 		},
 		{
-			"checksumSHA1": "85AmRAEmy9EqHBUhwkBBVhLkCVU=",
+			"checksumSHA1": "xKzx54LbkghuMauevGWevn5ip3w=",
 			"path": "github.com/pierrec/lz4",
-			"revision": "1f6e18d34f6790fc0afea6f13a5fe3d9ab1770af",
-			"revisionTime": "2018-09-11T17:58:58Z"
+			"revision": "ed8d4cc3b461464e69798080a0092bd028910298",
+			"revisionTime": "2018-01-13T15:17:03Z"
 		},
 		{
 			"checksumSHA1": "YzBjaYp2pbrwPhT6XHY0CBSh71A=",
 			"path": "github.com/pierrec/lz4/internal/xxh32",
 			"revision": "1f6e18d34f6790fc0afea6f13a5fe3d9ab1770af",
 			"revisionTime": "2018-09-11T17:58:58Z"
+		},
+		{
+			"checksumSHA1": "zPWRjzsPeXCoqmidIcJtHbvrvRs=",
+			"path": "github.com/pierrec/xxHash/xxHash32",
+			"revision": "d17cb990ad2d219d5901415ceaeb50d17df59527",
+			"revisionTime": "2019-03-18T09:19:27Z"
 		},
 		{
 			"checksumSHA1": "I7hloldMJZTqUx6hbVDp5nk9fZQ=",
@@ -921,10 +927,10 @@
 			"revisionTime": "2018-07-24T03:07:38Z"
 		},
 		{
-			"checksumSHA1": "PFX1vGJqLmncwpWD7AXbuP62bLQ=",
+			"checksumSHA1": "DooA7V2BtjfMTI+xuW9vosryz1M=",
 			"path": "github.com/templexxx/reedsolomon",
-			"revision": "957cb02db396e7e9810e7a6e0177a6e195f72fd4",
-			"revisionTime": "2018-11-04T14:30:39Z"
+			"revision": "0a1f6992d698b8e97bd97cbbd51fdac317959741",
+			"revisionTime": "2017-07-25T13:49:12Z"
 		},
 		{
 			"checksumSHA1": "yjx/IjWX6/3OQjPduFrqK+sGwJ4=",
