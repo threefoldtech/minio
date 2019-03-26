@@ -1053,7 +1053,7 @@ func parseNsInfo(nsinfo string) (total, used uint64, err error) {
 }
 
 func maxFileSizeFromConfig(cfg config.Config) int64 {
-	// max size of meta without chunks. This includes the follwoing attributes:
+	// max size of meta without chunks. This includes the following attributes:
 	// Namespace, Key, Size, StorageSize, CreateEpoch, LastWriteEpoch, ChunkSize, PreviousKey and NextKey.
 	// any change to the metatypes.MetaData or relevant 0-stor implementation, requires an update in this value
 	metaWithoutChunks := 96
