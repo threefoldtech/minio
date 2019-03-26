@@ -18,7 +18,7 @@ func (t *fsTLogger) CreateBucket(name string) error {
 	t.recorder.Begin()
 	defer t.recorder.End()
 
-	if err := t.meta.CreateBucket(name); err != nil {
+	if err := t.Manager.CreateBucket(name); err != nil {
 		return err
 	}
 
@@ -34,7 +34,7 @@ func (t *fsTLogger) DeleteBucket(name string) error {
 	t.recorder.Begin()
 	defer t.recorder.End()
 
-	if err := t.meta.DeleteBucket(name); err != nil {
+	if err := t.Manager.DeleteBucket(name); err != nil {
 		return err
 	}
 
@@ -45,22 +45,12 @@ func (t *fsTLogger) DeleteBucket(name string) error {
 	return err
 }
 
-// ListBuckets lists all buckets
-func (t *fsTLogger) ListBuckets() (map[string]*meta.Bucket, error) {
-	return t.meta.ListBuckets()
-}
-
-// GetBucket returns a Bucket given its name
-func (t *fsTLogger) GetBucket(name string) (*meta.Bucket, error) {
-	return t.meta.GetBucket(name)
-}
-
 // SetBucketPolicy changes bucket policy
 func (t *fsTLogger) SetBucketPolicy(name string, policy *policy.Policy) error {
 	t.recorder.Begin()
 	defer t.recorder.End()
 
-	if err := t.meta.SetBucketPolicy(name, policy); err != nil {
+	if err := t.Manager.SetBucketPolicy(name, policy); err != nil {
 		return err
 	}
 	polBytes, err := policy.MarshalJSON()
@@ -81,7 +71,7 @@ func (t *fsTLogger) PutObject(metaData *metatypes.Metadata, bucket, object strin
 	t.recorder.Begin()
 	defer t.recorder.End()
 
-	info, err := t.meta.PutObject(metaData, bucket, object)
+	info, err := t.Manager.PutObject(metaData, bucket, object)
 	if err != nil {
 		return info, err
 	}
@@ -104,7 +94,7 @@ func (t *fsTLogger) PutObjectPart(metaData *metatypes.Metadata, bucket, uploadID
 	t.recorder.Begin()
 	defer t.recorder.End()
 
-	info, err := t.meta.PutObjectPart(metaData, bucket, uploadID, partID)
+	info, err := t.Manager.PutObjectPart(metaData, bucket, uploadID, partID)
 	if err != nil {
 		return info, err
 	}
@@ -128,7 +118,7 @@ func (t *fsTLogger) DeleteBlob(blob string) error {
 	t.recorder.Begin()
 	defer t.recorder.End()
 
-	if err := t.meta.DeleteBlob(blob); err != nil {
+	if err := t.Manager.DeleteBlob(blob); err != nil {
 		return err
 	}
 
@@ -144,7 +134,7 @@ func (t *fsTLogger) DeleteUpload(bucket, uploadID string) error {
 	t.recorder.Begin()
 	defer t.recorder.End()
 
-	if err := t.meta.DeleteUpload(bucket, uploadID); err != nil {
+	if err := t.Manager.DeleteUpload(bucket, uploadID); err != nil {
 		return err
 	}
 
@@ -161,7 +151,7 @@ func (t *fsTLogger) DeleteObject(bucket, object string) error {
 	t.recorder.Begin()
 	defer t.recorder.End()
 
-	if err := t.meta.DeleteObject(bucket, object); err != nil {
+	if err := t.Manager.DeleteObject(bucket, object); err != nil {
 		return err
 	}
 	_, err := t.recorder.Record(Record{
@@ -177,7 +167,7 @@ func (t *fsTLogger) LinkObject(bucket, object, blob string) error {
 	t.recorder.Begin()
 	defer t.recorder.End()
 
-	if err := t.meta.LinkObject(bucket, object, blob); err != nil {
+	if err := t.Manager.LinkObject(bucket, object, blob); err != nil {
 		return err
 	}
 	_, err := t.recorder.Record(Record{
@@ -194,7 +184,7 @@ func (t *fsTLogger) LinkPart(bucket, uploadID, partID, blob string) error {
 	t.recorder.Begin()
 	defer t.recorder.End()
 
-	if err := t.meta.LinkPart(bucket, uploadID, partID, blob); err != nil {
+	if err := t.Manager.LinkPart(bucket, uploadID, partID, blob); err != nil {
 		return err
 	}
 
@@ -208,24 +198,12 @@ func (t *fsTLogger) LinkPart(bucket, uploadID, partID, blob string) error {
 	return err
 }
 
-// ListObjects lists objects in a bucket
-func (t *fsTLogger) ListObjects(ctx context.Context, bucket, prefix, marker, delimiter string, maxKeys int) (result minio.ListObjectsInfo, err error) {
-	return t.meta.ListObjects(ctx, bucket, prefix, marker, delimiter, maxKeys)
-}
-
-// ListObjectsV2 lists objects in a bucket
-func (t *fsTLogger) ListObjectsV2(ctx context.Context, bucket, prefix,
-	continuationToken, delimiter string, maxKeys int,
-	fetchOwner bool, startAfter string) (result minio.ListObjectsV2Info, err error) {
-	return t.meta.ListObjectsV2(ctx, bucket, prefix, continuationToken, delimiter, maxKeys, fetchOwner, startAfter)
-}
-
 // NewMultipartUpload initializes a new multipart upload
 func (t *fsTLogger) NewMultipartUpload(bucket, object string, opts minio.ObjectOptions) (string, error) {
 	t.recorder.Begin()
 	defer t.recorder.End()
 
-	upload, err := t.meta.NewMultipartUpload(bucket, object, opts)
+	upload, err := t.Manager.NewMultipartUpload(bucket, object, opts)
 	if err != nil {
 		return "", err
 	}
@@ -242,17 +220,12 @@ func (t *fsTLogger) NewMultipartUpload(bucket, object string, opts minio.ObjectO
 	return upload, err
 }
 
-// ListUploadParts lists multipart upload parts
-func (t *fsTLogger) ListUploadParts(bucket, uploadID string) ([]minio.PartInfo, error) {
-	return t.meta.ListUploadParts(bucket, uploadID)
-}
-
 // WriteObjMeta write meta.ObjectMeta
 func (t *fsTLogger) WriteObjMeta(obj *meta.ObjectMeta) error {
 	t.recorder.Begin()
 	defer t.recorder.End()
 
-	if err := t.meta.WriteObjMeta(obj); err != nil {
+	if err := t.Manager.WriteObjMeta(obj); err != nil {
 		return err
 	}
 
@@ -273,7 +246,7 @@ func (t *fsTLogger) CompleteMultipartUpload(bucket, object, uploadID string, par
 	t.recorder.Begin()
 	defer t.recorder.End()
 
-	info, err := t.meta.CompleteMultipartUpload(bucket, object, uploadID, parts)
+	info, err := t.Manager.CompleteMultipartUpload(bucket, object, uploadID, parts)
 	if err != nil {
 		return info, err
 	}
@@ -291,16 +264,6 @@ func (t *fsTLogger) CompleteMultipartUpload(bucket, object, uploadID string, par
 		partsBytes,
 	}, true)
 	return info, err
-}
-
-// GetObjectInfo returns info about a bucket object
-func (t *fsTLogger) GetObjectInfo(bucket, object string) (minio.ObjectInfo, error) {
-	return t.meta.GetObjectInfo(bucket, object)
-}
-
-// StreamObjectMeta streams an object metadata blobs through a channel
-func (t *fsTLogger) StreamObjectMeta(ctx context.Context, bucket, object string) <-chan meta.Stream {
-	return t.meta.StreamObjectMeta(ctx, bucket, object)
 }
 
 //WriteMetaStream writes all the incomming meta stream
@@ -362,31 +325,11 @@ func (t *fsTLogger) WriteMetaStream(ctx context.Context, c <-chan *metatypes.Met
 	return errc
 }
 
-// StreamBlobs streams all blobs
-func (t *fsTLogger) StreamBlobs(ctx context.Context) <-chan meta.Stream {
-	return t.meta.StreamBlobs(ctx)
-}
-
-// ValidUpload checks if an upload id is valid
-func (t *fsTLogger) ValidUpload(bucket, uploadID string) (bool, error) {
-	return t.meta.ValidUpload(bucket, uploadID)
-}
-
-// ListMultipartUploads lists multipart uploads that are in progress
-func (t *fsTLogger) ListMultipartUploads(bucket string) (minio.ListMultipartsInfo, error) {
-	return t.meta.ListMultipartUploads(bucket)
-}
-
-// StreamMultiPartsMeta streams parts metadata for a multiupload
-func (t *fsTLogger) StreamMultiPartsMeta(ctx context.Context, bucket, uploadID string) <-chan meta.Stream {
-	return t.meta.StreamMultiPartsMeta(ctx, bucket, uploadID)
-}
-
 //Sync syncs the backend storage with the latest records from the tlog storage
 func (t *fsTLogger) Sync() error {
 
 	return t.recorder.Play(nil, func(key []byte, rec Record) error {
-		if err := rec.Play(t.meta); err != nil {
+		if err := rec.Play(t.Manager); err != nil {
 			logger := log.WithError(err).WithFields(log.Fields{
 				"subsystem": "sync",
 				"tlog":      t.recorder.p.address,

@@ -78,7 +78,7 @@ type TLogger interface {
 
 type fsTLogger struct {
 	recorder *zdbRecorder
-	meta     meta.Manager
+	meta.Manager
 }
 
 //InitializeMetaManager creates a new zdb tlogger
@@ -90,6 +90,6 @@ func InitializeMetaManager(address, namespace, password, stateFile string, metaM
 
 	return &fsTLogger{
 		recorder: recorder,
-		meta:     metaManager,
+		Manager:  metaManager,
 	}, nil
 }

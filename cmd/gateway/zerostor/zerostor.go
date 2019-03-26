@@ -1,13 +1,20 @@
 package zerostor
 
 import (
+	"context"
 	"fmt"
 	"io"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/minio/minio/cmd/gateway/zerostor/meta"
+	"github.com/minio/minio/cmd/gateway/zerostor/tlog"
 
 	"github.com/minio/minio/cmd/gateway/zerostor/config"
+	log "github.com/sirupsen/logrus"
 	"github.com/threefoldtech/0-stor/client"
 	"github.com/threefoldtech/0-stor/client/datastor"
 	"github.com/threefoldtech/0-stor/client/datastor/pipeline"
@@ -20,10 +27,46 @@ var (
 	ErrReadOnlyZeroStor = fmt.Errorf("minio running in slave mode")
 )
 
+type metaManager struct {
+	meta.Manager
+	mux *sync.RWMutex
+}
+
+func (m *metaManager) Close() {
+	m.mux.RUnlock()
+}
+
 // zsClient defines 0-stor client wrapper
 type zsClient struct {
 	*client.Client
-	mux *sync.RWMutex
+	mux     *sync.RWMutex
+	cluster datastor.Cluster
+}
+
+func (zc *zsClient) healthReporter(ctx context.Context) {
+	for {
+		select {
+		case <-time.After(10 * time.Minute):
+		case <-ctx.Done():
+			//in case context was canceled when we were waiting
+			return
+		}
+		log.Debug("checking cluster health")
+
+		for iter := zc.cluster.GetRandomShardIterator(nil); iter.Next(); {
+			shard := iter.Shard()
+			err := shardHealth(shard)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"shard": shard.Identifier(),
+				}).WithError(err).Error("error while checking shard health")
+			} else {
+				log.WithFields(log.Fields{
+					"shard": shard.Identifier(),
+				}).Error("shard state is okay")
+			}
+		}
+	}
 }
 
 func (zc *zsClient) Close() {
@@ -55,34 +98,101 @@ func (zc *zsClient) getKey(bucket, object string) []byte {
 	return []byte(filepath.Join(bucket, object))
 }
 
-type zsClientManager struct {
+type configManager struct {
 	zstorClient *zsClient
 	mux         sync.RWMutex
-	Cluster     datastor.Cluster
+	metaManager metaManager
+	cancel      func()
 }
 
-func (zm *zsClientManager) Get() *zsClient {
-	zm.mux.RLock()
-	return zm.zstorClient
+func (c *configManager) GetClient() Client {
+	c.mux.RLock()
+	return c.zstorClient
 }
 
-func (zm *zsClientManager) Open(cfg config.Config) error {
-	zm.mux.Lock()
-	defer zm.mux.Unlock()
-	zm.zstorClient.Client.Close()
-	client, _, err := createClient(cfg)
+func (c *configManager) GetMeta() metaManager {
+	c.mux.RLock()
+	return c.metaManager
+}
+
+func (c *configManager) Reload(cfg config.Config, metaDir, metaPrivKey string) error {
+	c.mux.Lock()
+	defer c.mux.Unlock()
+	c.zstorClient.Client.Close()
+	c.cancel()
+
+	client, cluster, err := createClient(cfg)
 	if err != nil {
 		return nil
 	}
-	zm.zstorClient.Client = client
+	c.zstorClient.Client = client
+	c.zstorClient.cluster = cluster
+	ctx, cancel := context.WithCancel(context.Background())
+	c.cancel = cancel
+
+	meta, err := createMetaManager(ctx, cfg, metaDir, metaPrivKey)
+	if err != nil {
+		log.Println("failed to create meta manager: ", err.Error())
+		return err
+	}
+	c.metaManager.Manager = meta
+	go c.zstorClient.healthReporter(ctx)
+
 	return nil
 }
 
-func (zm *zsClientManager) Close() error {
-	zm.mux.Lock()
-	defer zm.mux.Unlock()
+func (c *configManager) Close() error {
+	c.mux.Lock()
+	defer c.mux.Unlock()
 
-	return zm.zstorClient.Client.Close()
+	c.cancel()
+	return c.zstorClient.Client.Close()
+}
+
+// ConfigManager implements a 0-stor client manager
+type ConfigManager interface {
+	GetClient() Client
+	GetMeta() metaManager
+	Reload(cfg config.Config, metaDir, metaPrivKey string) error
+	Close() error
+}
+
+// Client implements a zerotstor client
+type Client interface {
+	Close()
+	Write(bucket, object string, rd io.Reader, userDefMeta map[string]string) (*metatypes.Metadata, error)
+	Read(metadata *metatypes.Metadata, writer io.Writer, offset, length int64) error
+	Delete(meta metatypes.Metadata) error
+}
+
+func newConfigManager(cfg config.Config, metaDir, metaPrivKey string) (ConfigManager, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	zsManager := configManager{cancel: cancel}
+
+	zstor, cluster, err := createClient(cfg)
+	if err != nil {
+		log.Println("failed to create zstor client: ", err.Error())
+		return nil, err
+	}
+
+	zsClient := zsClient{
+		zstor,
+		&zsManager.mux,
+		cluster,
+	}
+	zsManager.zstorClient = &zsClient
+
+	meta, err := createMetaManager(ctx, cfg, metaDir, metaPrivKey)
+	if err != nil {
+		log.Println("failed to create meta manager: ", err.Error())
+		return nil, err
+	}
+	metaManager := metaManager{meta, &zsManager.mux}
+	zsManager.metaManager = metaManager
+
+	go zsManager.zstorClient.healthReporter(ctx)
+	return &zsManager, nil
 }
 
 // createClient creates a 0-stor client from a configuration file
@@ -103,4 +213,70 @@ func createClient(cfg config.Config) (*client.Client, datastor.Cluster, error) {
 	}
 
 	return client.NewClient(nil, dataPipeline), cluster, nil
+}
+
+func createMetaManager(ctx context.Context, cfg config.Config, metaDir, metaPrivKey string) (meta.Manager, error) {
+	var zoMetaManager meta.Manager
+	metaManager, err := meta.InitializeMetaManager(metaDir, metaPrivKey)
+	if err != nil {
+		log.Println("failed to create meta manager: ", err.Error())
+		return nil, err
+	}
+	zoMetaManager = metaManager
+
+	if cfg.Minio.TLog != nil {
+		tlogCfg := cfg.Minio.TLog
+		tlogMetaManager, err := tlog.InitializeMetaManager(tlogCfg.Address, tlogCfg.Namespace, tlogCfg.Password, path.Join(metaDir, tlog.StateDir), metaManager)
+		if err != nil {
+			log.Println("failed to create tlog meta manager: ", err.Error())
+			return nil, err
+		}
+
+		err = tlogMetaManager.Sync()
+		if err != nil {
+			log.WithError(err).WithFields(log.Fields{
+				"tlog":      tlogCfg.Address,
+				"namespace": tlogCfg.Namespace,
+			}).Error("failed to synchronize transaction logger with local meta")
+			return nil, err
+		}
+
+		go tlogMetaManager.HealthChecker(ctx) //start tlog health checker
+		zoMetaManager = tlogMetaManager
+
+	}
+
+	if cfg.Minio.Master != nil { //check if master is configure
+		//start synchronizing with master zdb
+		masterCfg := cfg.Minio.Master
+		syncher := tlog.NewSyncher(masterCfg.Address, masterCfg.Namespace, masterCfg.Password, path.Join(metaDir, "master.state"), metaManager)
+		go func() {
+			for {
+				if err := syncher.Sync(ctx); err != nil {
+					log.WithError(err).WithFields(log.Fields{
+						"subsystem": "sync",
+						"tlog":      masterCfg.Address,
+						"namespace": masterCfg.Namespace,
+						"master":    true,
+					}).Error("failed to do master synching")
+					<-time.After(3 * time.Second)
+					continue
+				}
+
+				//zerostor shutting down. (cancel function called)
+				break
+			}
+		}()
+	}
+
+	return zoMetaManager, nil
+}
+
+func shardHealth(shard datastor.Shard) error {
+	key, err := shard.CreateObject([]byte("test write"))
+	if err != nil {
+		return err
+	}
+
+	return shard.DeleteObject(key)
 }
