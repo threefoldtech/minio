@@ -620,7 +620,7 @@ func (zo *zerostorObjects) putObject(ctx context.Context, bucket, object string,
 			}
 			part++
 			if limitedReader.N <= 0 {
-				limitedReader.N = zo.maxFileSize
+				limitedReader = &io.LimitedReader{R: data.Reader, N: zo.maxFileSize}
 			}
 			return metaData, nil
 		}, bucket, object, multipart)
