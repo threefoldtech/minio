@@ -35,6 +35,7 @@ type Manager interface {
 	CreateBucket(string) error
 	GetBucket(name string) (*Bucket, error)
 	DeleteBucket(string) error
+	IsBucketEmpty(string) (bool, error)
 	ListBuckets() (map[string]*Bucket, error)
 	SetBucketPolicy(name string, policy *policy.Policy) error
 	LinkObject(bucket, object, blob string) error
@@ -48,14 +49,14 @@ type Manager interface {
 	CompleteMultipartUpload(bucket, object, uploadID string, parts []minio.CompletePart) (minio.ObjectInfo, error)
 	DeleteBlob(blob string) error
 	DeleteObject(bucket, object string) error
-	PutObjectPart(metaData *metatypes.Metadata, bucket, uploadID string, partID int) (minio.PartInfo, error)
+	PutObjectPart(objMeta ObjectMeta, bucket, uploadID string, partID int) (minio.PartInfo, error)
 	PutObject(metaData *metatypes.Metadata, bucket, object string) (minio.ObjectInfo, error)
 	GetObjectInfo(bucket, object string) (minio.ObjectInfo, error)
 	StreamObjectMeta(ctx context.Context, bucket, object string) <-chan Stream
 	StreamMultiPartsMeta(ctx context.Context, bucket, uploadID string) <-chan Stream
 	StreamBlobs(ctx context.Context) <-chan Stream
 	ValidUpload(bucket, uploadID string) (bool, error)
-	WriteMetaStream(ctx context.Context, c <-chan *metatypes.Metadata, bucket, object string) <-chan error
+	WriteMetaStream(cb func() (*metatypes.Metadata, error), bucket, object string, multipart bool) (ObjectMeta, error)
 }
 
 // Bucket defines a minio bucket

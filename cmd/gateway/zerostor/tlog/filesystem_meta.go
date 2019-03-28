@@ -3,6 +3,7 @@ package tlog
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"time"
 
 	minio "github.com/minio/minio/cmd"
@@ -90,16 +91,16 @@ func (t *fsTLogger) PutObject(metaData *metatypes.Metadata, bucket, object strin
 }
 
 // PutObjectPart creates metadata for an object upload part
-func (t *fsTLogger) PutObjectPart(metaData *metatypes.Metadata, bucket, uploadID string, partID int) (minio.PartInfo, error) {
+func (t *fsTLogger) PutObjectPart(objMeta meta.ObjectMeta, bucket, uploadID string, partID int) (minio.PartInfo, error) {
 	t.recorder.Begin()
 	defer t.recorder.End()
 
-	info, err := t.Manager.PutObjectPart(metaData, bucket, uploadID, partID)
+	info, err := t.Manager.PutObjectPart(objMeta, bucket, uploadID, partID)
 	if err != nil {
 		return info, err
 	}
 
-	metaBytes, err := json.Marshal(metaData)
+	metaBytes, err := json.Marshal(objMeta)
 	if err != nil {
 		return info, err
 	}
@@ -266,63 +267,65 @@ func (t *fsTLogger) CompleteMultipartUpload(bucket, object, uploadID string, par
 	return info, err
 }
 
-//WriteMetaStream writes all the incomming meta stream
-func (t *fsTLogger) WriteMetaStream(ctx context.Context, c <-chan *metatypes.Metadata, bucket, object string) <-chan error {
-	errc := make(chan error)
-	go func() {
-		var totalSize int64
-		var modTime int64
-		var previousPart meta.ObjectMeta
-		var firstPart meta.ObjectMeta
-		var objMeta meta.ObjectMeta
-		counter := 0
+// WriteMetaStream writes a stream of metadata to disk, links them, and returns the first blob
+func (t *fsTLogger) WriteMetaStream(cb func() (*metatypes.Metadata, error), bucket, object string, multipart bool) (meta.ObjectMeta, error) {
+	var totalSize int64
+	var modTime int64
+	var previousPart meta.ObjectMeta
+	var firstPart meta.ObjectMeta
+	var objMeta meta.ObjectMeta
+	counter := 0
 
-		defer close(errc)
-		for metaData := range c {
-			select {
-			case <-ctx.Done():
-				return
-			default:
+	for {
+		metaData, err := cb()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return meta.ObjectMeta{}, err
+		}
+
+		totalSize += metaData.Size
+		modTime = metaData.LastWriteEpoch
+		objMeta := meta.ObjectMeta{
+			Metadata: *metaData,
+			Filename: uuid.NewV4().String(),
+		}
+
+		if counter > 0 {
+			previousPart.NextBlob = objMeta.Filename
+			if err := t.WriteObjMeta(&previousPart); err != nil {
+				return meta.ObjectMeta{}, err
 			}
+			if counter == 1 {
+				// link the first blob
+				firstPart = previousPart
 
-			totalSize += metaData.Size
-			modTime = metaData.LastWriteEpoch
-			objMeta := meta.ObjectMeta{
-				Metadata: *metaData,
-				Filename: uuid.NewV4().String(),
-			}
-
-			if counter > 0 {
-				previousPart.NextBlob = objMeta.Filename
-				if err := t.WriteObjMeta(&previousPart); err != nil {
-					errc <- err
-				}
-				if counter == 1 {
-					// link the first blob
-					firstPart = previousPart
+				if !multipart {
 					if err := t.LinkObject(bucket, object, firstPart.Filename); err != nil {
-						errc <- err
+						return meta.ObjectMeta{}, err
 					}
 				}
 			}
-			previousPart = objMeta
-			counter++
 		}
+		previousPart = objMeta
+		counter++
+	}
 
-		// write the meta of the last received metadata
-		if err := t.WriteObjMeta(&objMeta); err != nil {
-			errc <- err
-		}
+	// write the meta of the last received metadata
+	if err := t.WriteObjMeta(&objMeta); err != nil {
+		return meta.ObjectMeta{}, err
+	}
+
+	if !multipart {
 		firstPart.ObjectSize = totalSize
 		firstPart.ObjectModTime = modTime
 		firstPart.ObjectUserMeta = firstPart.UserDefined
-
-		// update the the first meta part with the size and mod time
-		if err := t.WriteObjMeta(&firstPart); err != nil {
-			errc <- err
-		}
-	}()
-	return errc
+	}
+	// update the the first meta part with the size and mod time
+	if err := t.WriteObjMeta(&firstPart); err != nil {
+		return meta.ObjectMeta{}, err
+	}
+	return firstPart, nil
 }
 
 //Sync syncs the backend storage with the latest records from the tlog storage

@@ -99,39 +99,39 @@ func (r Record) JSON(at int, o interface{}) error {
 //Play plays the record on the given meta manager. Note that error is only
 //returned if the underlying meta manager return an error. A panic
 //is thrown if the record is corrupt
-func (r Record) Play(meta meta.Manager) error {
+func (r Record) Play(metaManager meta.Manager) error {
 	var err error
 	switch r.Action() {
 	case OperationBucketCreate:
-		err = meta.CreateBucket(r.String(1))
+		err = metaManager.CreateBucket(r.String(1))
 	case OperationBucketDelete:
-		err = meta.DeleteBucket(r.String(1))
+		err = metaManager.DeleteBucket(r.String(1))
 	case OperationBucketSetPolicy:
 		var pol policy.Policy
 		if err = r.JSON(2, &pol); err != nil {
 			return err
 		}
-		err = meta.SetBucketPolicy(r.String(1), &pol)
+		err = metaManager.SetBucketPolicy(r.String(1), &pol)
 	case OperationPartPut:
-		var metaData metatypes.Metadata
+		var metaData meta.ObjectMeta
 		if err = r.JSON(1, &metaData); err != nil {
 			return err
 		}
-		_, err = meta.PutObjectPart(&metaData, r.String(2), r.String(3), r.Int(4))
+		_, err = metaManager.PutObjectPart(metaData, r.String(2), r.String(3), r.Int(4))
 	case OperationPartLink:
-		err = meta.LinkPart(r.String(1), r.String(2), r.String(3), r.String(4))
+		err = metaManager.LinkPart(r.String(1), r.String(2), r.String(3), r.String(4))
 	case OperationBlobDelete:
-		err = meta.DeleteBlob(r.String(1))
+		err = metaManager.DeleteBlob(r.String(1))
 	case OperationObjectDelete:
-		err = meta.DeleteObject(r.String(1), r.String(2))
+		err = metaManager.DeleteObject(r.String(1), r.String(2))
 	case OperationObjectLink:
-		err = meta.LinkObject(r.String(1), r.String(2), r.String(3))
+		err = metaManager.LinkObject(r.String(1), r.String(2), r.String(3))
 	case OperationObjectPut:
 		var metaData metatypes.Metadata
 		if err = r.JSON(1, &metaData); err != nil {
 			return err
 		}
-		_, err = meta.PutObject(&metaData, r.String(2), r.String(3))
+		_, err = metaManager.PutObject(&metaData, r.String(2), r.String(3))
 	case OperationObjectWriteMeta:
 		var metaData metatypes.Metadata
 		if err = r.JSON(1, &metaData); err != nil {
@@ -142,15 +142,15 @@ func (r Record) Play(meta meta.Manager) error {
 		if err = r.JSON(3, &opts); err != nil {
 			return err
 		}
-		_, err = meta.NewMultipartUpload(r.String(1), r.String(2), opts)
+		_, err = metaManager.NewMultipartUpload(r.String(1), r.String(2), opts)
 	case OperationUploadDelete:
-		err = meta.DeleteUpload(r.String(1), r.String(2))
+		err = metaManager.DeleteUpload(r.String(1), r.String(2))
 	case OperationUploadComplete:
 		var parts []minio.CompletePart
 		if err = r.JSON(4, &parts); err != nil {
 			return err
 		}
-		_, err = meta.CompleteMultipartUpload(r.String(1), r.String(2), r.String(3), parts)
+		_, err = metaManager.CompleteMultipartUpload(r.String(1), r.String(2), r.String(3), parts)
 	case OperationTest:
 	default:
 		err = fmt.Errorf("unknown record action: %s", r.Action())

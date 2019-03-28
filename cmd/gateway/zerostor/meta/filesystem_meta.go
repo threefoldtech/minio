@@ -60,14 +60,14 @@ type filesystemMeta struct {
 
 // CreateBucket creates bucket given its name
 func (m *filesystemMeta) CreateBucket(name string) error {
-	if exists, err := utils.Exists(m.bucketFileName(name)); err != nil {
-		return err
-	} else if exists {
-		return minio.BucketAlreadyExists{}
+	b := &Bucket{
+		Name:    name,
+		Created: time.Now(),
+		Policy:  defaultPolicy,
 	}
 
 	// creates the actual bucket
-	if err := m.createBucket(name); err != nil {
+	if err := m.saveBucket(b, false); err != nil {
 		return err
 	}
 
@@ -105,6 +105,24 @@ func (m *filesystemMeta) DeleteBucket(name string) error {
 	return nil
 }
 
+func (m *filesystemMeta) IsBucketEmpty(name string) (bool, error) {
+
+	dir, err := os.Open(m.bucketObjectsDir(name))
+	if os.IsNotExist(err) {
+		return true, nil
+	} else if err != nil {
+		return false, err
+	}
+	defer dir.Close()
+
+	entries, err := dir.Readdir(1) // one entry is enough
+	if err == nil || err == io.EOF {
+		return len(entries) == 0, nil
+	}
+
+	return false, err
+}
+
 // ListBuckets lists all buckets
 func (m *filesystemMeta) ListBuckets() (map[string]*Bucket, error) {
 
@@ -139,7 +157,7 @@ func (m *filesystemMeta) SetBucketPolicy(name string, policy *policy.Policy) err
 	}
 
 	bkt.Policy = *policy
-	return m.saveBucket(bkt)
+	return m.saveBucket(bkt, true)
 }
 
 // PutObject creates metadata for an object
@@ -153,25 +171,20 @@ func (m *filesystemMeta) PutObject(metaData *metatypes.Metadata, bucket, object 
 		return minio.ObjectInfo{}, err
 	}
 
-	return createObjectInfo(bucket, object, &objMeta), nil
+	return CreateObjectInfo(bucket, object, &objMeta), nil
 }
 
 // PutObjectPart creates metadata for an object upload part
-func (m *filesystemMeta) PutObjectPart(metaData *metatypes.Metadata, bucket, uploadID string, partID int) (minio.PartInfo, error) {
-	objMeta, err := m.createBlob(metaData, true)
-	if err != nil {
-		return minio.PartInfo{}, err
-	}
-
-	if err = m.LinkPart(bucket, uploadID, strconv.Itoa(partID), objMeta.Filename); err != nil {
+func (m *filesystemMeta) PutObjectPart(objMeta ObjectMeta, bucket, uploadID string, partID int) (minio.PartInfo, error) {
+	if err := m.LinkPart(bucket, uploadID, strconv.Itoa(partID), objMeta.Filename); err != nil {
 		return minio.PartInfo{}, err
 	}
 
 	return minio.PartInfo{
 		PartNumber:   partID,
-		LastModified: time.Unix(metaData.CreationEpoch, 0),
-		ETag:         metaData.UserDefined[ETagKey],
-		Size:         metaData.Size,
+		LastModified: zstorEpochToTimestamp(objMeta.ObjectModTime),
+		ETag:         objMeta.UserDefined[ETagKey],
+		Size:         objMeta.Size,
 	}, nil
 }
 
@@ -322,6 +335,10 @@ func (m *filesystemMeta) CompleteMultipartUpload(bucket, object, uploadID string
 	for ix, part := range parts {
 		metaObj, err := m.decodeObjMeta(m.partFileName(bucket, uploadID, strconv.Itoa(part.PartNumber)))
 
+		if ix == 0 {
+			firstPart = metaObj
+		}
+
 		if err != nil {
 			if os.IsNotExist(err) {
 				return minio.ObjectInfo{}, minio.InvalidPart{}
@@ -338,12 +355,25 @@ func (m *filesystemMeta) CompleteMultipartUpload(bucket, object, uploadID string
 		}
 
 		// calculate the total size of the object
-		totalSize += metaObj.Size
+		totalSize += metaObj.ObjectSize
+		blob := metaObj
+		for {
+			if blob.NextBlob != "" {
+				blob, err = m.decodeObjMeta(m.blobFile(blob.NextBlob))
+				if err != nil {
+					return minio.ObjectInfo{}, err
+				}
+				continue
+			}
+			break
+		}
 
 		// set the NextBlob and save the file except for the first part which we save later on
 		if ix != 0 {
 			previousPart.NextBlob = string(metaObj.Filename)
-			if ix == 1 {
+
+			// compare keys to make sure it is the first part and not partitioned blob
+			if ix == 1 && string(previousPart.Key) == string(firstPart.Key) {
 				firstPart = previousPart
 			} else {
 				m.WriteObjMeta(&previousPart)
@@ -351,10 +381,9 @@ func (m *filesystemMeta) CompleteMultipartUpload(bucket, object, uploadID string
 		}
 
 		if ix == len(parts)-1 {
-			m.WriteObjMeta(&metaObj)
 			modTime = metaObj.LastWriteEpoch
 		}
-		previousPart = metaObj
+		previousPart = blob
 	}
 
 	f, err := os.Open(filepath.Join(m.uploadDirName(bucket, uploadID), uploadMetaFile))
@@ -382,7 +411,7 @@ func (m *filesystemMeta) CompleteMultipartUpload(bucket, object, uploadID string
 		return minio.ObjectInfo{}, err
 	}
 
-	return createObjectInfo(bucket, object, &firstPart), m.DeleteUpload(bucket, uploadID)
+	return CreateObjectInfo(bucket, object, &firstPart), m.DeleteUpload(bucket, uploadID)
 }
 
 // GetObjectInfo returns info about a bucket object
@@ -391,7 +420,7 @@ func (m *filesystemMeta) GetObjectInfo(bucket, object string) (minio.ObjectInfo,
 	if err != nil {
 		return minio.ObjectInfo{}, err
 	}
-	return createObjectInfo(bucket, object, &md), nil
+	return CreateObjectInfo(bucket, object, &md), nil
 }
 
 // StreamObjectMeta streams an object metadata blobs through a channel
@@ -419,62 +448,64 @@ func (m *filesystemMeta) StreamObjectMeta(ctx context.Context, bucket, object st
 	return c
 }
 
-func (m *filesystemMeta) WriteMetaStream(ctx context.Context, c <-chan *metatypes.Metadata, bucket, object string) <-chan error {
-	errc := make(chan error)
-	go func() {
-		var totalSize int64
-		var modTime int64
-		var previousPart ObjectMeta
-		var firstPart ObjectMeta
-		var objMeta ObjectMeta
-		counter := 0
+// WriteMetaStream writes a stream of metadata to disk, links them, and returns the first blob
+func (m *filesystemMeta) WriteMetaStream(cb func() (*metatypes.Metadata, error), bucket, object string, multipart bool) (ObjectMeta, error) {
+	var totalSize int64
+	var modTime int64
+	var previousPart ObjectMeta
+	var firstPart ObjectMeta
+	var objMeta ObjectMeta
+	counter := 0
 
-		defer close(errc)
-		for metaData := range c {
-			select {
-			case <-ctx.Done():
-				return
-			default:
+	for {
+		metaData, err := cb()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return ObjectMeta{}, err
+		}
+
+		totalSize += metaData.Size
+		modTime = metaData.LastWriteEpoch
+		objMeta := ObjectMeta{
+			Metadata: *metaData,
+			Filename: uuid.NewV4().String(),
+		}
+
+		if counter > 0 {
+			previousPart.NextBlob = objMeta.Filename
+			if err := m.WriteObjMeta(&previousPart); err != nil {
+				return ObjectMeta{}, err
 			}
+			if counter == 1 {
+				// link the first blob
+				firstPart = previousPart
 
-			totalSize += metaData.Size
-			modTime = metaData.LastWriteEpoch
-			objMeta := ObjectMeta{
-				Metadata: *metaData,
-				Filename: uuid.NewV4().String(),
-			}
-
-			if counter > 0 {
-				previousPart.NextBlob = objMeta.Filename
-				if err := m.WriteObjMeta(&previousPart); err != nil {
-					errc <- err
-				}
-				if counter == 1 {
-					// link the first blob
-					firstPart = previousPart
+				if !multipart {
 					if err := m.LinkObject(bucket, object, firstPart.Filename); err != nil {
-						errc <- err
+						return ObjectMeta{}, err
 					}
 				}
 			}
-			previousPart = objMeta
-			counter++
 		}
+		previousPart = objMeta
+		counter++
+	}
 
-		// write the meta of the last received metadata
-		if err := m.WriteObjMeta(&objMeta); err != nil {
-			errc <- err
-		}
-		firstPart.ObjectSize = totalSize
-		firstPart.ObjectModTime = modTime
-		firstPart.ObjectUserMeta = firstPart.UserDefined
+	// write the meta of the last received metadata
+	if err := m.WriteObjMeta(&objMeta); err != nil {
+		return ObjectMeta{}, err
+	}
 
-		// update the the first meta part with the size and mod time
-		if err := m.WriteObjMeta(&firstPart); err != nil {
-			errc <- err
-		}
-	}()
-	return errc
+	firstPart.ObjectSize = totalSize
+	firstPart.ObjectModTime = modTime
+	firstPart.ObjectUserMeta = firstPart.UserDefined
+
+	// update the the first meta part with the size and mod time
+	if err := m.WriteObjMeta(&firstPart); err != nil {
+		return ObjectMeta{}, err
+	}
+	return firstPart, nil
 }
 
 // StreamObjectMeta streams an object metadata blobs through a channel
@@ -778,7 +809,9 @@ func (m *filesystemMeta) encodeData(w io.Writer, object interface{}) error {
 		if err := gob.NewEncoder(&buffer).Encode(object); err != nil {
 			return err
 		}
-		return gob.NewEncoder(w).Encode(m.gcm.Seal(nonce, nonce, buffer.Bytes(), nil))
+		_, err := w.Write(m.gcm.Seal(nonce, nonce, buffer.Bytes(), nil))
+		return err
+
 	}
 
 	return gob.NewEncoder(w).Encode(object)
@@ -788,7 +821,7 @@ func (m *filesystemMeta) decodeData(r io.Reader, object interface{}) error {
 
 	if m.key != "" {
 		var cipheredData []byte
-		if err := gob.NewDecoder(r).Decode(&cipheredData); err != nil {
+		if _, err := r.Read(cipheredData); err != nil {
 			return err
 		}
 
@@ -809,19 +842,15 @@ func (m *filesystemMeta) decodeData(r io.Reader, object interface{}) error {
 	return gob.NewDecoder(r).Decode(object)
 }
 
-func (m *filesystemMeta) createBucket(name string) error {
-	b := &Bucket{
-		Name:    name,
-		Created: time.Now(),
-		Policy:  defaultPolicy,
+func (m *filesystemMeta) saveBucket(bkt *Bucket, exists bool) error {
+	flags := os.O_WRONLY | os.O_CREATE | os.O_TRUNC
+	if !exists {
+		flags = flags | os.O_EXCL
 	}
-	return m.saveBucket(b)
-}
 
-func (m *filesystemMeta) saveBucket(bkt *Bucket) error {
-	f, err := os.OpenFile(m.bucketFileName(bkt.Name), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filePerm)
-	if os.IsNotExist(err) {
-		return err
+	f, err := os.OpenFile(m.bucketFileName(bkt.Name), flags, filePerm)
+	if os.IsExist(err) {
+		return minio.BucketAlreadyExists{}
 	} else if err != nil {
 		log.WithError(err).WithFields(log.Fields{
 			"subsystem": "disk",
@@ -881,6 +910,7 @@ func (m *filesystemMeta) scan(ctx context.Context, bucket, prefix, after string,
 	}).Debug("scan bucket")
 
 	root := filepath.Join(m.objDir, bucket)
+	os.MkdirAll(root, 0755)
 
 	var prefixed string
 	if delimited {
@@ -893,11 +923,20 @@ func (m *filesystemMeta) scan(ctx context.Context, bucket, prefix, after string,
 
 	var last string
 
-	stat, err := os.Stat(prefixed)
-	if os.IsNotExist(err) {
-		return "", nil
-	} else if err != nil {
-		return "", err
+	var stat os.FileInfo
+	var err error
+	for {
+		stat, err = os.Stat(prefixed)
+		if os.IsNotExist(err) {
+			prefixed = path.Dir(prefixed)
+			continue
+		} else if err != nil {
+			return "", err
+		}
+		if len(prefixed) < len(root) {
+			return "", fmt.Errorf("corrupt bucket tree") // this should never happen
+		}
+		break
 	}
 
 	if !stat.IsDir() {
@@ -907,7 +946,7 @@ func (m *filesystemMeta) scan(ctx context.Context, bucket, prefix, after string,
 			return "", decodeErr
 		}
 
-		result.Objects = append(result.Objects, createObjectInfo(bucket, prefix, &md))
+		result.Objects = append(result.Objects, CreateObjectInfo(bucket, prefix, &md))
 		return "", nil
 	}
 
@@ -968,7 +1007,7 @@ func (m *filesystemMeta) scan(ctx context.Context, bucket, prefix, after string,
 			return err
 		}
 
-		result.Objects = append(result.Objects, createObjectInfo(bucket, name, &md))
+		result.Objects = append(result.Objects, CreateObjectInfo(bucket, name, &md))
 		return nil
 	})
 
@@ -1008,8 +1047,8 @@ func (m *filesystemMeta) decodeObjMeta(file string) (ObjectMeta, error) {
 
 }
 
-// createObjectInfo creates minio ObjectInfo from 0-stor metadata
-func createObjectInfo(bucket, object string, md *ObjectMeta) minio.ObjectInfo {
+// CreateObjectInfo creates minio ObjectInfo from 0-stor metadata
+func CreateObjectInfo(bucket, object string, md *ObjectMeta) minio.ObjectInfo {
 	etag := getUserMetadataValue(ETagKey, md.ObjectUserMeta)
 	if etag == "" {
 		etag = object
