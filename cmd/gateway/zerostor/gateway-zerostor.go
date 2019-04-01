@@ -38,8 +38,8 @@ const (
 	minioZstorMetaDirVar    = "MINIO_ZEROSTOR_META_DIR"
 	minioZstorMetaPrivKey   = "MINIO_ZEROSTOR_META_PRIVKEY"
 	minioZstorDebug         = "MINIO_ZEROSTOR_DEBUG"
-	defaultNamespaceMaxSize = 10e14   // default max size =  1PB
-	metaMaxSize             = 1048576 // max size allowed for meta
+	defaultNamespaceMaxSize = 10e14  // default max size =  1PB
+	metaMaxSize             = 7.34e6 // max size allowed for meta
 )
 
 var (
@@ -370,7 +370,7 @@ func (zo *zerostorObjects) DeleteObject(ctx context.Context, bucket, object stri
 		if r.Error != nil {
 			return zstorToObjectErr(errors.WithStack(r.Error), Operation("DeleteObject"), bucket, object)
 		}
-		if err := zstor.Delete(r.Obj.Metadata); err != nil {
+		if err := zstor.Delete(r.Obj.Metadata); err != nil && err.Error() != "no chunks given to delete" {
 			return zstorToObjectErr(errors.WithStack(err), Operation("DeleteObject"), bucket, object)
 		}
 		if err := meta.DeleteBlob(r.Obj.Filename); err != nil {
@@ -606,19 +606,23 @@ func (zo *zerostorObjects) putObject(ctx context.Context, bucket, object string,
 	defer meta.Close()
 
 	part := 0
-	c := make(chan *metatypes.Metadata)
-	defer close(c)
+	var readSize int64
 
 	limitedReader := &io.LimitedReader{R: data.Reader, N: zo.maxFileSize}
 
 	objMeta, err = meta.WriteMetaStream(
 		func() (*metatypes.Metadata, error) {
+			if readSize >= data.Reader.Size() {
+				return &metatypes.Metadata{}, io.EOF
+			}
+
 			metaData, err := zstor.Write(bucket, object+partID+strconv.Itoa(part), limitedReader, opts.UserDefined)
 			if err != nil {
 				err = zstorToObjectErr(errors.WithStack(err), Operation("PutObject"), bucket, object)
 				return metaData, err
 			}
 			part++
+			readSize += zo.maxFileSize - limitedReader.N
 			if limitedReader.N <= 0 {
 				limitedReader = &io.LimitedReader{R: data.Reader, N: zo.maxFileSize}
 			}

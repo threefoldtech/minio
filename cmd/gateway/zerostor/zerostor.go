@@ -46,10 +46,10 @@ type zsClient struct {
 func (zc *zsClient) healthReporter(ctx context.Context) {
 	for {
 		select {
-		case <-time.After(10 * time.Minute):
 		case <-ctx.Done():
 			//in case context was canceled when we were waiting
 			return
+		case <-time.After(10 * time.Minute):
 		}
 		log.Debug("checking cluster health")
 

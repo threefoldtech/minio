@@ -450,6 +450,7 @@ func (m *filesystemMeta) StreamObjectMeta(ctx context.Context, bucket, object st
 
 // WriteMetaStream writes a stream of metadata to disk, links them, and returns the first blob
 func (m *filesystemMeta) WriteMetaStream(cb func() (*metatypes.Metadata, error), bucket, object string, multipart bool) (ObjectMeta, error) {
+	// any changes to this function need to be mirrored in the filesystem tlogger
 	var totalSize int64
 	var modTime int64
 	var previousPart ObjectMeta
@@ -467,26 +468,24 @@ func (m *filesystemMeta) WriteMetaStream(cb func() (*metatypes.Metadata, error),
 
 		totalSize += metaData.Size
 		modTime = metaData.LastWriteEpoch
-		objMeta := ObjectMeta{
+		objMeta = ObjectMeta{
 			Metadata: *metaData,
 			Filename: uuid.NewV4().String(),
 		}
 
+		// if this is not the first iteration set the NextBlob on the previous blob and save it if it is not the first blob
 		if counter > 0 {
 			previousPart.NextBlob = objMeta.Filename
-			if err := m.WriteObjMeta(&previousPart); err != nil {
-				return ObjectMeta{}, err
-			}
 			if counter == 1 {
-				// link the first blob
+				// update the first part
 				firstPart = previousPart
-
-				if !multipart {
-					if err := m.LinkObject(bucket, object, firstPart.Filename); err != nil {
-						return ObjectMeta{}, err
-					}
+			} else {
+				if err := m.WriteObjMeta(&previousPart); err != nil {
+					return ObjectMeta{}, err
 				}
 			}
+		} else { // if this is the first iteration, mark the first blob
+			firstPart = objMeta
 		}
 		previousPart = objMeta
 		counter++
@@ -504,6 +503,13 @@ func (m *filesystemMeta) WriteMetaStream(cb func() (*metatypes.Metadata, error),
 	// update the the first meta part with the size and mod time
 	if err := m.WriteObjMeta(&firstPart); err != nil {
 		return ObjectMeta{}, err
+	}
+
+	// link the first blob to the bucket object
+	if !multipart {
+		if err := m.LinkObject(bucket, object, firstPart.Filename); err != nil {
+			return ObjectMeta{}, err
+		}
 	}
 	return firstPart, nil
 }
