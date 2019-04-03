@@ -633,7 +633,9 @@ func (m *filesystemMeta) ListMultipartUploads(bucket string) (minio.ListMultipar
 		}
 
 		f, err := os.Open(filepath.Join(m.bucketUploadsDir(bucket), file.Name(), uploadMetaFile))
-		if err != nil {
+		if os.IsNotExist(err) {
+			return *info, minio.InvalidUploadID{UploadID: file.Name()}
+		} else if err != nil {
 			return *info, err
 		}
 		defer f.Close()
@@ -643,14 +645,7 @@ func (m *filesystemMeta) ListMultipartUploads(bucket string) (minio.ListMultipar
 		if err = m.decodeData(f, &uploadInfo); err != nil {
 			return minio.ListMultipartsInfo{}, err
 		}
-
-		upload := minio.MultipartInfo{
-			UploadID:     file.Name(),
-			Object:       uploadInfo.Object,
-			StorageClass: uploadInfo.StorageClass,
-			Initiated:    uploadInfo.Initiated,
-		}
-		info.Uploads = append(info.Uploads, upload)
+		info.Uploads = append(info.Uploads, uploadInfo.MultipartInfo)
 
 	}
 	return *info, nil

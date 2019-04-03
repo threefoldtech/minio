@@ -243,6 +243,10 @@ func (zo *zerostorObjects) handleConfigReload(confFile, metaDir, metaPrivKey str
 
 // GetBucketInfo implements minio.ObjectLayer.GetBucketInfo interface
 func (zo *zerostorObjects) GetBucketInfo(ctx context.Context, bucket string) (bucketInfo minio.BucketInfo, err error) {
+	log.WithFields(log.Fields{
+		"bucket": bucket,
+	}).Debug("GetBucketInfo")
+
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
 
@@ -259,6 +263,10 @@ func (zo *zerostorObjects) GetBucketInfo(ctx context.Context, bucket string) (bu
 
 // DeleteBucket implements minio.ObjectLayer.DeleteBucket interface
 func (zo *zerostorObjects) DeleteBucket(ctx context.Context, bucket string) (err error) {
+	log.WithFields(log.Fields{
+		"bucket": bucket,
+	}).Debug("DeleteBucket")
+
 	if zo.isReadOnly() {
 		return ErrReadOnlyZeroStor
 	}
@@ -281,6 +289,8 @@ func (zo *zerostorObjects) DeleteBucket(ctx context.Context, bucket string) (err
 
 // ListBuckets implements minio.ObjectLayer.ListBuckets interface
 func (zo *zerostorObjects) ListBuckets(ctx context.Context) ([]minio.BucketInfo, error) {
+	log.Debug("DeleteBucket")
+
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
 
@@ -302,14 +312,14 @@ func (zo *zerostorObjects) ListBuckets(ctx context.Context) ([]minio.BucketInfo,
 
 // MakeBucketWithLocation implements minio.ObjectLayer.MakeBucketWithLocation interface
 func (zo *zerostorObjects) MakeBucketWithLocation(ctx context.Context, bucket string, location string) error {
-	if zo.isReadOnly() {
-		return ErrReadOnlyZeroStor
-	}
-
 	log.WithFields(log.Fields{
 		"bucket":   bucket,
 		"location": location,
 	}).Debug("MakeBucketWithLocation")
+
+	if zo.isReadOnly() {
+		return ErrReadOnlyZeroStor
+	}
 
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
@@ -320,6 +330,10 @@ func (zo *zerostorObjects) MakeBucketWithLocation(ctx context.Context, bucket st
 
 // GetBucketPolicy implements minio.ObjectLayer.GetBucketPolicy interface
 func (zo *zerostorObjects) GetBucketPolicy(ctx context.Context, bucket string) (*policy.Policy, error) {
+	log.WithFields(log.Fields{
+		"bucket": bucket,
+	}).Debug("GetBucketPolicy")
+
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
 
@@ -338,6 +352,11 @@ func (zo *zerostorObjects) GetBucketPolicy(ctx context.Context, bucket string) (
 
 // SetBucketPolicy implements minio.ObjectLayer.SetBucketPolicy
 func (zo *zerostorObjects) SetBucketPolicy(ctx context.Context, bucket string, policy *policy.Policy) error {
+	log.WithFields(log.Fields{
+		"bucket": bucket,
+		"policy": policy,
+	}).Debug("SetBucketPolicy")
+
 	if zo.isReadOnly() {
 		return ErrReadOnlyZeroStor
 	}
@@ -350,6 +369,10 @@ func (zo *zerostorObjects) SetBucketPolicy(ctx context.Context, bucket string, p
 }
 
 func (zo *zerostorObjects) DeleteBucketPolicy(ctx context.Context, bucket string) error {
+	log.WithFields(log.Fields{
+		"bucket": bucket,
+	}).Debug("DeleteBucketPolicy")
+
 	if zo.isReadOnly() {
 		return ErrReadOnlyZeroStor
 	}
@@ -361,6 +384,11 @@ func (zo *zerostorObjects) DeleteBucketPolicy(ctx context.Context, bucket string
 }
 
 func (zo *zerostorObjects) DeleteObject(ctx context.Context, bucket, object string) error {
+	log.WithFields(log.Fields{
+		"bucket": bucket,
+		"object": object,
+	}).Debug("DeleteObject")
+
 	zstor := zo.manager.GetClient()
 	defer zstor.Close()
 
@@ -391,17 +419,19 @@ func (zo *zerostorObjects) DeleteObject(ctx context.Context, bucket, object stri
 }
 
 func (zo *zerostorObjects) CopyObject(ctx context.Context, srcBucket, srcObject, destBucket, destObject string, srcInfo minio.ObjectInfo, srcOpts, dstOpts minio.ObjectOptions) (objInfo minio.ObjectInfo, err error) {
-	if zo.isReadOnly() {
-		return objInfo, ErrReadOnlyZeroStor
-	}
-
 	log.WithFields(log.Fields{
 		"src-bucket":  srcBucket,
 		"src-object":  srcObject,
 		"dest-bucket": destBucket,
 		"dest-object": destObject,
 		"src-info":    srcInfo,
+		"src-opts":    srcOpts,
+		"dst-opts":    dstOpts,
 	}).Debug("CopyObject")
+
+	if zo.isReadOnly() {
+		return objInfo, ErrReadOnlyZeroStor
+	}
 
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
@@ -449,6 +479,11 @@ func (zo *zerostorObjects) CopyObject(ctx context.Context, srcBucket, srcObject,
 }
 
 func (zo *zerostorObjects) GetObjectNInfo(ctx context.Context, bucket, object string, rs *minio.HTTPRangeSpec, h http.Header, lockType minio.LockType, opts minio.ObjectOptions) (reader *minio.GetObjectReader, err error) {
+	log.WithFields(log.Fields{
+		"bucket": bucket,
+		"object": object,
+	}).Debug("GetObjectNInfo")
+
 	var objInfo minio.ObjectInfo
 	objInfo, err = zo.GetObjectInfo(ctx, bucket, object, opts)
 	if err != nil {
@@ -475,6 +510,13 @@ func (zo *zerostorObjects) GetObjectNInfo(ctx context.Context, bucket, object st
 
 func (zo *zerostorObjects) GetObject(ctx context.Context, bucket, object string, startOffset int64, length int64,
 	writer io.Writer, etag string, opts minio.ObjectOptions) error {
+	log.WithFields(log.Fields{
+		"bucket":      bucket,
+		"object":      object,
+		"startOffset": startOffset,
+		"length":      length,
+	}).Debug("GetObject")
+
 	if length < 0 && length != -1 {
 		return minio.ErrorRespToObjectError(minio.InvalidRange{}, bucket, object)
 	}
@@ -603,6 +645,12 @@ func (zo *zerostorObjects) ListObjectsV2(ctx context.Context, bucket, prefix, co
 
 // PutObject implements ObjectLayer.PutObject
 func (zo *zerostorObjects) PutObject(ctx context.Context, bucket, object string, data *minio.PutObjReader, opts minio.ObjectOptions) (objInfo minio.ObjectInfo, err error) {
+	log.WithFields(log.Fields{
+		"bucket":   bucket,
+		"object":   object,
+		"metadata": opts.UserDefined,
+	}).Debug("PutObject")
+
 	if zo.isReadOnly() {
 		err = ErrReadOnlyZeroStor
 		return
@@ -610,12 +658,6 @@ func (zo *zerostorObjects) PutObject(ctx context.Context, bucket, object string,
 
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
-
-	log.WithFields(log.Fields{
-		"bucket":   bucket,
-		"object":   object,
-		"metadata": opts.UserDefined,
-	}).Debug("PutObject")
 
 	objMeta, err := zo.putObject(ctx, bucket, object, data, opts, "")
 	if err != nil {
@@ -673,6 +715,11 @@ func (zo *zerostorObjects) putObject(ctx context.Context, bucket, object string,
 
 // NewMultipartUpload implements minio.ObjectLayer.NewMultipartUpload
 func (zo *zerostorObjects) NewMultipartUpload(ctx context.Context, bucket, object string, opts minio.ObjectOptions) (uploadID string, err error) {
+	log.WithFields(log.Fields{
+		"bucket": bucket,
+		"object": object,
+	}).Debug("NewMultipartUpload")
+
 	if zo.isReadOnly() {
 		return uploadID, ErrReadOnlyZeroStor
 	}
@@ -695,6 +742,13 @@ func (zo *zerostorObjects) NewMultipartUpload(ctx context.Context, bucket, objec
 
 // PutObjectPart implements minio.ObjectLayer.PutObjectPart
 func (zo *zerostorObjects) PutObjectPart(ctx context.Context, bucket, object, uploadID string, partID int, data *minio.PutObjReader, opts minio.ObjectOptions) (info minio.PartInfo, err error) {
+	log.WithFields(log.Fields{
+		"bucket":   bucket,
+		"object":   object,
+		"uploadID": uploadID,
+		"partID":   partID,
+	}).Debug("PutObjectPart")
+
 	if zo.isReadOnly() {
 		return info, ErrReadOnlyZeroStor
 	}
@@ -702,13 +756,6 @@ func (zo *zerostorObjects) PutObjectPart(ctx context.Context, bucket, object, up
 	if data.Size() > zo.maxFileSize {
 		return info, fmt.Errorf("Multipart uploads with parts larger than %v are not supported", zo.maxFileSize)
 	}
-
-	log.WithFields(log.Fields{
-		"bucket":   bucket,
-		"object":   object,
-		"uploadID": uploadID,
-		"partID":   partID,
-	}).Debug("PutObjectPart")
 
 	return zo.putObjectPart(ctx, bucket, object, uploadID, partID, data, opts)
 }
@@ -738,9 +785,37 @@ func (zo *zerostorObjects) putObjectPart(ctx context.Context, bucket, object, up
 
 // CopyObjectPart implements ObjectLayer.CopyObjectPart
 func (zo *zerostorObjects) CopyObjectPart(ctx context.Context, srcBucket, srcObject, destBucket, destObject string, uploadID string, partID int, startOffset int64, length int64, srcInfo minio.ObjectInfo, srcOpts, dstOpts minio.ObjectOptions) (info minio.PartInfo, err error) {
+	log.WithFields(log.Fields{
+		"src-bucket":  srcBucket,
+		"src-object":  srcObject,
+		"dest-bucket": destBucket,
+		"dest-object": destObject,
+		"upload-id":   uploadID,
+		"src-info":    srcInfo,
+		"src-opts":    srcOpts,
+		"dst-opts":    dstOpts,
+	}).Debug("CopyObjectPart")
+
 	if zo.isReadOnly() {
 		return info, ErrReadOnlyZeroStor
 	}
+
+	metaMgr := zo.manager.GetMeta()
+	defer metaMgr.Close()
+
+	srcObjMeta, err := metaMgr.GetObjectMeta(srcBucket, srcObject)
+	newMeta := make(map[string]string)
+	for k, v := range srcObjMeta.UserDefined {
+		if strings.HasPrefix(strings.ToLower(k), "x-amz-meta-") {
+			continue
+		}
+		newMeta[k] = v
+	}
+
+	for k, v := range srcInfo.UserDefined {
+		newMeta[strings.ToLower(k)] = v
+	}
+
 	storRd, storWr := io.Pipe()
 	defer storRd.Close()
 	getCtx, cancel := context.WithCancel(context.Background())
@@ -759,25 +834,25 @@ func (zo *zerostorObjects) CopyObjectPart(ctx context.Context, srcBucket, srcObj
 		return info, err
 	}
 	reader := minio.NewPutObjReader(hashReader, nil, nil)
-	return zo.putObjectPart(ctx, destBucket, destObject, uploadID, partID, reader, dstOpts)
+	return zo.putObjectPart(ctx, destBucket, destObject, uploadID, partID, reader, minio.ObjectOptions{UserDefined: newMeta})
 }
 
 // CompleteMultipartUpload implements minio.ObjectLayer.CompleteMultipartUpload
 func (zo *zerostorObjects) CompleteMultipartUpload(ctx context.Context, bucket, object, uploadID string,
 	parts []minio.CompletePart, options minio.ObjectOptions) (info minio.ObjectInfo, err error) {
-	if zo.isReadOnly() {
-		return info, ErrReadOnlyZeroStor
-	}
-
-	metaMgr := zo.manager.GetMeta()
-	defer metaMgr.Close()
-
 	log.WithFields(log.Fields{
 		"bucket":   bucket,
 		"object":   object,
 		"uploadID": uploadID,
 		"parts":    parts,
 	}).Debug("CompleteMultipartUpload")
+
+	if zo.isReadOnly() {
+		return info, ErrReadOnlyZeroStor
+	}
+
+	metaMgr := zo.manager.GetMeta()
+	defer metaMgr.Close()
 
 	if exists, err := metaMgr.ValidUpload(bucket, uploadID); err != nil {
 		return info, err
@@ -794,6 +869,12 @@ func (zo *zerostorObjects) CompleteMultipartUpload(ctx context.Context, bucket, 
 
 // AbortMultipartUpload implements minio.ObjectLayer.AbortMultipartUpload
 func (zo *zerostorObjects) AbortMultipartUpload(ctx context.Context, bucket, object, uploadID string) (err error) {
+	log.WithFields(log.Fields{
+		"bucket":   bucket,
+		"object":   object,
+		"uploadID": uploadID,
+	}).Debug("AbortMultipartUpload")
+
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
 
@@ -836,6 +917,10 @@ func (zo *zerostorObjects) AbortMultipartUpload(ctx context.Context, bucket, obj
 // Note: because of lack of docs and example in production ready gateway,
 // we don't respect : prefix, keyMarker, uploadIDMarker, delimiter, and maxUploads
 func (zo *zerostorObjects) ListMultipartUploads(ctx context.Context, bucket, prefix, keyMarker, uploadIDMarker, delimiter string, maxUploads int) (result minio.ListMultipartsInfo, err error) {
+	log.WithFields(log.Fields{
+		"bucket": bucket,
+	}).Debug("ListMultipartUploads")
+
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
 
@@ -848,6 +933,12 @@ func (zo *zerostorObjects) ListMultipartUploads(ctx context.Context, bucket, pre
 
 // ListObjectParts implements ObjectLayer.ListObjectParts
 func (zo *zerostorObjects) ListObjectParts(ctx context.Context, bucket, object, uploadID string, partNumberMarker, maxParts int, opts minio.ObjectOptions) (result minio.ListPartsInfo, err error) {
+	log.WithFields(log.Fields{
+		"bucket":    bucket,
+		"object":    object,
+		"upload-id": uploadID,
+	}).Debug("ListObjectParts")
+
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
 
@@ -873,11 +964,14 @@ func (zo *zerostorObjects) ListObjectParts(ctx context.Context, bucket, object, 
 
 // Shutdown implements ObjectLayer.Shutdown
 func (zo *zerostorObjects) Shutdown(ctx context.Context) error {
+	log.Debug("Shutdown")
 	return zo.manager.Close()
 }
 
 // StorageInfo implements ObjectLayer.StorageInfo
 func (zo *zerostorObjects) StorageInfo(ctx context.Context) (info minio.StorageInfo) {
+	log.Debug("StorafeInfo")
+
 	var used uint64
 
 	policy := zo.cfg.DataStor.Pipeline.Distribution
