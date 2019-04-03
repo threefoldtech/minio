@@ -12,7 +12,6 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -195,10 +194,10 @@ func (m *filesystemMeta) DeleteBlob(blob string) error {
 		return err
 	}
 
-	blobDir := path.Dir(blobFile)
+	blobDir := filepath.Dir(blobFile)
 	files, err := ioutil.ReadDir(blobDir)
 	if err != nil {
-		return nil
+		return err
 	}
 	if len(files) == 0 {
 		return os.RemoveAll(blobDir)
@@ -213,7 +212,33 @@ func (m *filesystemMeta) DeleteUpload(bucket, uploadID string) error {
 
 // DeleteObject deletes an object file from a bucket
 func (m *filesystemMeta) DeleteObject(bucket, object string) error {
-	return utils.RemoveFile(m.objectFile(bucket, object))
+	objFile := m.objectFile(bucket, object)
+	if err := utils.RemoveFile(m.objectFile(bucket, object)); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	bucketDir := m.bucketObjectsDir(bucket)
+	prefix := filepath.Dir(objFile)
+
+	for prefix != bucketDir {
+		files, err := ioutil.ReadDir(prefix)
+		if os.IsNotExist(err) {
+			prefix = filepath.Dir(prefix)
+			continue
+		} else if err != nil {
+			return err
+		}
+
+		if len(files) == 0 {
+			if err := os.RemoveAll(prefix); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+			prefix = filepath.Dir(prefix)
+			continue
+		}
+		break
+	}
+	return nil
 }
 
 // LinkObject creates a symlink from the object file under /objects to the first metadata blob file
@@ -224,21 +249,30 @@ func (m *filesystemMeta) LinkObject(bucket, object, fileID string) error {
 	}
 
 	objectFile := m.objectFile(bucket, object)
+	objectDir := filepath.Dir(objectFile)
+
 	blobFile := m.blobFile(fileID)
 
-	if err := os.MkdirAll(filepath.Dir(objectFile), dirPerm); err != nil {
+	if err := os.MkdirAll(objectDir, dirPerm); err != nil {
 		return err
 	}
-	return os.Symlink(blobFile, objectFile)
+	relBlob, err := filepath.Rel(objectDir, blobFile)
+	if err != nil {
+		return err
+	}
+	return os.Symlink(relBlob, objectFile)
 }
 
 // LinkPart links a multipart upload part to a metadata blob file
 func (m *filesystemMeta) LinkPart(bucket, uploadID, partID, fileID string) error {
-
 	partFile := m.partFileName(bucket, uploadID, partID)
+	partDir := filepath.Dir(partFile)
 	blobFile := m.blobFile(fileID)
-
-	return os.Symlink(blobFile, partFile)
+	relBlob, err := filepath.Rel(partDir, blobFile)
+	if err != nil {
+		return err
+	}
+	return os.Symlink(relBlob, partFile)
 }
 
 // ListObjects lists objects in a bucket
@@ -423,6 +457,11 @@ func (m *filesystemMeta) GetObjectInfo(bucket, object string) (minio.ObjectInfo,
 	return CreateObjectInfo(bucket, object, &md), nil
 }
 
+// GetObjectInfo returns info about a bucket object
+func (m *filesystemMeta) GetObjectMeta(bucket, object string) (ObjectMeta, error) {
+	return m.decodeObjMeta(m.objectFile(bucket, object))
+}
+
 // StreamObjectMeta streams an object metadata blobs through a channel
 func (m *filesystemMeta) StreamObjectMeta(ctx context.Context, bucket, object string) <-chan Stream {
 	c := make(chan Stream)
@@ -449,7 +488,7 @@ func (m *filesystemMeta) StreamObjectMeta(ctx context.Context, bucket, object st
 }
 
 // WriteMetaStream writes a stream of metadata to disk, links them, and returns the first blob
-func (m *filesystemMeta) WriteMetaStream(cb func() (*metatypes.Metadata, error), bucket, object string, multipart bool) (ObjectMeta, error) {
+func (m *filesystemMeta) WriteMetaStream(cb func() (*metatypes.Metadata, error), bucket, object string) (ObjectMeta, error) {
 	// any changes to this function need to be mirrored in the filesystem tlogger
 	var totalSize int64
 	var modTime int64
@@ -505,12 +544,6 @@ func (m *filesystemMeta) WriteMetaStream(cb func() (*metatypes.Metadata, error),
 		return ObjectMeta{}, err
 	}
 
-	// link the first blob to the bucket object
-	if !multipart {
-		if err := m.LinkObject(bucket, object, firstPart.Filename); err != nil {
-			return ObjectMeta{}, err
-		}
-	}
 	return firstPart, nil
 }
 
@@ -537,7 +570,7 @@ func (m *filesystemMeta) StreamBlobs(ctx context.Context) <-chan Stream {
 			if !dir.IsDir() {
 				continue
 			}
-			blobDir, err := os.Open(path.Join(m.blobDir, dir.Name()))
+			blobDir, err := os.Open(filepath.Join(m.blobDir, dir.Name()))
 			if err != nil {
 				log.Fatal(err)
 				return
@@ -586,6 +619,9 @@ func (m *filesystemMeta) ValidUpload(bucket, uploadID string) (bool, error) {
 func (m *filesystemMeta) ListMultipartUploads(bucket string) (minio.ListMultipartsInfo, error) {
 	files, err := ioutil.ReadDir(m.bucketUploadsDir(bucket))
 	if err != nil {
+		if os.IsNotExist(err) {
+			return minio.ListMultipartsInfo{}, nil
+		}
 		return minio.ListMultipartsInfo{}, err
 	}
 
@@ -857,6 +893,11 @@ func (m *filesystemMeta) saveBucket(bkt *Bucket, exists bool) error {
 	f, err := os.OpenFile(m.bucketFileName(bkt.Name), flags, filePerm)
 	if os.IsExist(err) {
 		return minio.BucketAlreadyExists{}
+	} else if os.IsNotExist(err) {
+		if err := os.MkdirAll(m.bucketDir, dirPerm); err != nil {
+			return err
+		}
+		return m.saveBucket(bkt, exists)
 	} else if err != nil {
 		log.WithError(err).WithFields(log.Fields{
 			"subsystem": "disk",
@@ -934,7 +975,7 @@ func (m *filesystemMeta) scan(ctx context.Context, bucket, prefix, after string,
 	for {
 		stat, err = os.Stat(prefixed)
 		if os.IsNotExist(err) {
-			prefixed = path.Dir(prefixed)
+			prefixed = filepath.Dir(prefixed)
 			continue
 		} else if err != nil {
 			return "", err

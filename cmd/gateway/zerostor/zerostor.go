@@ -118,15 +118,22 @@ func (c *configManager) GetMeta() metaManager {
 func (c *configManager) Reload(cfg config.Config, metaDir, metaPrivKey string) error {
 	c.mux.Lock()
 	defer c.mux.Unlock()
-	c.zstorClient.Client.Close()
-	c.cancel()
+
+	if c.cancel != nil {
+		c.zstorClient.Client.Close()
+		c.cancel()
+	}
 
 	client, cluster, err := createClient(cfg)
 	if err != nil {
 		return nil
 	}
-	c.zstorClient.Client = client
-	c.zstorClient.cluster = cluster
+	zsClient := zsClient{
+		client,
+		&c.mux,
+		cluster,
+	}
+	c.zstorClient = &zsClient
 	ctx, cancel := context.WithCancel(context.Background())
 	c.cancel = cancel
 
@@ -135,7 +142,7 @@ func (c *configManager) Reload(cfg config.Config, metaDir, metaPrivKey string) e
 		log.Println("failed to create meta manager: ", err.Error())
 		return err
 	}
-	c.metaManager.Manager = meta
+	c.metaManager = metaManager{meta, &c.mux}
 	go c.zstorClient.healthReporter(ctx)
 
 	return nil
@@ -166,32 +173,9 @@ type Client interface {
 }
 
 func newConfigManager(cfg config.Config, metaDir, metaPrivKey string) (ConfigManager, error) {
-	ctx, cancel := context.WithCancel(context.Background())
+	zsManager := configManager{}
+	zsManager.Reload(cfg, metaDir, metaPrivKey)
 
-	zsManager := configManager{cancel: cancel}
-
-	zstor, cluster, err := createClient(cfg)
-	if err != nil {
-		log.Println("failed to create zstor client: ", err.Error())
-		return nil, err
-	}
-
-	zsClient := zsClient{
-		zstor,
-		&zsManager.mux,
-		cluster,
-	}
-	zsManager.zstorClient = &zsClient
-
-	meta, err := createMetaManager(ctx, cfg, metaDir, metaPrivKey)
-	if err != nil {
-		log.Println("failed to create meta manager: ", err.Error())
-		return nil, err
-	}
-	metaManager := metaManager{meta, &zsManager.mux}
-	zsManager.metaManager = metaManager
-
-	go zsManager.zstorClient.healthReporter(ctx)
 	return &zsManager, nil
 }
 

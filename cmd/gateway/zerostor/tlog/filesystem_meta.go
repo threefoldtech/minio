@@ -268,7 +268,7 @@ func (t *fsTLogger) CompleteMultipartUpload(bucket, object, uploadID string, par
 }
 
 // WriteMetaStream writes a stream of metadata to disk, links them, and returns the first blob
-func (t *fsTLogger) WriteMetaStream(cb func() (*metatypes.Metadata, error), bucket, object string, multipart bool) (meta.ObjectMeta, error) {
+func (t *fsTLogger) WriteMetaStream(cb func() (*metatypes.Metadata, error), bucket, object string) (meta.ObjectMeta, error) {
 	var totalSize int64
 	var modTime int64
 	var previousPart meta.ObjectMeta
@@ -323,12 +323,6 @@ func (t *fsTLogger) WriteMetaStream(cb func() (*metatypes.Metadata, error), buck
 		return meta.ObjectMeta{}, err
 	}
 
-	// link the first blob to the bucket object
-	if !multipart {
-		if err := t.LinkObject(bucket, object, firstPart.Filename); err != nil {
-			return meta.ObjectMeta{}, err
-		}
-	}
 	return firstPart, nil
 }
 

@@ -52,11 +52,12 @@ type Manager interface {
 	PutObjectPart(objMeta ObjectMeta, bucket, uploadID string, partID int) (minio.PartInfo, error)
 	PutObject(metaData *metatypes.Metadata, bucket, object string) (minio.ObjectInfo, error)
 	GetObjectInfo(bucket, object string) (minio.ObjectInfo, error)
+	GetObjectMeta(bucket, object string) (ObjectMeta, error)
 	StreamObjectMeta(ctx context.Context, bucket, object string) <-chan Stream
 	StreamMultiPartsMeta(ctx context.Context, bucket, uploadID string) <-chan Stream
 	StreamBlobs(ctx context.Context) <-chan Stream
 	ValidUpload(bucket, uploadID string) (bool, error)
-	WriteMetaStream(cb func() (*metatypes.Metadata, error), bucket, object string, multipart bool) (ObjectMeta, error)
+	WriteMetaStream(cb func() (*metatypes.Metadata, error), bucket, object string) (ObjectMeta, error)
 }
 
 // Bucket defines a minio bucket
