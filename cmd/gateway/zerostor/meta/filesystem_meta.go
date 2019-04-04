@@ -470,6 +470,12 @@ func (m *filesystemMeta) StreamObjectMeta(ctx context.Context, bucket, object st
 		metaFile := m.objectFile(bucket, object)
 		for {
 			objMeta, err := m.decodeObjMeta(metaFile)
+			if err != nil {
+				switch err.(type) {
+				case minio.ObjectNotFound:
+					return
+				}
+			}
 
 			select {
 			case <-ctx.Done():

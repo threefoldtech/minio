@@ -170,6 +170,7 @@ type Client interface {
 	Write(bucket, object string, rd io.Reader, userDefMeta map[string]string) (*metatypes.Metadata, error)
 	Read(metadata *metatypes.Metadata, writer io.Writer, offset, length int64) error
 	Delete(meta metatypes.Metadata) error
+	getKey(bucket, object string) []byte
 }
 
 func newConfigManager(cfg config.Config, metaDir, metaPrivKey string) (ConfigManager, error) {
