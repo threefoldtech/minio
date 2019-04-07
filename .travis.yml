@@ -17,7 +17,16 @@ matrix:
       env:
         - ARCH=x86_64
         - CGO_ENABLED=0
-      go: 1.11.4
+        - GO111MODULE=on
+      # Enable build cache
+      # https://restic.net/blog/2018-09-02/travis-build-cache
+      cache:
+       directories:
+         - $HOME/.cache/go-build
+         - $HOME/gopath/pkg/mod
+         - $HOME/go/pkg/mod
+
+      go: 1.12.1
       script:
         - make
         - diff -au <(gofmt -s -d cmd) <(printf "")
@@ -32,10 +41,10 @@ matrix:
       env:
         - ARCH=x86_64
         - CGO_ENABLED=0
-      go: 1.11.4
+        - GO111MODULE=on
+      go: 1.12.1
       script:
         - go build --ldflags="$(go run buildscripts/gen-ldflags.go)" -o %GOPATH%\bin\minio.exe
-        - for d in $(go list ./... | grep -v browser); do CGO_ENABLED=1 go test -v -race --timeout 20m "$d"; done
         - bash buildscripts/go-coverage.sh
 
 before_script:
@@ -44,7 +53,7 @@ before_script:
   - if [[ "${TRAVIS_OS_NAME}" == "linux" ]]; then sudo sh -c 'echo 0 > /proc/sys/net/ipv6/conf/all/disable_ipv6'; fi
 
 before_install:
- - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then nvm install stable ; fi
+ - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then nvm install 11.10.1 ; fi
 
 after_success:
 - bash <(curl -s https://codecov.io/bash)

@@ -41,6 +41,10 @@ const (
 type StorageInfo struct {
 	Used uint64 // Used total used per tenant.
 
+	Total uint64 // Total disk space.
+
+	Available uint64 // Total disk space available.
+
 	// Backend type.
 	Backend struct {
 		// Represents various backend types, currently on FS and Erasure.
@@ -95,6 +99,9 @@ type ObjectInfo struct {
 	// what decoding mechanisms must be applied to obtain the object referenced
 	// by the Content-Type header field.
 	ContentEncoding string
+
+	// Date and time at which the object is no longer able to be cached
+	Expires time.Time
 
 	// Specify object storage class
 	StorageClass string

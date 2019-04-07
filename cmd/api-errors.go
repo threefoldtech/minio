@@ -21,6 +21,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/storage"
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
@@ -114,7 +115,6 @@ const (
 	ErrInvalidRequestVersion
 	ErrMissingSignTag
 	ErrMissingSignHeadersTag
-	ErrPolicyAlreadyExpired
 	ErrMalformedDate
 	ErrMalformedPresignedDate
 	ErrMalformedCredentialDate
@@ -180,10 +180,10 @@ const (
 	// Minio extended errors.
 	ErrReadQuorum
 	ErrWriteQuorum
+	ErrParentIsObject
 	ErrStorageFull
 	ErrRequestBodyParse
 	ErrObjectExistsAsDirectory
-	ErrPolicyNesting
 	ErrInvalidObjectName
 	ErrInvalidResourceName
 	ErrServerNotInitialized
@@ -625,11 +625,6 @@ var errorCodes = errorCodeMap{
 		Description:    "Signature header missing SignedHeaders field.",
 		HTTPStatusCode: http.StatusBadRequest,
 	},
-	ErrPolicyAlreadyExpired: {
-		Code:           "AccessDenied",
-		Description:    "Invalid according to Policy: Policy expired.",
-		HTTPStatusCode: http.StatusBadRequest,
-	},
 	ErrMalformedExpires: {
 		Code:           "AuthorizationQueryParametersError",
 		Description:    "X-Amz-Expires should be a number",
@@ -863,6 +858,11 @@ var errorCodes = errorCodeMap{
 		Description:    "Storage backend has reached its minimum free disk threshold. Please delete a few objects to proceed.",
 		HTTPStatusCode: http.StatusInsufficientStorage,
 	},
+	ErrParentIsObject: {
+		Code:           "XMinioParentIsObject",
+		Description:    "Object-prefix is already an object, please choose a different object-prefix name.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
 	ErrRequestBodyParse: {
 		Code:           "XMinioRequestBodyParse",
 		Description:    "The request body failed to parse.",
@@ -882,11 +882,6 @@ var errorCodes = errorCodeMap{
 		Code:           "XMinioWriteQuorum",
 		Description:    "Multiple disks failures, unable to write data.",
 		HTTPStatusCode: http.StatusServiceUnavailable,
-	},
-	ErrPolicyNesting: {
-		Code:           "XMinioPolicyNesting",
-		Description:    "New bucket policy conflicts with an existing policy. Please try again with new prefix.",
-		HTTPStatusCode: http.StatusConflict,
 	},
 	ErrInvalidObjectName: {
 		Code:           "XMinioInvalidObjectName",
@@ -1512,8 +1507,6 @@ func toAPIErrorCode(ctx context.Context, err error) (apiErr APIErrorCode) {
 		apiErr = ErrInvalidEncryptionMethod
 	case crypto.ErrInvalidCustomerAlgorithm:
 		apiErr = ErrInvalidSSECustomerAlgorithm
-	case crypto.ErrInvalidCustomerKey:
-		apiErr = ErrInvalidSSECustomerKey
 	case crypto.ErrMissingCustomerKey:
 		apiErr = ErrMissingSSECustomerKey
 	case crypto.ErrMissingCustomerKeyMD5:
@@ -1568,6 +1561,8 @@ func toAPIErrorCode(ctx context.Context, err error) (apiErr APIErrorCode) {
 		apiErr = ErrObjectExistsAsDirectory
 	case PrefixAccessDenied:
 		apiErr = ErrAccessDenied
+	case ParentIsObject:
+		apiErr = ErrParentIsObject
 	case BucketNameInvalid:
 		apiErr = ErrInvalidBucketName
 	case BucketNotFound:
@@ -1647,11 +1642,25 @@ func toAPIErrorCode(ctx context.Context, err error) (apiErr APIErrorCode) {
 	case crypto.Error:
 		apiErr = ErrObjectTampered
 	default:
-		apiErr = ErrInternalError
-		// Make sure to log the errors which we cannot translate
-		// to a meaningful S3 API errors. This is added to aid in
-		// debugging unexpected/unhandled errors.
-		logger.LogIf(ctx, err)
+		var ie, iw int
+		// This work-around is to handle the issue golang/go#30648
+		if _, ferr := fmt.Fscanf(strings.NewReader(err.Error()),
+			"request declared a Content-Length of %d but only wrote %d bytes",
+			&ie, &iw); ferr != nil {
+			apiErr = ErrInternalError
+			// Make sure to log the errors which we cannot translate
+			// to a meaningful S3 API errors. This is added to aid in
+			// debugging unexpected/unhandled errors.
+			logger.LogIf(ctx, err)
+		} else if ie > iw {
+			apiErr = ErrIncompleteBody
+		} else {
+			apiErr = ErrInternalError
+			// Make sure to log the errors which we cannot translate
+			// to a meaningful S3 API errors. This is added to aid in
+			// debugging unexpected/unhandled errors.
+			logger.LogIf(ctx, err)
+		}
 	}
 
 	return apiErr
