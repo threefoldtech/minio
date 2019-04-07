@@ -31,7 +31,7 @@ func TestZerostorRoundTrip(t *testing.T) {
 
 	// make sure the object does not exist yet
 	buf := bytes.NewBuffer(nil)
-	err := cli.Read(&metatypes.Metadata{Namespace: []byte(namespace), Key: cli.getKey(bkt, object), Chunks: []metatypes.Chunk{metatypes.Chunk{Objects: []metatypes.Object{metatypes.Object{ShardID: cfg.DataStor.Shards[0]}}}}}, buf, 0, dataLen)
+	err := cli.Read(&metatypes.Metadata{Namespace: []byte(namespace), Key: cli.getKey(bkt, object), Chunks: []metatypes.Chunk{{Objects: []metatypes.Object{{ShardID: cfg.DataStor.Shards[0]}}}}}, buf, 0, dataLen)
 	if err != datastor.ErrKeyNotFound {
 		t.Fatalf("expect error: %v, got: %v", db.ErrNotFound, err)
 	}

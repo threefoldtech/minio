@@ -539,6 +539,12 @@
 			"revisionTime": "2016-01-12T19:33:35Z"
 		},
 		{
+			"checksumSHA1": "P3DcGhibDWhw73e9jXwWV31/W6U=",
+			"path": "github.com/iwanbk/redcon",
+			"revision": "1f58e65a7e1c8df6a7ec5c833c1584e7d51d4957",
+			"revisionTime": "2018-03-01T10:06:35Z"
+		},
+		{
 			"checksumSHA1": "mA7isU/nIAT5ytwIzK65H0vlVqI=",
 			"path": "github.com/klauspost/compress/flate",
 			"revision": "5fb1f31b0a61e9858f12f39266e059848a5f1cea",
