@@ -212,7 +212,7 @@ func (z *Zerostor) NewGatewayLayer(creds auth.Credentials) (minio.ObjectLayer, e
 }
 
 type zerostorObjects struct {
-	//minio.GatewayUnsupported
+	minio.GatewayUnsupported
 	manager     ConfigManager
 	cfg         config.Config
 	maxFileSize int64
@@ -505,7 +505,7 @@ func (zo *zerostorObjects) GetObjectNInfo(ctx context.Context, bucket, object st
 	// Setup cleanup function to cause the above go-routine to
 	// exit in case of partial read
 	pipeCloser := func() { pr.Close() }
-	return minio.NewGetObjectReaderFromReader(pr, objInfo, pipeCloser), nil
+	return minio.NewGetObjectReaderFromReader(pr, objInfo, nil, pipeCloser)
 }
 
 func (zo *zerostorObjects) GetObject(ctx context.Context, bucket, object string, startOffset int64, length int64,

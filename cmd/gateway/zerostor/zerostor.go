@@ -53,7 +53,7 @@ func (zc *zsClient) healthReporter(ctx context.Context) {
 		}
 		log.Debug("checking cluster health")
 
-		for iter := zc.cluster.GetRandomShardIterator(nil); iter.Next(); {
+		for iter := zc.cluster.GetShardIterator(nil); iter.Next(); {
 			shard := iter.Shard()
 			err := shardHealth(shard)
 			if err != nil {
@@ -186,7 +186,7 @@ func createClient(cfg config.Config) (*client.Client, datastor.Cluster, error) {
 		return nil, nil, fmt.Errorf("empty namespace")
 	}
 
-	cluster, err := zerodb.NewCluster(cfg.DataStor.Shards, cfg.Password, cfg.Namespace, nil)
+	cluster, err := zerodb.NewCluster(cfg.DataStor.Shards, cfg.Password, cfg.Namespace, nil, datastor.DefaultSpreadingType)
 	if err != nil {
 		return nil, nil, err
 	}
