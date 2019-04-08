@@ -48,7 +48,7 @@ require (
 	github.com/hashicorp/vault v1.1.0
 	github.com/howeyc/gopass v0.0.0-20170109162249-bf9dde6d0d2c // indirect
 	github.com/inconshreveable/go-update v0.0.0-20160112193335-8152e7eb6ccf
-	github.com/iwanbk/redcon v0.0.0-20171109125032-b6e65d498dd6 // indirect
+	github.com/iwanbk/redcon v0.0.0-20180301100635-1f58e65a7e1c // indirect
 	github.com/jonboulle/clockwork v0.1.0 // indirect
 	github.com/klauspost/compress v1.4.1 // indirect
 	github.com/klauspost/cpuid v1.2.0 // indirect

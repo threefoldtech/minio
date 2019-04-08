@@ -54,7 +54,7 @@ func testZdbServer(t *testing.T, n int) (shards []string, cleanups func()) {
 	)
 
 	for i := 0; i < n; i++ {
-		addr, cleanup, err := zdbtest.NewInMem0DBServer(namespace)
+		_, addr, cleanup, err := zdbtest.NewInMem0DBServer(namespace)
 		if err != nil {
 			t.Fatalf("failed to create zdb server:%v", err)
 		}

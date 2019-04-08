@@ -301,6 +301,8 @@ github.com/inconshreveable/go-update v0.0.0-20160112193335-8152e7eb6ccf h1:WfD7V
 github.com/inconshreveable/go-update v0.0.0-20160112193335-8152e7eb6ccf/go.mod h1:hyb9oH7vZsitZCiBt0ZvifOrB+qc8PS5IiilCIb87rg=
 github.com/iwanbk/redcon v0.0.0-20171109125032-b6e65d498dd6 h1:474xiRRCahMNT5NkdZFebh7JS/h1iVuOMTup6DIhJ2M=
 github.com/iwanbk/redcon v0.0.0-20171109125032-b6e65d498dd6/go.mod h1:ljoiTTR6r5h2LvpAVO14EmvhFPv690Ac0fERsCHgk98=
+github.com/iwanbk/redcon v0.0.0-20180301100635-1f58e65a7e1c h1:XRvBe4jYz6S13MipE9zftHPm9EmXu1tkuBHRsKDLjag=
+github.com/iwanbk/redcon v0.0.0-20180301100635-1f58e65a7e1c/go.mod h1:ljoiTTR6r5h2LvpAVO14EmvhFPv690Ac0fERsCHgk98=
 github.com/jeffchao/backoff v0.0.0-20140404060208-9d7fd7aa17f2/go.mod h1:xkfESuHriIekR+4RoV+fu91j/CfnYM29Zi2tMFw5iD4=
 github.com/jefferai/jsonx v1.0.0/go.mod h1:OGmqmi2tTeI/PS+qQfBDToLHHJIy/RMp24fPo8vFvoQ=
 github.com/jellevandenhooff/dkim v0.0.0-20150330215556-f50fe3d243e1/go.mod h1:E0B/fFc00Y+Rasa88328GlI/XbtyysCtTHZS8h7IrBU=
