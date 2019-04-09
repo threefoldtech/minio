@@ -821,13 +821,13 @@ func (zo *zerostorObjects) CopyObjectPart(ctx context.Context, srcBucket, srcObj
 	getCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go func() {
-		storWr.CloseWithError(zo.GetObject(getCtx, srcBucket, srcObject, startOffset, length, storWr, "", srcOpts))
-	}()
-
 	if length <= 0 {
 		length = srcInfo.Size
 	}
+
+	go func() {
+		storWr.CloseWithError(zo.GetObject(getCtx, srcBucket, srcObject, startOffset, length, storWr, "", srcOpts))
+	}()
 
 	hashReader, err := hash.NewReader(storRd, length-startOffset, "", "", length-startOffset)
 	if err != nil {
