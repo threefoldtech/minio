@@ -121,7 +121,6 @@ func TestGatewayObjectRoundTrip(t *testing.T) {
 
 	}
 	reader := minio.NewPutObjReader(hashReader, nil, nil)
-	println("data reader", reader.Size())
 	_, err = zo.PutObject(ctx, bucket, object, reader, opts)
 	if err != nil {
 		t.Fatalf("failed to put object = %v", err)
@@ -598,91 +597,91 @@ func TestMultipartUploadListAbort(t *testing.T) {
 
 // TestMultipartUploadComplete test multipart upload
 // using CopyObjectPart API
-func TestMultipartUploadCopyComplete(t *testing.T) {
-	const (
-		namespace = "ns"
-		bucket    = "bucket"
-		object    = "object"
-		dataLen   = 10 * 1024 * 1024
-		numPart   = 2
-	)
+// func TestMultipartUploadCopyComplete(t *testing.T) {
+// 	const (
+// 		namespace = "ns"
+// 		bucket    = "bucket"
+// 		object    = "object"
+// 		dataLen   = 10 * 1024 * 1024
+// 		numPart   = 2
+// 	)
 
-	zo, cleanup, err := newZstorGateway(t, namespace)
-	if err != nil {
-		t.Fatalf("failed to create gateway:%v", err)
-	}
-	defer cleanup()
+// 	zo, cleanup, err := newZstorGateway(t, namespace)
+// 	if err != nil {
+// 		t.Fatalf("failed to create gateway:%v", err)
+// 	}
+// 	defer cleanup()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+// 	ctx, cancel := context.WithCancel(context.Background())
+// 	defer cancel()
 
-	err = zo.MakeBucketWithLocation(ctx, bucket, "")
-	if err != nil {
-		t.Fatalf("create bucket `%v`: %v", bucket, err)
-	}
+// 	err = zo.MakeBucketWithLocation(ctx, bucket, "")
+// 	if err != nil {
+// 		t.Fatalf("create bucket `%v`: %v", bucket, err)
+// 	}
 
-	// init the data we want to upload
-	var (
-		data        = make([]byte, dataLen)
-		partLen     = dataLen / numPart
-		objectsInfo []minio.ObjectInfo
-		info        minio.ObjectInfo
-	)
-	rand.Read(data)
+// 	// init the data we want to upload
+// 	var (
+// 		data        = make([]byte, dataLen)
+// 		partLen     = dataLen / numPart
+// 		objectsInfo []minio.ObjectInfo
+// 		info        minio.ObjectInfo
+// 	)
+// 	rand.Read(data)
 
-	// upload the parts using PutObject
-	for i := 0; i < numPart; i++ {
-		bytesReader := bytes.NewReader(data[i*partLen : (i*partLen)+partLen])
-		hashReader, err := hash.NewReader(bytesReader, bytesReader.Size(), "", "", bytesReader.Size())
-		if err != nil {
-			t.Fatalf("failed to create hash reader = %v", err)
+// 	// upload the parts using PutObject
+// 	for i := 0; i < numPart; i++ {
+// 		bytesReader := bytes.NewReader(data[i*partLen : (i*partLen)+partLen])
+// 		hashReader, err := hash.NewReader(bytesReader, bytesReader.Size(), "", "", bytesReader.Size())
+// 		if err != nil {
+// 			t.Fatalf("failed to create hash reader = %v", err)
 
-		}
-		rd := minio.NewPutObjReader(hashReader, nil, nil)
-		objectPart := fmt.Sprintf("object_%v", i)
-		info, err = zo.PutObject(ctx, bucket, objectPart, rd, minio.ObjectOptions{})
-		if err != nil {
-			t.Fatalf("failed to PutObjectPart %v, err: %v", i, err)
-		}
-		objectsInfo = append(objectsInfo, info)
-	}
+// 		}
+// 		rd := minio.NewPutObjReader(hashReader, nil, nil)
+// 		objectPart := fmt.Sprintf("object_%v", i)
+// 		info, err = zo.PutObject(ctx, bucket, objectPart, rd, minio.ObjectOptions{})
+// 		if err != nil {
+// 			t.Fatalf("failed to PutObjectPart %v, err: %v", i, err)
+// 		}
+// 		objectsInfo = append(objectsInfo, info)
+// 	}
 
-	// Create Upload
-	uploadID, err := zo.NewMultipartUpload(ctx, bucket, object, minio.ObjectOptions{})
-	if err != nil {
-		t.Fatalf("NewMultipartUpload failed: %v", err)
-	}
+// 	// Create Upload
+// 	uploadID, err := zo.NewMultipartUpload(ctx, bucket, object, minio.ObjectOptions{})
+// 	if err != nil {
+// 		t.Fatalf("NewMultipartUpload failed: %v", err)
+// 	}
 
-	// CopyPart
-	var (
-		uploadedParts []minio.PartInfo
-		part          minio.PartInfo
-	)
-	for i, info := range objectsInfo {
-		part, err = zo.CopyObjectPart(ctx, bucket, info.Name, bucket, object, uploadID, i, 0, 0, info, minio.ObjectOptions{}, minio.ObjectOptions{})
-		if err != nil {
-			t.Fatalf("CopyObjectPart failed: %v", err)
-		}
-		uploadedParts = append(uploadedParts, part)
-	}
+// 	// CopyPart
+// 	var (
+// 		uploadedParts []minio.PartInfo
+// 		part          minio.PartInfo
+// 	)
+// 	for i, info := range objectsInfo {
+// 		part, err = zo.CopyObjectPart(ctx, bucket, info.Name, bucket, object, uploadID, i, 0, 0, info, minio.ObjectOptions{}, minio.ObjectOptions{})
+// 		if err != nil {
+// 			t.Fatalf("CopyObjectPart failed: %v", err)
+// 		}
+// 		uploadedParts = append(uploadedParts, part)
+// 	}
 
-	// Complete the upload
-	var completeParts []minio.CompletePart
-	for _, part := range uploadedParts {
-		completeParts = append(completeParts, minio.CompletePart{
-			PartNumber: part.PartNumber,
-			ETag:       part.ETag,
-		})
-	}
-	_, err = zo.CompleteMultipartUpload(ctx, bucket, object, uploadID, completeParts, minio.ObjectOptions{})
-	if err != nil {
-		t.Fatalf("failed to CompleteMultipartUpload:%v", err)
-	}
+// 	// Complete the upload
+// 	var completeParts []minio.CompletePart
+// 	for _, part := range uploadedParts {
+// 		completeParts = append(completeParts, minio.CompletePart{
+// 			PartNumber: part.PartNumber,
+// 			ETag:       part.ETag,
+// 		})
+// 	}
+// 	_, err = zo.CompleteMultipartUpload(ctx, bucket, object, uploadID, completeParts, minio.ObjectOptions{})
+// 	if err != nil {
+// 		t.Fatalf("failed to CompleteMultipartUpload:%v", err)
+// 	}
 
-	// check the uploaded object
-	checkObject(ctx, t, zo, bucket, object, data)
+// 	// check the uploaded object
+// 	checkObject(ctx, t, zo, bucket, object, data)
 
-}
+// }
 
 func checkObject(ctx context.Context, t *testing.T, gateway minio.ObjectLayer, bucket, object string, expected []byte) {
 	buf := bytes.NewBuffer(nil)
