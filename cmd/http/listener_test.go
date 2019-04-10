@@ -95,7 +95,20 @@ rr3DRiUP6V/10CZ/ImeSJ72k69VuTw9vq2HzB4x6pqxF2X7JQSLUCS2wfNN13N0d
 }
 
 func getNextPort() string {
-	return strconv.Itoa(int(atomic.AddUint32(&serverPort, 1)))
+	for {
+		port := strconv.Itoa(int(atomic.AddUint32(&serverPort, 1)))
+		l, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
+		if err == nil {
+			l.Close()
+			return port
+		}
+
+		if !strings.Contains(err.Error(), "address already in use") {
+			//we got another error than address already in use, time to panic!
+			panic(err)
+		}
+		//otherwise, we try again
+	}
 }
 
 func getNonLoopBackIP(t *testing.T) string {
