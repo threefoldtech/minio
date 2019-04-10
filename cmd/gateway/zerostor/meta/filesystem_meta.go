@@ -445,6 +445,7 @@ func (m *filesystemMeta) CompleteMultipartUpload(bucket, object, uploadID string
 		return minio.ObjectInfo{}, err
 	}
 
+	f.Close()
 	return CreateObjectInfo(bucket, object, &firstPart), m.DeleteUpload(bucket, uploadID)
 }
 
