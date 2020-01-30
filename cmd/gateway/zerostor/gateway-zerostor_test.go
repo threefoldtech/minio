@@ -115,7 +115,7 @@ func TestGatewayObjectRoundTrip(t *testing.T) {
 	// upload object
 
 	bytesReader := bytes.NewReader(data)
-	hashReader, err := hash.NewReader(bytesReader, bytesReader.Size(), "", "", bytesReader.Size())
+	hashReader, err := hash.NewReader(bytesReader, bytesReader.Size(), "", "", bytesReader.Size(), true)
 	if err != nil {
 		t.Fatalf("failed to create hash reader = %v", err)
 
@@ -221,7 +221,7 @@ func TestGatewayListObject(t *testing.T) {
 		object := fmt.Sprintf("object_%v", i)
 
 		bytesReader := bytes.NewReader(data)
-		hashReader, err := hash.NewReader(bytesReader, bytesReader.Size(), "", "", bytesReader.Size())
+		hashReader, err := hash.NewReader(bytesReader, bytesReader.Size(), "", "", bytesReader.Size(), true)
 		if err != nil {
 			t.Fatalf("failed to create hash reader = %v", err)
 
@@ -421,7 +421,7 @@ func TestMultipartUploadComplete(t *testing.T) {
 	for i := 0; i < numPart; i++ {
 		var part minio.PartInfo
 		bytesReader := bytes.NewReader(data[i*partLen : (i*partLen)+partLen])
-		hashReader, err := hash.NewReader(bytesReader, bytesReader.Size(), "", "", bytesReader.Size())
+		hashReader, err := hash.NewReader(bytesReader, bytesReader.Size(), "", "", bytesReader.Size(), true)
 		if err != nil {
 			t.Fatalf("failed to create hash reader = %v", err)
 
@@ -516,7 +516,7 @@ func TestMultipartUploadListAbort(t *testing.T) {
 		var parts []minio.PartInfo
 		for i := 0; i < numPart; i++ {
 			bytesReader := bytes.NewReader(data[i*partLen : (i*partLen)+partLen])
-			hashReader, err := hash.NewReader(bytesReader, bytesReader.Size(), "", "", bytesReader.Size())
+			hashReader, err := hash.NewReader(bytesReader, bytesReader.Size(), "", "", bytesReader.Size(), true)
 			if err != nil {
 				t.Fatalf("failed to create hash reader = %v", err)
 
@@ -632,7 +632,7 @@ func TestMultipartUploadCopyComplete(t *testing.T) {
 	// upload the parts using PutObject
 	for i := 0; i < numPart; i++ {
 		bytesReader := bytes.NewReader(data[i*partLen : (i*partLen)+partLen])
-		hashReader, err := hash.NewReader(bytesReader, bytesReader.Size(), "", "", bytesReader.Size())
+		hashReader, err := hash.NewReader(bytesReader, bytesReader.Size(), "", "", bytesReader.Size(), true)
 		if err != nil {
 			t.Fatalf("failed to create hash reader = %v", err)
 

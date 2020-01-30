@@ -27,8 +27,9 @@ import (
 	"github.com/minio/minio/cmd/gateway/zerostor/repair"
 
 	"github.com/minio/minio/pkg/auth"
+	"github.com/minio/minio/pkg/bucket/policy"
 	"github.com/minio/minio/pkg/hash"
-	"github.com/minio/minio/pkg/policy"
+	"github.com/minio/minio/pkg/madmin"
 )
 
 const (
@@ -383,6 +384,10 @@ func (zo *zerostorObjects) DeleteBucketPolicy(ctx context.Context, bucket string
 	return zstorToObjectErr(errors.WithStack(err), Operation("DeleteBucketPolicy"), bucket)
 }
 
+func (zo *zerostorObjects) DeleteObjects(ctx context.Context, bucket string, objects []string) ([]error, error) {
+	return nil, fmt.Errorf("TODO: not implemented")
+}
+
 func (zo *zerostorObjects) DeleteObject(ctx context.Context, bucket, object string) error {
 	log.WithFields(log.Fields{
 		"bucket": bucket,
@@ -458,7 +463,7 @@ func (zo *zerostorObjects) CopyObject(ctx context.Context, srcBucket, srcObject,
 		storWr.CloseWithError(zo.GetObject(getCtx, srcBucket, srcObject, 0, srcInfo.Size, storWr, "", srcOpts))
 	}()
 
-	hashReader, err := hash.NewReader(storRd, srcInfo.Size, "", "", srcInfo.Size)
+	hashReader, err := hash.NewReader(storRd, srcInfo.Size, "", "", srcInfo.Size, true)
 	if err != nil {
 		return objInfo, zstorToObjectErr(errors.WithStack(err), Operation("CopyObject"), destBucket, destObject)
 	}
@@ -829,7 +834,7 @@ func (zo *zerostorObjects) CopyObjectPart(ctx context.Context, srcBucket, srcObj
 		storWr.CloseWithError(zo.GetObject(getCtx, srcBucket, srcObject, startOffset, length, storWr, "", srcOpts))
 	}()
 
-	hashReader, err := hash.NewReader(storRd, length-startOffset, "", "", length-startOffset)
+	hashReader, err := hash.NewReader(storRd, length-startOffset, "", "", length-startOffset, true)
 	if err != nil {
 		return info, err
 	}
@@ -972,27 +977,21 @@ func (zo *zerostorObjects) Shutdown(ctx context.Context) error {
 func (zo *zerostorObjects) StorageInfo(ctx context.Context) (info minio.StorageInfo) {
 	log.Debug("StorafeInfo")
 
-	var used uint64
+	var used []uint64
 
-	policy := zo.cfg.DataStor.Pipeline.Distribution
-
-	disks := len(zo.cfg.DataStor.Shards)
-	offline := 0
+	offline := madmin.BackendDisks{}
+	online := madmin.BackendDisks{}
 
 	// iterate all shards, get info from each of it
 	// returns immediately once we got an answer
 	for _, shard := range zo.cfg.DataStor.Shards {
 		u, _, err := zo.shardUsage(shard.Address)
 		if err != nil {
-			offline++
+			offline[shard.Address] = 0
 			log.WithField("shard", shard).Error("failed to get shard info")
 		}
-		used += u
-	}
-
-	if policy.DataShardCount > 0 {
-		//multi shared with parity
-		used = (used * uint64(policy.DataShardCount)) / uint64(policy.ParityShardCount+policy.DataShardCount)
+		online[shard.Address] = 0
+		used = append(used, u)
 	}
 
 	info = minio.StorageInfo{
@@ -1000,7 +999,7 @@ func (zo *zerostorObjects) StorageInfo(ctx context.Context) (info minio.StorageI
 	}
 
 	info.Backend.Type = minio.BackendErasure
-	info.Backend.OnlineDisks = disks - offline
+	info.Backend.OnlineDisks = online
 	info.Backend.OfflineDisks = offline
 	info.Backend.StandardSCData = zo.cfg.DataStor.Pipeline.Distribution.DataShardCount
 	info.Backend.StandardSCParity = zo.cfg.DataStor.Pipeline.Distribution.ParityShardCount

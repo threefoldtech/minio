@@ -8,7 +8,7 @@ import (
 
 	minio "github.com/minio/minio/cmd"
 	"github.com/minio/minio/cmd/gateway/zerostor/meta"
-	"github.com/minio/minio/pkg/policy"
+	"github.com/minio/minio/pkg/bucket/policy"
 	"github.com/satori/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/threefoldtech/0-stor/client/metastor/metatypes"

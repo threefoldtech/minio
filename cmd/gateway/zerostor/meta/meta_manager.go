@@ -7,7 +7,7 @@ import (
 	"time"
 
 	minio "github.com/minio/minio/cmd"
-	"github.com/minio/minio/pkg/policy"
+	"github.com/minio/minio/pkg/bucket/policy"
 	"github.com/threefoldtech/0-stor/client/metastor/metatypes"
 )
 

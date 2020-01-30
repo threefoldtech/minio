@@ -20,7 +20,7 @@ import (
 
 	minio "github.com/minio/minio/cmd"
 	"github.com/minio/minio/cmd/gateway/zerostor/utils"
-	"github.com/minio/minio/pkg/policy"
+	"github.com/minio/minio/pkg/bucket/policy"
 	"github.com/pkg/errors"
 	"github.com/satori/uuid"
 	"github.com/threefoldtech/0-stor/client/metastor/metatypes"

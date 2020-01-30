@@ -13,7 +13,7 @@ import (
 	"github.com/garyburd/redigo/redis"
 	minio "github.com/minio/minio/cmd"
 	"github.com/minio/minio/cmd/gateway/zerostor/meta"
-	"github.com/minio/minio/pkg/policy"
+	"github.com/minio/minio/pkg/bucket/policy"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack"
 )
