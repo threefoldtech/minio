@@ -126,7 +126,7 @@ func (c *configManager) Reload(cfg config.Config, metaDir, metaPrivKey string) e
 
 	client, cluster, err := createClient(cfg)
 	if err != nil {
-		return nil
+		return err
 	}
 	zsClient := zsClient{
 		client,
@@ -175,17 +175,13 @@ type Client interface {
 
 func newConfigManager(cfg config.Config, metaDir, metaPrivKey string) (ConfigManager, error) {
 	zsManager := configManager{}
-	zsManager.Reload(cfg, metaDir, metaPrivKey)
+	err := zsManager.Reload(cfg, metaDir, metaPrivKey)
 
-	return &zsManager, nil
+	return &zsManager, err
 }
 
 // createClient creates a 0-stor client from a configuration file
 func createClient(cfg config.Config) (*client.Client, datastor.Cluster, error) {
-	if cfg.Namespace == "" {
-		return nil, nil, fmt.Errorf("empty namespace")
-	}
-
 	cluster, err := zerodb.NewCluster(cfg.DataStor.Shards, cfg.Password, cfg.Namespace, nil, datastor.DefaultSpreadingType)
 	if err != nil {
 		return nil, nil, err

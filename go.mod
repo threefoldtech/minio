@@ -15,9 +15,7 @@ require (
 	github.com/bcicen/jstream v0.0.0-20190220045926-16c1f8af81c2
 	github.com/cheggaaa/pb v1.0.28
 	github.com/coredns/coredns v1.4.0
-	github.com/coreos/bbolt v1.3.2 // indirect
 	github.com/coreos/etcd v3.3.12+incompatible
-	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/djherbis/atime v1.0.0
 	github.com/dustin/go-humanize v1.0.0
@@ -28,9 +26,7 @@ require (
 	github.com/fatih/color v1.7.0
 	github.com/fatih/structs v1.1.0
 	github.com/garyburd/redigo v1.6.0
-	github.com/go-ini/ini v1.42.0 // indirect
 	github.com/go-sql-driver/mysql v1.4.1
-	github.com/golang/groupcache v0.0.0-20190129154638-5b532d6fd5ef // indirect
 	github.com/golang/snappy v0.0.1
 	github.com/gomodule/redigo v2.0.0+incompatible
 	github.com/gopherjs/gopherjs v0.0.0-20190328170749-bb2674552d8f // indirect
@@ -38,25 +34,18 @@ require (
 	github.com/gorilla/handlers v1.4.0
 	github.com/gorilla/mux v1.7.0
 	github.com/gorilla/rpc v1.2.0+incompatible
-	github.com/gorilla/websocket v1.4.0 // indirect
-	github.com/grpc-ecosystem/go-grpc-middleware v1.0.0 // indirect
-	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.8.5 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.1 // indirect
 	github.com/hashicorp/go-retryablehttp v0.5.3 // indirect
 	github.com/hashicorp/go-rootcerts v1.0.0 // indirect
 	github.com/hashicorp/vault v1.1.0
-	github.com/howeyc/gopass v0.0.0-20170109162249-bf9dde6d0d2c // indirect
 	github.com/inconshreveable/go-update v0.0.0-20160112193335-8152e7eb6ccf
-	github.com/iwanbk/redcon v0.0.0-20180301100635-1f58e65a7e1c // indirect
-	github.com/jonboulle/clockwork v0.1.0 // indirect
 	github.com/klauspost/compress v1.4.1 // indirect
 	github.com/klauspost/cpuid v1.2.0 // indirect
 	github.com/klauspost/pgzip v1.2.1
 	github.com/klauspost/reedsolomon v1.9.1
 	github.com/lib/pq v1.0.0
 	github.com/mattn/go-isatty v0.0.7
-	github.com/mattn/go-runewidth v0.0.4 // indirect
 	github.com/miekg/dns v1.1.8
 	github.com/minio/blazer v0.0.0-20171126203752-2081f5bf0465
 	github.com/minio/cli v1.3.0
@@ -81,7 +70,6 @@ require (
 	github.com/pkg/errors v0.8.1
 	github.com/pkg/profile v1.3.0
 	github.com/prometheus/client_golang v0.9.3-0.20190127221311-3c4408c8b829
-	github.com/prometheus/client_model v0.0.0-20190129233127-fd36f4220a90 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a // indirect
 	github.com/rjeczalik/notify v0.9.2
 	github.com/rs/cors v1.6.0
@@ -91,31 +79,26 @@ require (
 	github.com/skyrings/skyring-common v0.0.0-20160929130248-d1c0bb1cbd5e
 	github.com/smartystreets/assertions v0.0.0-20190401200700-3f99fa72afbb // indirect
 	github.com/smartystreets/goconvey v0.0.0-20190330032615-68dc04aab96a // indirect
-	github.com/soheilhy/cmux v0.1.4 // indirect
 	github.com/streadway/amqp v0.0.0-20190312223743-14f78b41ce6d
 	github.com/templexxx/cpu v0.0.0-20180724030738-8b437a7a2c87 // indirect
-	github.com/templexxx/reedsolomon v0.0.0-20170725134912-0a1f6992d698 // indirect
 	github.com/templexxx/xorsimd v0.0.0-20181104124756-9b4a941c186e // indirect
 	github.com/threefoldtech/0-stor v0.0.0-20190408150102-8d6c41674295
 	github.com/tidwall/gjson v1.2.1
 	github.com/tidwall/pretty v0.0.0-20190325153808-1166b9ac2b65 // indirect
 	github.com/tidwall/sjson v1.0.4
-	github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5 // indirect
 	github.com/valyala/tcplisten v0.0.0-20161114210144-ceec8f93295a
 	github.com/vmihailenco/msgpack v4.0.4+incompatible
-	github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2 // indirect
-	go.etcd.io/bbolt v1.3.2 // indirect
 	go.uber.org/atomic v1.3.2
-	go.uber.org/multierr v1.1.0 // indirect
-	go.uber.org/zap v1.9.1 // indirect
 	golang.org/x/crypto v0.0.0-20190404164418-38d8ce5564a5
 	golang.org/x/lint v0.0.0-20190409202823-959b441ac422 // indirect
 	golang.org/x/net v0.0.0-20190404232315-eb5bcb51f2a3
 	golang.org/x/sys v0.0.0-20190405154228-4b34438f7a67
-	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4
+	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 	golang.org/x/tools v0.0.0-20190409223705-96f2e7ef861b // indirect
 	google.golang.org/api v0.2.0
 	gopkg.in/Shopify/sarama.v1 v1.20.0
 	gopkg.in/olivere/elastic.v5 v5.0.80
-	gopkg.in/yaml.v2 v2.2.2
+	gopkg.in/yaml.v2 v2.2.4
 )
+
+replace github.com/threefoldtech/0-stor => ../0-stor

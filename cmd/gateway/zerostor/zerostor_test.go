@@ -7,6 +7,7 @@ import (
 
 	"github.com/minio/minio/cmd/gateway/zerostor/config"
 	"github.com/threefoldtech/0-stor/client"
+	"github.com/threefoldtech/0-stor/client/datastor"
 	"github.com/threefoldtech/0-stor/client/datastor/pipeline"
 	zdbtest "github.com/threefoldtech/0-stor/client/datastor/zerodb/test"
 )
@@ -47,7 +48,7 @@ func newTestZstorClient(t *testing.T, namespace string) (client.Config, func()) 
 	}
 }
 
-func testZdbServer(t *testing.T, n int) (shards []string, cleanups func()) {
+func testZdbServer(t *testing.T, n int) (shards []datastor.ShardConfig, cleanups func()) {
 	var (
 		namespace    = "ns"
 		cleanupFuncs []func()
@@ -60,7 +61,7 @@ func testZdbServer(t *testing.T, n int) (shards []string, cleanups func()) {
 		}
 
 		cleanupFuncs = append(cleanupFuncs, cleanup)
-		shards = append(shards, addr)
+		shards = append(shards, datastor.ShardConfig{Address: addr})
 	}
 
 	cleanups = func() {

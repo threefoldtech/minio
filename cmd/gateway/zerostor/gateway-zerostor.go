@@ -196,7 +196,7 @@ func (z *Zerostor) NewGatewayLayer(creds auth.Credentials) (minio.ObjectLayer, e
 	// creates 0-stor  wrapper
 	zsManager, err := newConfigManager(cfg, z.metaDir, z.metaPrivKey)
 	if err != nil {
-		log.Println("failed to creates zstor client: ", err.Error())
+		log.Error("failed to creates zstor client: ", err.Error())
 		return nil, err
 	}
 
@@ -982,7 +982,7 @@ func (zo *zerostorObjects) StorageInfo(ctx context.Context) (info minio.StorageI
 	// iterate all shards, get info from each of it
 	// returns immediately once we got an answer
 	for _, shard := range zo.cfg.DataStor.Shards {
-		u, _, err := zo.shardUsage(shard)
+		u, _, err := zo.shardUsage(shard.Address)
 		if err != nil {
 			offline++
 			log.WithField("shard", shard).Error("failed to get shard info")
