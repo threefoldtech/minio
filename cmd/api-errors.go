@@ -1,5 +1,5 @@
 /*
- * Minio Cloud Storage, (C) 2015, 2016, 2017, 2018 Minio, Inc.
+ * MinIO Cloud Storage, (C) 2015, 2016, 2017, 2018 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,15 +23,18 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Azure/azure-sdk-for-go/storage"
+	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 	"google.golang.org/api/googleapi"
 
-	minio "github.com/minio/minio-go"
+	minio "github.com/minio/minio-go/v6"
+	"github.com/minio/minio/cmd/config/etcd/dns"
 	"github.com/minio/minio/cmd/crypto"
 	"github.com/minio/minio/cmd/logger"
 	"github.com/minio/minio/pkg/auth"
-	"github.com/minio/minio/pkg/dns"
+	objectlock "github.com/minio/minio/pkg/bucket/object/lock"
+	"github.com/minio/minio/pkg/bucket/object/tagging"
+	"github.com/minio/minio/pkg/bucket/policy"
 	"github.com/minio/minio/pkg/event"
 	"github.com/minio/minio/pkg/hash"
 )
@@ -51,6 +54,7 @@ type APIErrorResponse struct {
 	Key        string `xml:"Key,omitempty" json:"Key,omitempty"`
 	BucketName string `xml:"BucketName,omitempty" json:"BucketName,omitempty"`
 	Resource   string
+	Region     string `xml:"Region,omitempty" json:"Region,omitempty"`
 	RequestID  string `xml:"RequestId" json:"RequestId"`
 	HostID     string `xml:"HostId" json:"HostId"`
 }
@@ -65,6 +69,7 @@ const (
 	ErrBadDigest
 	ErrEntityTooSmall
 	ErrEntityTooLarge
+	ErrPolicyTooLarge
 	ErrIncompleteBody
 	ErrInternalError
 	ErrInvalidAccessKeyID
@@ -90,6 +95,7 @@ const (
 	ErrMissingRequestBodyError
 	ErrNoSuchBucket
 	ErrNoSuchBucketPolicy
+	ErrNoSuchBucketLifecycle
 	ErrNoSuchKey
 	ErrNoSuchUpload
 	ErrNoSuchVersion
@@ -137,6 +143,15 @@ const (
 	ErrSlowDown
 	ErrInvalidPrefixMarker
 	ErrBadRequest
+	ErrKeyTooLongError
+	ErrInvalidBucketObjectLockConfiguration
+	ErrObjectLockConfigurationNotAllowed
+	ErrObjectLocked
+	ErrInvalidRetentionDate
+	ErrPastObjectLockRetainDate
+	ErrUnknownWORMModeDirective
+	ErrObjectLockInvalidHeaders
+	ErrInvalidTagDirective
 	// Add new error codes here.
 
 	// SSE-S3 related API errors
@@ -177,7 +192,7 @@ const (
 
 	// Add new extended error codes here.
 
-	// Minio extended errors.
+	// MinIO extended errors.
 	ErrReadQuorum
 	ErrWriteQuorum
 	ErrParentIsObject
@@ -185,11 +200,12 @@ const (
 	ErrRequestBodyParse
 	ErrObjectExistsAsDirectory
 	ErrInvalidObjectName
+	ErrInvalidObjectNamePrefixSlash
 	ErrInvalidResourceName
 	ErrServerNotInitialized
 	ErrOperationTimedOut
 	ErrInvalidRequest
-	// Minio storage class error codes
+	// MinIO storage class error codes
 	ErrInvalidStorageClass
 	ErrBackendDown
 	// Add new extended error codes here.
@@ -198,6 +214,8 @@ const (
 
 	ErrMalformedJSON
 	ErrAdminNoSuchUser
+	ErrAdminNoSuchGroup
+	ErrAdminGroupNotEmpty
 	ErrAdminNoSuchPolicy
 	ErrAdminInvalidArgument
 	ErrAdminInvalidAccessKey
@@ -308,6 +326,7 @@ const (
 	ErrAdminProfilerNotEnabled
 	ErrInvalidDecompressedSize
 	ErrAddUserInvalidArgument
+	ErrPostPolicyConditionInvalidFormat
 )
 
 type errorCodeMap map[APIErrorCode]APIError
@@ -398,6 +417,11 @@ var errorCodes = errorCodeMap{
 		Description:    "Your proposed upload exceeds the maximum allowed object size.",
 		HTTPStatusCode: http.StatusBadRequest,
 	},
+	ErrPolicyTooLarge: {
+		Code:           "PolicyTooLarge",
+		Description:    "Policy exceeds the maximum allowed document size.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
 	ErrIncompleteBody: {
 		Code:           "IncompleteBody",
 		Description:    "You did not provide the number of bytes specified by the Content-Length HTTP header.",
@@ -456,6 +480,11 @@ var errorCodes = errorCodeMap{
 	ErrNoSuchBucketPolicy: {
 		Code:           "NoSuchBucketPolicy",
 		Description:    "The bucket policy does not exist",
+		HTTPStatusCode: http.StatusNotFound,
+	},
+	ErrNoSuchBucketLifecycle: {
+		Code:           "NoSuchBucketLifecycle",
+		Description:    "The bucket lifecycle configuration does not exist",
 		HTTPStatusCode: http.StatusNotFound,
 	},
 	ErrNoSuchKey: {
@@ -675,6 +704,11 @@ var errorCodes = errorCodeMap{
 		Description:    "400 BadRequest",
 		HTTPStatusCode: http.StatusBadRequest,
 	},
+	ErrKeyTooLongError: {
+		Code:           "KeyTooLongError",
+		Description:    "Your key is too long",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
 
 	// FIXME: Actual XML error response also contains the header which missed in list of signed header parameters.
 	ErrUnsignedHeaders: {
@@ -697,7 +731,41 @@ var errorCodes = errorCodeMap{
 		Description:    "Duration provided in the request is invalid.",
 		HTTPStatusCode: http.StatusBadRequest,
 	},
-
+	ErrInvalidBucketObjectLockConfiguration: {
+		Code:           "InvalidRequest",
+		Description:    "Bucket is missing ObjectLockConfiguration",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrObjectLockConfigurationNotAllowed: {
+		Code:           "InvalidBucketState",
+		Description:    "Object Lock configuration cannot be enabled on existing buckets.",
+		HTTPStatusCode: http.StatusConflict,
+	},
+	ErrObjectLocked: {
+		Code:           "InvalidRequest",
+		Description:    "Object is WORM protected and cannot be overwritten",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrInvalidRetentionDate: {
+		Code:           "InvalidRequest",
+		Description:    "Date must be provided in ISO 8601 format",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrPastObjectLockRetainDate: {
+		Code:           "InvalidRequest",
+		Description:    "the retain until date must be in the future",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrUnknownWORMModeDirective: {
+		Code:           "InvalidRequest",
+		Description:    "unknown wormMode directive",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrObjectLockInvalidHeaders: {
+		Code:           "InvalidRequest",
+		Description:    "x-amz-object-lock-retain-until-date and x-amz-object-lock-mode must both be supplied",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
 	/// Bucket notification related errors.
 	ErrEventNotification: {
 		Code:           "InvalidArgument",
@@ -746,7 +814,7 @@ var errorCodes = errorCodeMap{
 	},
 	ErrUnsupportedNotification: {
 		Code:           "UnsupportedNotification",
-		Description:    "Minio server does not support Topic or Cloud Function based notifications.",
+		Description:    "MinIO server does not support Topic or Cloud Function based notifications.",
 		HTTPStatusCode: http.StatusBadRequest,
 	},
 	ErrInvalidCopyPartRange: {
@@ -762,6 +830,11 @@ var errorCodes = errorCodeMap{
 	ErrMetadataTooLarge: {
 		Code:           "InvalidArgument",
 		Description:    "Your metadata headers exceed the maximum allowed metadata size.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrInvalidTagDirective: {
+		Code:           "InvalidArgument",
+		Description:    "Unknown tag directive.",
 		HTTPStatusCode: http.StatusBadRequest,
 	},
 	ErrInvalidEncryptionMethod: {
@@ -852,7 +925,7 @@ var errorCodes = errorCodeMap{
 		HTTPStatusCode: http.StatusBadRequest,
 	},
 
-	/// Minio extensions.
+	/// MinIO extensions.
 	ErrStorageFull: {
 		Code:           "XMinioStorageFull",
 		Description:    "Storage backend has reached its minimum free disk threshold. Please delete a few objects to proceed.",
@@ -873,19 +946,14 @@ var errorCodes = errorCodeMap{
 		Description:    "Object name already exists as a directory.",
 		HTTPStatusCode: http.StatusConflict,
 	},
-	ErrReadQuorum: {
-		Code:           "XMinioReadQuorum",
-		Description:    "Multiple disk failures, unable to reconstruct data.",
-		HTTPStatusCode: http.StatusServiceUnavailable,
-	},
-	ErrWriteQuorum: {
-		Code:           "XMinioWriteQuorum",
-		Description:    "Multiple disks failures, unable to write data.",
-		HTTPStatusCode: http.StatusServiceUnavailable,
-	},
 	ErrInvalidObjectName: {
 		Code:           "XMinioInvalidObjectName",
 		Description:    "Object name contains unsupported characters.",
+		HTTPStatusCode: http.StatusBadRequest,
+	},
+	ErrInvalidObjectNamePrefixSlash: {
+		Code:           "XMinioInvalidObjectName",
+		Description:    "Object name contains a leading slash.",
 		HTTPStatusCode: http.StatusBadRequest,
 	},
 	ErrInvalidResourceName: {
@@ -907,6 +975,16 @@ var errorCodes = errorCodeMap{
 		Code:           "XMinioAdminNoSuchUser",
 		Description:    "The specified user does not exist.",
 		HTTPStatusCode: http.StatusNotFound,
+	},
+	ErrAdminNoSuchGroup: {
+		Code:           "XMinioAdminNoSuchGroup",
+		Description:    "The specified group does not exist.",
+		HTTPStatusCode: http.StatusNotFound,
+	},
+	ErrAdminGroupNotEmpty: {
+		Code:           "XMinioAdminGroupNotEmpty",
+		Description:    "The specified group is not empty - cannot remove it.",
+		HTTPStatusCode: http.StatusBadRequest,
 	},
 	ErrAdminNoSuchPolicy: {
 		Code:           "XMinioAdminNoSuchPolicy",
@@ -1469,6 +1547,11 @@ var errorCodes = errorCodeMap{
 		Description:    "User is not allowed to be same as admin access key",
 		HTTPStatusCode: http.StatusConflict,
 	},
+	ErrPostPolicyConditionInvalidFormat: {
+		Code:           "PostPolicyInvalidKeyName",
+		Description:    "Invalid according to Policy: Policy Condition failed",
+		HTTPStatusCode: http.StatusForbidden,
+	},
 	// Add your error structure here.
 }
 
@@ -1479,13 +1562,16 @@ func toAPIErrorCode(ctx context.Context, err error) (apiErr APIErrorCode) {
 	if err == nil {
 		return ErrNone
 	}
-
 	// Verify if the underlying error is signature mismatch.
 	switch err {
 	case errInvalidArgument:
 		apiErr = ErrAdminInvalidArgument
 	case errNoSuchUser:
 		apiErr = ErrAdminNoSuchUser
+	case errNoSuchGroup:
+		apiErr = ErrAdminNoSuchGroup
+	case errGroupNotEmpty:
+		apiErr = ErrAdminGroupNotEmpty
 	case errNoSuchPolicy:
 		apiErr = ErrAdminNoSuchPolicy
 	case errSignatureMismatch:
@@ -1496,6 +1582,8 @@ func toAPIErrorCode(ctx context.Context, err error) (apiErr APIErrorCode) {
 		apiErr = ErrEntityTooLarge
 	case errDataTooSmall:
 		apiErr = ErrEntityTooSmall
+	case errAuthentication:
+		apiErr = ErrAccessDenied
 	case auth.ErrInvalidAccessKeyLength:
 		apiErr = ErrAdminInvalidAccessKey
 	case auth.ErrInvalidSecretKeyLength:
@@ -1529,6 +1617,18 @@ func toAPIErrorCode(ctx context.Context, err error) (apiErr APIErrorCode) {
 		apiErr = ErrKMSAuthFailure
 	case errOperationTimedOut, context.Canceled, context.DeadlineExceeded:
 		apiErr = ErrOperationTimedOut
+	case errDiskNotFound:
+		apiErr = ErrSlowDown
+	case objectlock.ErrInvalidRetentionDate:
+		apiErr = ErrInvalidRetentionDate
+	case objectlock.ErrPastObjectLockRetainDate:
+		apiErr = ErrPastObjectLockRetainDate
+	case objectlock.ErrUnknownWORMModeDirective:
+		apiErr = ErrUnknownWORMModeDirective
+	case objectlock.ErrObjectLockInvalidHeaders:
+		apiErr = ErrObjectLockInvalidHeaders
+	case objectlock.ErrMalformedXML:
+		apiErr = ErrMalformedXML
 	}
 
 	// Compression errors
@@ -1581,14 +1681,16 @@ func toAPIErrorCode(ctx context.Context, err error) (apiErr APIErrorCode) {
 		apiErr = ErrMethodNotAllowed
 	case ObjectNameInvalid:
 		apiErr = ErrInvalidObjectName
+	case ObjectNamePrefixAsSlash:
+		apiErr = ErrInvalidObjectNamePrefixSlash
 	case InvalidUploadID:
 		apiErr = ErrNoSuchUpload
 	case InvalidPart:
 		apiErr = ErrInvalidPart
 	case InsufficientWriteQuorum:
-		apiErr = ErrWriteQuorum
+		apiErr = ErrSlowDown
 	case InsufficientReadQuorum:
-		apiErr = ErrReadQuorum
+		apiErr = ErrSlowDown
 	case UnsupportedDelimiter:
 		apiErr = ErrNotImplemented
 	case InvalidMarkerPrefixCombination:
@@ -1615,6 +1717,8 @@ func toAPIErrorCode(ctx context.Context, err error) (apiErr APIErrorCode) {
 		apiErr = ErrUnsupportedMetadata
 	case BucketPolicyNotFound:
 		apiErr = ErrNoSuchBucketPolicy
+	case BucketLifecycleNotFound:
+		apiErr = ErrNoSuchBucketLifecycle
 	case *event.ErrInvalidEventName:
 		apiErr = ErrEventNotification
 	case *event.ErrInvalidARN:
@@ -1639,8 +1743,8 @@ func toAPIErrorCode(ctx context.Context, err error) (apiErr APIErrorCode) {
 		apiErr = ErrUnsupportedNotification
 	case BackendDown:
 		apiErr = ErrBackendDown
-	case crypto.Error:
-		apiErr = ErrObjectTampered
+	case ObjectNameTooLong:
+		apiErr = ErrKeyTooLongError
 	default:
 		var ie, iw int
 		// This work-around is to handle the issue golang/go#30648
@@ -1683,6 +1787,24 @@ func toAPIError(ctx context.Context, err error) APIError {
 		// their internal error types. This code is only
 		// useful with gateway implementations.
 		switch e := err.(type) {
+		case tagging.Error:
+			apiErr = APIError{
+				Code:           "InvalidTag",
+				Description:    e.Error(),
+				HTTPStatusCode: http.StatusBadRequest,
+			}
+		case policy.Error:
+			apiErr = APIError{
+				Code:           "MalformedPolicy",
+				Description:    e.Error(),
+				HTTPStatusCode: http.StatusBadRequest,
+			}
+		case crypto.Error:
+			apiErr = APIError{
+				Code:           "XMinIOEncryptionError",
+				Description:    e.Error(),
+				HTTPStatusCode: http.StatusBadRequest,
+			}
 		case minio.ErrorResponse:
 			apiErr = APIError{
 				Code:           e.Code,
@@ -1701,11 +1823,11 @@ func toAPIError(ctx context.Context, err error) APIError {
 				apiErr.Code = e.Errors[0].Reason
 
 			}
-		case storage.AzureStorageServiceError:
+		case azblob.StorageError:
 			apiErr = APIError{
-				Code:           e.Code,
-				Description:    e.Message,
-				HTTPStatusCode: e.StatusCode,
+				Code:           string(e.ServiceCode()),
+				Description:    e.Error(),
+				HTTPStatusCode: e.Response().StatusCode,
 			}
 		case oss.ServiceError:
 			apiErr = APIError{
@@ -1738,6 +1860,7 @@ func getAPIErrorResponse(ctx context.Context, err APIError, resource, requestID,
 		BucketName: reqInfo.BucketName,
 		Key:        reqInfo.ObjectName,
 		Resource:   resource,
+		Region:     globalServerRegion,
 		RequestID:  requestID,
 		HostID:     hostID,
 	}

@@ -1,5 +1,5 @@
 /*
- * Minio Cloud Storage, (C) 2018 Minio, Inc.
+ * MinIO Cloud Storage, (C) 2018 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"reflect"
 	"testing"
 
@@ -44,7 +43,6 @@ func TestCreateServerEndpoints(t *testing.T) {
 		{":9000", []string{"/export1{1...32}", "/export1{1...32}"}, false},
 		// Same host cannot export same disk on two ports - special case localhost.
 		{":9001", []string{"http://localhost:900{1...2}/export{1...64}"}, false},
-
 		// Valid inputs.
 		{":9000", []string{"/export1"}, true},
 		{":9000", []string{"/export1", "/export2", "/export3", "/export4"}, true},
@@ -55,14 +53,17 @@ func TestCreateServerEndpoints(t *testing.T) {
 		{":9001", []string{"http://localhost:9001/export{01...64}"}, true},
 	}
 
-	for i, testCase := range testCases {
-		_, _, _, _, _, err := createServerEndpoints(testCase.serverAddr, testCase.args...)
-		if err != nil && testCase.success {
-			t.Errorf("Test %d: Expected success but failed instead %s", i+1, err)
-		}
-		if err == nil && !testCase.success {
-			t.Errorf("Test %d: Expected failure but passed instead", i+1)
-		}
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run("", func(t *testing.T) {
+			_, _, _, err := createServerEndpoints(testCase.serverAddr, testCase.args...)
+			if err != nil && testCase.success {
+				t.Errorf("Expected success but failed instead %s", err)
+			}
+			if err == nil && !testCase.success {
+				t.Errorf("Expected failure but passed instead")
+			}
+		})
 	}
 }
 
@@ -75,8 +76,10 @@ func TestGetDivisibleSize(t *testing.T) {
 		{[]uint64{8, 8, 8}, 8},
 		{[]uint64{24}, 24},
 	}
-	for i, testCase := range testCases {
-		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
+
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run("", func(t *testing.T) {
 			gotGCD := getDivisibleSize(testCase.totalSizes)
 			if testCase.result != gotGCD {
 				t.Errorf("Expected %v, got %v", testCase.result, gotGCD)
@@ -91,45 +94,43 @@ func TestGetSetIndexesEnvOverride(t *testing.T) {
 		args        []string
 		totalSizes  []uint64
 		indexes     [][]uint64
-		envOverride string
+		envOverride uint64
 		success     bool
 	}{
 		{
 			[]string{"data{1...64}"},
 			[]uint64{64},
 			[][]uint64{{8, 8, 8, 8, 8, 8, 8, 8}},
-			"8",
+			8,
 			true,
 		},
 		{
 			[]string{"data{1...60}"},
 			nil,
 			nil,
-			"8",
+			8,
 			false,
 		},
 		{
 			[]string{"data{1...64}"},
 			nil,
 			nil,
-			"-1",
+			64,
 			false,
 		},
 		{
 			[]string{"data{1...64}"},
 			nil,
 			nil,
-			"2",
+			2,
 			false,
 		},
 	}
 
-	for i, testCase := range testCases {
-		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
-			if err := os.Setenv("MINIO_ERASURE_SET_DRIVE_COUNT", testCase.envOverride); err != nil {
-				t.Fatal(err)
-			}
-			gotIndexes, err := getSetIndexes(testCase.args, testCase.totalSizes)
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run("", func(t *testing.T) {
+			gotIndexes, err := getSetIndexes(testCase.args, testCase.totalSizes, testCase.envOverride)
 			if err != nil && testCase.success {
 				t.Errorf("Expected success but failed instead %s", err)
 			}
@@ -139,7 +140,6 @@ func TestGetSetIndexesEnvOverride(t *testing.T) {
 			if !reflect.DeepEqual(testCase.indexes, gotIndexes) {
 				t.Errorf("Expected %v, got %v", testCase.indexes, gotIndexes)
 			}
-			os.Unsetenv("MINIO_ERASURE_SET_DRIVE_COUNT")
 		})
 	}
 }
@@ -210,9 +210,10 @@ func TestGetSetIndexes(t *testing.T) {
 		},
 	}
 
-	for i, testCase := range testCases {
-		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
-			gotIndexes, err := getSetIndexes(testCase.args, testCase.totalSizes)
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run("", func(t *testing.T) {
+			gotIndexes, err := getSetIndexes(testCase.args, testCase.totalSizes, 0)
 			if err != nil && testCase.success {
 				t.Errorf("Expected success but failed instead %s", err)
 			}
@@ -531,9 +532,10 @@ func TestParseEndpointSet(t *testing.T) {
 		},
 	}
 
-	for i, testCase := range testCases {
-		t.Run(fmt.Sprintf("Test%d", i+1), func(t *testing.T) {
-			gotEs, err := parseEndpointSet(testCase.arg)
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run("", func(t *testing.T) {
+			gotEs, err := parseEndpointSet(0, testCase.arg)
 			if err != nil && testCase.success {
 				t.Errorf("Expected success but failed instead %s", err)
 			}

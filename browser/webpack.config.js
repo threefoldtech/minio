@@ -1,5 +1,5 @@
 /*
- * Minio Cloud Storage (C) 2016 Minio, Inc.
+ * MinIO Cloud Storage (C) 2016 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -74,7 +74,8 @@ var exports = {
     proxy: {
       '/minio/webrpc': {
 	target: 'http://localhost:9000',
-	secure: false
+  secure: false,
+  headers: {'Host': "localhost:9000"}
       },
       '/minio/upload/*': {
 	target: 'http://localhost:9000',

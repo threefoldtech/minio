@@ -1,5 +1,5 @@
 /*
- * Minio Cloud Storage, (C) 2014, 2015, 2016, 2017 Minio, Inc.
+ * MinIO Cloud Storage, (C) 2014, 2015, 2016, 2017 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,7 +32,8 @@ func TestXLCleanupStaleMultipartUploads(t *testing.T) {
 	// Defer cleanup of backend directories
 	defer removeRoots(fsDirs)
 
-	xl := obj.(*xlObjects)
+	z := obj.(*xlZones)
+	xl := z.zones[0].sets[0]
 
 	// Close the go-routine, we are going to
 	// manually start it and test in this test case.

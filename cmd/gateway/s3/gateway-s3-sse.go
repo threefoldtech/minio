@@ -1,5 +1,5 @@
 /*
- * Minio Cloud Storage, (C) 2018 Minio, Inc.
+ * MinIO Cloud Storage, (C) 2018 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/minio/minio-go/pkg/encrypt"
+	"github.com/minio/minio-go/v6/pkg/encrypt"
 	minio "github.com/minio/minio/cmd"
 
 	"github.com/minio/minio/cmd/logger"
@@ -41,7 +41,6 @@ const (
 	// custom multipart files are stored under the defaultMinioGWPrefix
 	defaultMinioGWPrefix     = ".minio"
 	defaultGWContentFileName = "data"
-	slashSeparator           = "/"
 )
 
 // s3EncObjects is a wrapper around s3Objects and implements gateway calls for
@@ -102,7 +101,7 @@ func (l *s3EncObjects) ListObjectsV2(ctx context.Context, bucket, prefix, contin
 			}
 			// get objectname and ObjectInfo from the custom metadata file
 			if strings.HasSuffix(obj.Name, gwdareMetaJSON) {
-				objSlice := strings.Split(obj.Name, slashSeparator+defaultMinioGWPrefix)
+				objSlice := strings.Split(obj.Name, minio.SlashSeparator+defaultMinioGWPrefix)
 				gwMeta, e := l.getGWMetadata(ctx, bucket, getDareMetaPath(objSlice[0]))
 				if e != nil {
 					continue
@@ -117,7 +116,7 @@ func (l *s3EncObjects) ListObjectsV2(ctx context.Context, bucket, prefix, contin
 			}
 		}
 		for _, p := range loi.Prefixes {
-			objName := strings.TrimSuffix(p, slashSeparator)
+			objName := strings.TrimSuffix(p, minio.SlashSeparator)
 			gm, err := l.getGWMetadata(ctx, bucket, getDareMetaPath(objName))
 			// if prefix is actually a custom multi-part object, append it to objects
 			if err == nil {
@@ -138,14 +137,17 @@ func (l *s3EncObjects) ListObjectsV2(ctx context.Context, bucket, prefix, contin
 	loi.ContinuationToken = continuationToken
 	loi.Objects = make([]minio.ObjectInfo, 0)
 	loi.Prefixes = make([]string, 0)
+	loi.Objects = append(loi.Objects, objects...)
 
-	for _, obj := range objects {
-		loi.NextContinuationToken = obj.Name
-		loi.Objects = append(loi.Objects, obj)
-	}
 	for _, pfx := range prefixes {
 		if pfx != prefix {
 			loi.Prefixes = append(loi.Prefixes, pfx)
+		}
+	}
+	// Set continuation token if s3 returned truncated list
+	if isTruncated {
+		if len(objects) > 0 {
+			loi.NextContinuationToken = objects[len(objects)-1].Name
 		}
 	}
 	return loi, nil
@@ -162,7 +164,7 @@ func isGWObject(objName string) bool {
 		return false
 	}
 
-	pfxSlice := strings.Split(objName, slashSeparator)
+	pfxSlice := strings.Split(objName, minio.SlashSeparator)
 	var i1, i2 int
 	for i := len(pfxSlice) - 1; i >= 0; i-- {
 		p := pfxSlice[i]
@@ -398,10 +400,10 @@ func (l *s3EncObjects) ListMultipartUploads(ctx context.Context, bucket string, 
 	if e != nil {
 		return
 	}
-	lmi.KeyMarker = strings.TrimSuffix(lmi.KeyMarker, getGWContentPath("/"))
-	lmi.NextKeyMarker = strings.TrimSuffix(lmi.NextKeyMarker, getGWContentPath("/"))
+	lmi.KeyMarker = strings.TrimSuffix(lmi.KeyMarker, getGWContentPath(minio.SlashSeparator))
+	lmi.NextKeyMarker = strings.TrimSuffix(lmi.NextKeyMarker, getGWContentPath(minio.SlashSeparator))
 	for i := range lmi.Uploads {
-		lmi.Uploads[i].Object = strings.TrimSuffix(lmi.Uploads[i].Object, getGWContentPath("/"))
+		lmi.Uploads[i].Object = strings.TrimSuffix(lmi.Uploads[i].Object, getGWContentPath(minio.SlashSeparator))
 	}
 	return
 }
@@ -439,7 +441,8 @@ func (l *s3EncObjects) PutObject(ctx context.Context, bucket string, object stri
 	// Decide if sse options needed to be passed to backend
 	if opts.ServerSideEncryption != nil &&
 		((minio.GlobalGatewaySSE.SSEC() && opts.ServerSideEncryption.Type() == encrypt.SSEC) ||
-			(minio.GlobalGatewaySSE.SSES3() && opts.ServerSideEncryption.Type() == encrypt.S3)) {
+			(minio.GlobalGatewaySSE.SSES3() && opts.ServerSideEncryption.Type() == encrypt.S3) ||
+			opts.ServerSideEncryption.Type() == encrypt.KMS) {
 		sseOpts = opts.ServerSideEncryption
 	}
 	if opts.ServerSideEncryption == nil {

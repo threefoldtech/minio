@@ -1,5 +1,5 @@
 /*
- * Minio Cloud Storage, (C) 2015, 2016 Minio, Inc.
+ * MinIO Cloud Storage, (C) 2015, 2016 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,40 +22,29 @@ import (
 	"github.com/gorilla/mux"
 )
 
-func newObjectLayerFn() (layer ObjectLayer) {
-	globalObjLayerMutex.RLock()
-	layer = globalObjectAPI
-	globalObjLayerMutex.RUnlock()
-	return
-}
-
-func newCacheObjectsFn() CacheObjectLayer {
-	return globalCacheObjectAPI
-}
-
 // Composed function registering routers for only distributed XL setup.
-func registerDistXLRouters(router *mux.Router, endpoints EndpointList) {
-	// Register storage rpc router only if its a distributed setup.
-	registerStorageRESTHandlers(router, endpoints)
+func registerDistXLRouters(router *mux.Router, endpointZones EndpointZones) {
+	// Register storage REST router only if its a distributed setup.
+	registerStorageRESTHandlers(router, endpointZones)
 
 	// Register peer REST router only if its a distributed setup.
 	registerPeerRESTHandlers(router)
 
-	// Register distributed namespace lock.
-	registerDistNSLockRouter(router)
+	// Register bootstrap REST router for distributed setups.
+	registerBootstrapRESTHandlers(router)
 
+	// Register distributed namespace lock routers.
+	registerLockRESTHandlers(router, endpointZones)
 }
 
 // List of some generic handlers which are applied for all incoming requests.
 var globalHandlers = []HandlerFunc{
-	// set x-amz-request-id, x-minio-deployment-id header.
+	// set x-amz-request-id header.
 	addCustomHeaders,
 	// set HTTP security headers such as Content-Security-Policy.
 	addSecurityHeaders,
 	// Forward path style requests to actual host in a bucket federated setup.
 	setBucketForwardingHandler,
-	// Ratelimit the incoming requests using a token bucket algorithm
-	setRateLimitHandler,
 	// Validate all the incoming requests.
 	setRequestValidityHandler,
 	// Network statistics
@@ -92,14 +81,14 @@ var globalHandlers = []HandlerFunc{
 }
 
 // configureServer handler returns final handler for the http server.
-func configureServerHandler(endpoints EndpointList) (http.Handler, error) {
+func configureServerHandler(endpointZones EndpointZones) (http.Handler, error) {
 	// Initialize router. `SkipClean(true)` stops gorilla/mux from
 	// normalizing URL path minio/minio#3256
 	router := mux.NewRouter().SkipClean(true)
 
 	// Initialize distributed NS lock.
 	if globalIsDistXL {
-		registerDistXLRouters(router, endpoints)
+		registerDistXLRouters(router, endpointZones)
 	}
 
 	// Add STS router always.
@@ -115,14 +104,19 @@ func configureServerHandler(endpoints EndpointList) (http.Handler, error) {
 	registerMetricsRouter(router)
 
 	// Register web router when its enabled.
-	if globalIsBrowserEnabled {
+	if globalBrowserEnabled {
 		if err := registerWebRouter(router); err != nil {
 			return nil, err
 		}
 	}
 
-	// Add API router, additionally all server mode support encryption.
-	registerAPIRouter(router, true)
+	// Add API router, additionally all server mode support encryption
+	// but don't allow SSE-KMS.
+	registerAPIRouter(router, true, false)
+
+	// If none of the routes match add default error handler routes
+	router.NotFoundHandler = http.HandlerFunc(httpTraceAll(errorResponseHandler))
+	router.MethodNotAllowedHandler = http.HandlerFunc(httpTraceAll(errorResponseHandler))
 
 	// Register rest of the handlers.
 	return registerHandlers(router, globalHandlers...), nil

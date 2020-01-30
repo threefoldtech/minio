@@ -1,5 +1,5 @@
 /*
- * Minio Cloud Storage, (C) 2017 Minio, Inc.
+ * MinIO Cloud Storage, (C) 2017 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,14 +18,45 @@ package cmd
 
 import (
 	"context"
+	"errors"
 
 	"github.com/minio/minio/cmd/logger"
+	"github.com/minio/minio/pkg/bucket/lifecycle"
+	"github.com/minio/minio/pkg/bucket/object/tagging"
+	"github.com/minio/minio/pkg/bucket/policy"
 	"github.com/minio/minio/pkg/madmin"
-	"github.com/minio/minio/pkg/policy"
 )
+
+// GatewayLocker implements custom NeNSLock implementation
+type GatewayLocker struct {
+	ObjectLayer
+	nsMutex *nsLockMap
+}
+
+// NewNSLock - implements gateway level locker
+func (l *GatewayLocker) NewNSLock(ctx context.Context, bucket string, object string) RWLocker {
+	return l.nsMutex.NewNSLock(ctx, nil, bucket, object)
+}
+
+// NewGatewayLayerWithLocker - initialize gateway with locker.
+func NewGatewayLayerWithLocker(gwLayer ObjectLayer) ObjectLayer {
+	return &GatewayLocker{ObjectLayer: gwLayer, nsMutex: newNSLock(false)}
+}
 
 // GatewayUnsupported list of unsupported call stubs for gateway.
 type GatewayUnsupported struct{}
+
+// CrawlAndGetDataUsage - crawl is not implemented for gateway
+func (a GatewayUnsupported) CrawlAndGetDataUsage(ctx context.Context, endCh <-chan struct{}) DataUsageInfo {
+	logger.CriticalIf(ctx, errors.New("not implemented"))
+	return DataUsageInfo{}
+}
+
+// NewNSLock is a dummy stub for gateway.
+func (a GatewayUnsupported) NewNSLock(ctx context.Context, bucket string, object string) RWLocker {
+	logger.CriticalIf(ctx, errors.New("not implemented"))
+	return nil
+}
 
 // ListMultipartUploads lists all multipart uploads.
 func (a GatewayUnsupported) ListMultipartUploads(ctx context.Context, bucket string, prefix string, keyMarker string, uploadIDMarker string, delimiter string, maxUploads int) (lmi ListMultipartsInfo, err error) {
@@ -81,6 +112,22 @@ func (a GatewayUnsupported) DeleteBucketPolicy(ctx context.Context, bucket strin
 	return NotImplemented{}
 }
 
+// SetBucketLifecycle sets lifecycle on bucket
+func (a GatewayUnsupported) SetBucketLifecycle(ctx context.Context, bucket string, lifecycle *lifecycle.Lifecycle) error {
+	logger.LogIf(ctx, NotImplemented{})
+	return NotImplemented{}
+}
+
+// GetBucketLifecycle will get lifecycle on bucket
+func (a GatewayUnsupported) GetBucketLifecycle(ctx context.Context, bucket string) (*lifecycle.Lifecycle, error) {
+	return nil, NotImplemented{}
+}
+
+// DeleteBucketLifecycle deletes all lifecycle on bucket
+func (a GatewayUnsupported) DeleteBucketLifecycle(ctx context.Context, bucket string) error {
+	return NotImplemented{}
+}
+
 // ReloadFormat - Not implemented stub.
 func (a GatewayUnsupported) ReloadFormat(ctx context.Context, dryRun bool) error {
 	return NotImplemented{}
@@ -112,7 +159,7 @@ func (a GatewayUnsupported) ListObjectsV2(ctx context.Context, bucket, prefix, c
 }
 
 // HealObjects - Not implemented stub
-func (a GatewayUnsupported) HealObjects(ctx context.Context, bucket, prefix string, fn func(string, string) error) (e error) {
+func (a GatewayUnsupported) HealObjects(ctx context.Context, bucket, prefix string, fn healObjectFn) (e error) {
 	return NotImplemented{}
 }
 
@@ -122,8 +169,27 @@ func (a GatewayUnsupported) CopyObject(ctx context.Context, srcBucket string, sr
 	return objInfo, NotImplemented{}
 }
 
-// RefreshBucketPolicy refreshes cache policy with what's on disk.
-func (a GatewayUnsupported) RefreshBucketPolicy(ctx context.Context, bucket string) error {
+// GetMetrics - no op
+func (a GatewayUnsupported) GetMetrics(ctx context.Context) (*Metrics, error) {
+	logger.LogIf(ctx, NotImplemented{})
+	return &Metrics{}, NotImplemented{}
+}
+
+// PutObjectTag - not implemented.
+func (a GatewayUnsupported) PutObjectTag(ctx context.Context, bucket, object string, tags string) error {
+	logger.LogIf(ctx, NotImplemented{})
+	return NotImplemented{}
+}
+
+// GetObjectTag - not implemented.
+func (a GatewayUnsupported) GetObjectTag(ctx context.Context, bucket, object string) (tagging.Tagging, error) {
+	logger.LogIf(ctx, NotImplemented{})
+	return tagging.Tagging{}, NotImplemented{}
+}
+
+// DeleteObjectTag - not implemented.
+func (a GatewayUnsupported) DeleteObjectTag(ctx context.Context, bucket, object string) error {
+	logger.LogIf(ctx, NotImplemented{})
 	return NotImplemented{}
 }
 
@@ -144,5 +210,10 @@ func (a GatewayUnsupported) IsEncryptionSupported() bool {
 
 // IsCompressionSupported returns whether compression is applicable for this layer.
 func (a GatewayUnsupported) IsCompressionSupported() bool {
+	return false
+}
+
+// IsReady - No Op.
+func (a GatewayUnsupported) IsReady(_ context.Context) bool {
 	return false
 }

@@ -1,5 +1,5 @@
 /*
- * Minio Cloud Storage, (C) 2018 Minio, Inc.
+ * MinIO Cloud Storage, (C) 2018 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/gorilla/mux"
+	"github.com/minio/minio/cmd/config"
 	xnet "github.com/minio/minio/pkg/net"
 )
 
@@ -260,7 +261,7 @@ func testStorageAPIListDir(t *testing.T, storage StorageAPI) {
 	}
 
 	for i, testCase := range testCases {
-		result, err := storage.ListDir(testCase.volumeName, testCase.prefix, -1)
+		result, err := storage.ListDir(testCase.volumeName, testCase.prefix, -1, "")
 		expectErr := (err != nil)
 
 		if expectErr != testCase.expectErr {
@@ -488,7 +489,12 @@ func testStorageAPIRenameFile(t *testing.T, storage StorageAPI) {
 	}
 }
 
-func newStorageRESTHTTPServerClient(t *testing.T) (*httptest.Server, *storageRESTClient, *serverConfig, string) {
+func newStorageRESTHTTPServerClient(t *testing.T) (*httptest.Server, *storageRESTClient, config.Config, string) {
+	prevHost, prevPort := globalMinioHost, globalMinioPort
+	defer func() {
+		globalMinioHost, globalMinioPort = prevHost, prevPort
+	}()
+
 	endpointPath, err := ioutil.TempDir("", ".TestStorageREST.")
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
@@ -497,23 +503,28 @@ func newStorageRESTHTTPServerClient(t *testing.T) (*httptest.Server, *storageRES
 	router := mux.NewRouter()
 	httpServer := httptest.NewServer(router)
 
-	url, err := xnet.ParseURL(httpServer.URL)
+	url, err := xnet.ParseHTTPURL(httpServer.URL)
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
 	url.Path = endpointPath
+
+	globalMinioHost, globalMinioPort = mustSplitHostPort(url.Host)
 
 	endpoint, err := NewEndpoint(url.String())
 	if err != nil {
 		t.Fatalf("NewEndpoint failed %v", endpoint)
 	}
 
-	registerStorageRESTHandlers(router, EndpointList{endpoint})
-	restClient, err := newStorageRESTClient(endpoint)
-	if err != nil {
-		t.Fatalf("newStorageRESTClient failed for %v, with error %s", endpoint, err)
+	if err = endpoint.UpdateIsLocal(); err != nil {
+		t.Fatalf("UpdateIsLocal failed %v", err)
 	}
 
+	registerStorageRESTHandlers(router, []ZoneEndpoints{{
+		Endpoints: Endpoints{endpoint},
+	}})
+
+	restClient := newStorageRESTClient(endpoint)
 	prevGlobalServerConfig := globalServerConfig
 	globalServerConfig = newServerConfig()
 
