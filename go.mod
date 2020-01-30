@@ -123,4 +123,4 @@ require (
 	gopkg.in/yaml.v2 v2.2.4
 )
 
-replace github.com/threefoldtech/0-stor => ../0-stor
+replace github.com/threefoldtech/0-stor => github.com/threefoldtech/0-stor v0.0.0-20200130140401-502e993b4363
