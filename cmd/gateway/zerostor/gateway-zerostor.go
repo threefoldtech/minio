@@ -985,10 +985,10 @@ func (zo *zerostorObjects) StorageInfo(ctx context.Context) (info minio.StorageI
 	// iterate all shards, get info from each of it
 	// returns immediately once we got an answer
 	for _, shard := range zo.cfg.DataStor.Shards {
-		u, _, err := zo.shardUsage(shard.Address)
+		u, _, err := zo.shardUsage(zo.cfg.Namespace, zo.cfg.Password, shard)
 		if err != nil {
 			offline[shard.Address] = 0
-			log.WithField("shard", shard).Error("failed to get shard info")
+			log.WithError(err).WithField("shard", shard).Error("failed to get shard info")
 		}
 		online[shard.Address] = 0
 		used = append(used, u)
@@ -1006,16 +1006,24 @@ func (zo *zerostorObjects) StorageInfo(ctx context.Context) (info minio.StorageI
 	return info
 }
 
-func (zo *zerostorObjects) shardUsage(shard string) (used uint64, total uint64, err error) {
+func (zo *zerostorObjects) shardUsage(ns, password string, shard datastor.ShardConfig) (used uint64, total uint64, err error) {
 	// get conn
-	conn, err := redis.Dial("tcp", shard, redis.DialConnectTimeout(2*time.Second))
+	conn, err := redis.Dial("tcp", shard.Address, redis.DialConnectTimeout(2*time.Second))
 	if err != nil {
 		return
 	}
 	defer conn.Close()
 
+	or := func(a, b string) string {
+		if len(a) == 0 {
+			return b
+		}
+
+		return a
+	}
+
 	// request the info
-	nsinfo, err := redis.String(conn.Do("NSINFO", zo.cfg.Namespace))
+	nsinfo, err := redis.String(conn.Do("NSINFO", or(shard.Namespace, ns)))
 	if err != nil {
 		return
 	}
