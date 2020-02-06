@@ -18,8 +18,7 @@ require (
 	github.com/beevik/ntp v0.2.0
 	github.com/cheggaaa/pb v1.0.28
 	github.com/coredns/coredns v1.4.0
-	github.com/coreos/bbolt v1.3.3 // indirect
-	github.com/coreos/etcd v3.3.12+incompatible
+	github.com/coreos/etcd v3.3.18+incompatible
 	github.com/coreos/go-semver v0.3.0 // indirect
 	github.com/coreos/go-systemd v0.0.0-20190321100706-95778dfbb74e // indirect
 	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
@@ -40,15 +39,13 @@ require (
 	github.com/gorilla/handlers v1.4.0
 	github.com/gorilla/mux v1.7.0
 	github.com/gorilla/rpc v1.2.0
-	github.com/gorilla/websocket v1.4.1 // indirect
-	github.com/grpc-ecosystem/go-grpc-middleware v1.0.1-0.20190118093823-f849b5445de4 // indirect
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.9.0 // indirect
 	github.com/hashicorp/go-hclog v0.9.2 // indirect
 	github.com/hashicorp/raft v1.1.1-0.20190703171940-f639636d18e0 // indirect
 	github.com/hashicorp/vault/api v1.0.4
 	github.com/inconshreveable/go-update v0.0.0-20160112193335-8152e7eb6ccf
-	github.com/json-iterator/go v1.1.7
+	github.com/json-iterator/go v1.1.9
 	github.com/klauspost/compress v1.9.7
 	github.com/klauspost/cpuid v1.2.2 // indirect
 	github.com/klauspost/pgzip v1.2.1
@@ -72,7 +69,6 @@ require (
 	github.com/minio/sio v0.2.0
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
-	github.com/modern-go/reflect2 v1.0.1 // indirect
 	github.com/nats-io/gnatsd v1.4.1 // indirect
 	github.com/nats-io/go-nats v1.7.2 // indirect
 	github.com/nats-io/go-nats-streaming v0.4.4 // indirect
@@ -96,26 +92,20 @@ require (
 	github.com/sirupsen/logrus v1.4.2
 	github.com/skyrings/skyring-common v0.0.0-20160929130248-d1c0bb1cbd5e
 	github.com/smartystreets/assertions v0.0.0-20190401211740-f487f9de1cd3 // indirect
-	github.com/soheilhy/cmux v0.1.4 // indirect
 	github.com/streadway/amqp v0.0.0-20190404075320-75d898a42a94
 	github.com/threefoldtech/0-stor v0.0.0-00010101000000-000000000000
-	github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5 // indirect
 	github.com/ugorji/go v1.1.5-pre // indirect
 	github.com/valyala/tcplisten v0.0.0-20161114210144-ceec8f93295a
 	github.com/vmihailenco/msgpack v4.0.4+incompatible
 	github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2 // indirect
-	go.etcd.io/bbolt v1.3.3 // indirect
-	go.uber.org/atomic v1.3.2
-	go.uber.org/multierr v1.1.0 // indirect
-	go.uber.org/zap v1.10.0 // indirect
+	go.uber.org/atomic v1.4.0
 	golang.org/x/crypto v0.0.0-20191117063200-497ca9f6d64f
 	golang.org/x/net v0.0.0-20190923162816-aa69164e4478 // indirect
 	golang.org/x/oauth2 v0.0.0-20190402181905-9f3314589c9a // indirect
-	golang.org/x/sys v0.0.0-20190922100055-0a153f010e69
+	golang.org/x/sys v0.0.0-20200202164722-d101bd2416d5
 	golang.org/x/text v0.3.2 // indirect
 	google.golang.org/api v0.5.0
 	google.golang.org/appengine v1.6.0 // indirect
-	google.golang.org/genproto v0.0.0-20190513181449-d00d292a067c // indirect
 	gopkg.in/cheggaaa/pb.v1 v1.0.28 // indirect
 	gopkg.in/ini.v1 v1.48.0 // indirect
 	gopkg.in/ldap.v3 v3.0.3
@@ -123,4 +113,4 @@ require (
 	gopkg.in/yaml.v2 v2.2.4
 )
 
-replace github.com/threefoldtech/0-stor => github.com/threefoldtech/0-stor v0.0.0-20200130140401-502e993b4363
+replace github.com/threefoldtech/0-stor => github.com/threefoldtech/0-stor v0.0.0-20200206082834-ebe8b3f547d6
