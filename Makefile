@@ -83,7 +83,18 @@ verify-healing:
 # Builds minio locally.
 build: checks
 	@echo "Building minio binary to './minio'"
-	@GO111MODULE=on CGO_ENABLED=0 go build -tags kqueue --ldflags $(BUILD_LDFLAGS) -o $(PWD)/minio 1>/dev/null
+	@GO111MODULE=on CGO_ENABLED=0 go build -tags kqueue -ldflags $(BUILD_LDFLAGS) -o $(PWD)/minio 1>/dev/null
+
+entrypoint:
+	@echo "Building entry binary to './entrypoint'"
+	@cd entry && GO111MODULE=on CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static"' -o $(PWD)/entrypoint 1>/dev/null
+
+flist: build entrypoint
+	@echo "building flist tar"
+	@mkdir -p flist/bin
+	@mkdir -p flist/tmp
+	@cp minio entrypoint flist/bin
+	@tar -czf flist.tar.gz -C flist .
 
 docker: build
 	@docker build -t $(TAG) . -f Dockerfile.dev
@@ -101,3 +112,5 @@ clean:
 	@rm -rvf minio
 	@rm -rvf build
 	@rm -rvf release
+
+.PHONY: entrypoint

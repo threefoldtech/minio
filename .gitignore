@@ -24,3 +24,6 @@ stage/
 config.json
 healthcheck
 .idea
+entrypoint
+flist/
+flist.tar.gz
