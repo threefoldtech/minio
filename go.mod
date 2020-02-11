@@ -93,7 +93,7 @@ require (
 	github.com/skyrings/skyring-common v0.0.0-20160929130248-d1c0bb1cbd5e
 	github.com/smartystreets/assertions v0.0.0-20190401211740-f487f9de1cd3 // indirect
 	github.com/streadway/amqp v0.0.0-20190404075320-75d898a42a94
-	github.com/threefoldtech/0-stor v0.0.0-00010101000000-000000000000
+	github.com/threefoldtech/0-stor v0.0.0-20200211083237-3323d031911e
 	github.com/ugorji/go v1.1.5-pre // indirect
 	github.com/valyala/tcplisten v0.0.0-20161114210144-ceec8f93295a
 	github.com/vmihailenco/msgpack v4.0.4+incompatible
@@ -112,5 +112,3 @@ require (
 	gopkg.in/olivere/elastic.v5 v5.0.80
 	gopkg.in/yaml.v2 v2.2.4
 )
-
-replace github.com/threefoldtech/0-stor => github.com/threefoldtech/0-stor v0.0.0-20200206082834-ebe8b3f547d6
