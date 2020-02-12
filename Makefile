@@ -93,8 +93,9 @@ flist: build entrypoint
 	@echo "building flist tar"
 	@mkdir -p flist/bin
 	@mkdir -p flist/tmp
+	@mkdir -p flist/data
 	@cp minio entrypoint flist/bin
-	@tar -czf flist.tar.gz -C flist .
+	@tar -czf minio.tar.gz -C flist .
 
 docker: build
 	@docker build -t $(TAG) . -f Dockerfile.dev
