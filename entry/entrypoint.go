@@ -70,6 +70,10 @@ func shards(s string) ([]datastor.ShardConfig, error) {
 
 // this entrypoint will build min-io config from ENV vars for zerostor
 func main() {
+	for _, e := range os.Environ() {
+		fmt.Println(e)
+	}
+
 	shards, err := shards(env(EnvShards, ""))
 	if err != nil {
 		log.Fatalf("failed to parse shards: %s", err)
@@ -125,7 +129,7 @@ func main() {
 	os.Setenv("MINIO_CONFIG_DIR", "/data")
 	os.Setenv("MINIO_UPDATE", "off")
 
-	if err := syscall.Exec("/bin/minio", []string{"gateway", "zerostor"}, os.Environ()); err != nil {
+	if err := syscall.Exec("/bin/minio", []string{"minio", "gateway", "zerostor"}, os.Environ()); err != nil {
 		log.Fatalf("failed to exec minio: %s", err)
 	}
 }
