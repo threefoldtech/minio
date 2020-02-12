@@ -26,4 +26,4 @@ healthcheck
 .idea
 entrypoint
 flist/
-flist.tar.gz
+minio.tar.gz
