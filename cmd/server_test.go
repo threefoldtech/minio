@@ -58,7 +58,7 @@ type check struct {
 // Assert - checks if gotValue is same as expectedValue, if not fails the test.
 func (c *check) Assert(gotValue interface{}, expectedValue interface{}) {
 	if !reflect.DeepEqual(gotValue, expectedValue) {
-		c.Fatalf("Test %s:%s expected %v, got %v", getSource(), c.testType, expectedValue, gotValue)
+		c.Fatalf("Test %s:%s expected %v, got %v", getSource(2), c.testType, expectedValue, gotValue)
 	}
 }
 
@@ -599,6 +599,7 @@ func (s *TestSuiteCommon) TestDeleteMultipleObjects(c *check) {
 	c.Assert(err, nil)
 	err = xml.Unmarshal(delRespBytes, &deleteResp)
 	c.Assert(err, nil)
+	c.Assert(len(deleteResp.DeletedObjects), len(delObjReq.Objects))
 	for i := 0; i < 10; i++ {
 		c.Assert(deleteResp.DeletedObjects[i], delObjReq.Objects[i])
 	}
@@ -1803,16 +1804,6 @@ func (s *TestSuiteCommon) TestPutBucketErrors(c *check) {
 	c.Assert(err, nil)
 	verifyError(c, response, "BucketAlreadyOwnedByYou", "Your previous request to create the named bucket succeeded and you already own it.",
 		http.StatusConflict)
-
-	// request for ACL.
-	// Since MinIO server doesn't support ACL's the request is expected to fail with  "NotImplemented" error message.
-	request, err = newTestSignedRequest("PUT", s.endPoint+SlashSeparator+bucketName+"?acl",
-		0, nil, s.accessKey, s.secretKey, s.signer)
-	c.Assert(err, nil)
-
-	response, err = client.Do(request)
-	c.Assert(err, nil)
-	verifyError(c, response, "NotImplemented", "A header you provided implies functionality that is not implemented", http.StatusNotImplemented)
 }
 
 func (s *TestSuiteCommon) TestGetObjectLarge10MiB(c *check) {

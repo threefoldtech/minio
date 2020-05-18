@@ -18,6 +18,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/minio/minio/cmd/logger"
@@ -170,19 +171,15 @@ func disksWithAllParts(ctx context.Context, onlineDisks []StorageAPI, partsMetad
 
 		switch scanMode {
 		case madmin.HealDeepScan:
-			erasureInfo := partsMetadata[i].Erasure
-			erasure, err := NewErasure(ctx, erasureInfo.DataBlocks, erasureInfo.ParityBlocks, erasureInfo.BlockSize)
-			if err != nil {
-				dataErrs[i] = err
-				continue
-			}
+			erasure := partsMetadata[i].Erasure
 
 			// disk has a valid xl.json but may not have all the
 			// parts. This is considered an outdated disk, since
 			// it needs healing too.
 			for _, part := range partsMetadata[i].Parts {
-				checksumInfo := erasureInfo.GetChecksumInfo(part.Name)
-				err = onlineDisk.VerifyFile(bucket, pathJoin(object, part.Name), erasure.ShardFileSize(part.Size), checksumInfo.Algorithm, checksumInfo.Hash, erasure.ShardSize())
+				checksumInfo := erasure.GetChecksumInfo(part.Number)
+				partPath := pathJoin(object, fmt.Sprintf("part.%d", part.Number))
+				err := onlineDisk.VerifyFile(bucket, partPath, erasure.ShardFileSize(part.Size), checksumInfo.Algorithm, checksumInfo.Hash, erasure.ShardSize())
 				if err != nil {
 					if !IsErr(err, []error{
 						errFileNotFound,
@@ -198,7 +195,8 @@ func disksWithAllParts(ctx context.Context, onlineDisks []StorageAPI, partsMetad
 			}
 		case madmin.HealNormalScan:
 			for _, part := range partsMetadata[i].Parts {
-				_, err := onlineDisk.StatFile(bucket, pathJoin(object, part.Name))
+				partPath := pathJoin(object, fmt.Sprintf("part.%d", part.Number))
+				_, err := onlineDisk.StatFile(bucket, partPath)
 				if err != nil {
 					dataErrs[i] = err
 					break

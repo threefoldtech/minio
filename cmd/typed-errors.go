@@ -50,9 +50,6 @@ var errRPCAPIVersionUnsupported = errors.New("Unsupported rpc API version")
 // errServerTimeMismatch - server times are too far apart.
 var errServerTimeMismatch = errors.New("Server times are too far apart")
 
-// errOperationTimedOut
-var errOperationTimedOut = errors.New("Operation timed out")
-
 // errInvalidBucketName - bucket name is reserved for MinIO, usually
 // returned for 'minio', '.minio.sys', buckets with capital letters.
 var errInvalidBucketName = errors.New("The specified bucket is not valid")
@@ -95,3 +92,6 @@ var errIAMActionNotAllowed = errors.New("Specified IAM action is not allowed und
 
 // error returned when access is denied.
 var errAccessDenied = errors.New("Do not have enough permissions to access this resource")
+
+// error returned when object is locked.
+var errLockedObject = errors.New("Object is WORM protected and cannot be overwritten or deleted")

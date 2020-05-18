@@ -121,6 +121,7 @@ drives*  (csv)       comma separated mountpoints e.g. "/optane1,/optane2"
 expiry   (number)    cache expiry duration in days e.g. "90"
 quota    (number)    limit cache drive usage in percentage e.g. "90"
 exclude  (csv)       comma separated wildcard exclusion patterns e.g. "bucket/*.tmp,*.exe"
+after    (number)    minimum number of access before caching an object
 comment  (sentence)  optionally add a comment to this setting
 ```
 
@@ -134,6 +135,7 @@ MINIO_CACHE_DRIVES*  (csv)       comma separated mountpoints e.g. "/optane1,/opt
 MINIO_CACHE_EXPIRY   (number)    cache expiry duration in days e.g. "90"
 MINIO_CACHE_QUOTA    (number)    limit cache drive usage in percentage e.g. "90"
 MINIO_CACHE_EXCLUDE  (csv)       comma separated wildcard exclusion patterns e.g. "bucket/*.tmp,*.exe"
+MINIO_CACHE_AFTER    (number)    minimum number of access before caching an object
 MINIO_CACHE_COMMENT  (sentence)  optionally add a comment to this setting
 ```
 
@@ -167,6 +169,27 @@ MINIO_ETCD_COREDNS_PATH     (path)      shared bucket DNS records, default is "/
 MINIO_ETCD_CLIENT_CERT      (path)      client cert for mTLS authentication
 MINIO_ETCD_CLIENT_CERT_KEY  (path)      client cert key for mTLS authentication
 MINIO_ETCD_COMMENT          (sentence)  optionally add a comment to this setting
+```
+
+### API
+
+By default, there is no limitation on the number of concurrents requests that a server/cluster processes at the same time. However, it is possible to impose such limitation using the API subsystem. Read more about throttling limitation in MinIO server [here](https://github.com/minio/minio/blob/master/docs/throttle/README.md).
+
+```
+KEY:
+api  manage global HTTP API call specific features, such as throttling, authentication types, etc.
+
+ARGS:
+requests_max       (number)     set the maximum number of concurrent requests
+requests_deadline  (duration)   set the deadline for API requests waiting to be processed
+```
+
+or environment variables
+
+```
+MINIO_API_REQUESTS_MAX        (number)     set the maximum number of concurrent requests
+MINIO_API_REQUESTS_DEADLINE   (duration)   set the deadline for API requests waiting to be processed
+
 ```
 
 #### Notifications
@@ -233,13 +256,17 @@ This behavior is consistent across all keys, each key self documents itself with
 
 ## Environment only settings (not in config)
 
-#### Worm
-Enable this to turn on Write-Once-Read-Many. By default it is set to `off`. Set ``MINIO_WORM=on`` environment variable to enable WORM mode.
+#### Usage crawler
+Data usage crawler is enabled by default, following ENVs allow for more staggered delay in terms of usage calculation.
 
-Example:
+The crawler adapts to the system speed and completely pauses when the system is under load. It is possible to adjust the speed of the crawler and thereby the latency of updates being reflected. The delays between each operation of the crawl can be adjusted by the `MINIO_DISK_USAGE_CRAWL_DELAY` environment variable. By default the value is `10`. This means the crawler will sleep *10x* the time each operation takes.
+
+This will in most setups make the crawler slow enough to not impact overall system performance. Setting `MINIO_DISK_USAGE_CRAWL_DELAY` to a *lower* value will make the crawler faster and setting it to 0 will make the crawler run at full speed (not recommended). Setting it to a higher value will make the crawler slower, further consume less resources.
+
+Example: Following setting will decrease the crawler speed by a factor of 3, reducing the system resource use, but increasing the latency of updates being reflected.
 
 ```sh
-export MINIO_WORM=on
+export MINIO_DISK_USAGE_CRAWL_DELAY=30
 minio server /data
 ```
 

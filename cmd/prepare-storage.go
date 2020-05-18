@@ -17,7 +17,6 @@
 package cmd
 
 import (
-	"context"
 	"crypto/tls"
 	"fmt"
 	"net/http"
@@ -27,6 +26,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	xhttp "github.com/minio/minio/cmd/http"
 	"github.com/minio/minio/cmd/logger"
 	"github.com/minio/minio/cmd/rest"
@@ -39,7 +39,7 @@ var printEndpointError = func() func(Endpoint, error) {
 
 	return func(endpoint Endpoint, err error) {
 		reqInfo := (&logger.ReqInfo{}).AppendTags("endpoint", endpoint.String())
-		ctx := logger.SetReqInfo(context.Background(), reqInfo)
+		ctx := logger.SetReqInfo(GlobalContext, reqInfo)
 		mutex.Lock()
 		defer mutex.Unlock()
 		m, ok := printOnce[endpoint]
@@ -150,26 +150,6 @@ func formatXLCleanupTmpLocalEndpoints(endpoints Endpoints) error {
 	return nil
 }
 
-// validate reference format against list of XL formats.
-func validateXLFormats(format *formatXLV3, formats []*formatXLV3, endpoints Endpoints, setCount, drivesPerSet int) error {
-	for i := range formats {
-		if formats[i] == nil {
-			continue
-		}
-		if err := formatXLV3Check(format, formats[i]); err != nil {
-			return fmt.Errorf("%s format error: %w", endpoints[i], err)
-		}
-	}
-	if len(format.XL.Sets) != setCount {
-		return fmt.Errorf("Current backend format is inconsistent with input args (%s), Expected set count %d, got %d", endpoints, len(format.XL.Sets), setCount)
-	}
-	if len(format.XL.Sets[0]) != drivesPerSet {
-		return fmt.Errorf("Current backend format is inconsistent with input args (%s), Expected drive count per set %d, got %d", endpoints, len(format.XL.Sets[0]), drivesPerSet)
-	}
-
-	return nil
-}
-
 // Following error message is added to fix a regression in release
 // RELEASE.2018-03-16T22-52-12Z after migrating v1 to v2 to v3. This
 // migration failed to capture '.This' field properly which indicates
@@ -202,12 +182,12 @@ func IsServerResolvable(endpoint Endpoint) error {
 	}
 
 	httpClient := &http.Client{
-		Transport: newCustomHTTPTransport(tlsConfig, rest.DefaultRESTTimeout, rest.DefaultRESTTimeout)(),
+		Transport: newCustomHTTPTransport(tlsConfig, rest.DefaultRESTTimeout)(),
 	}
+	defer httpClient.CloseIdleConnections()
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		httpClient.CloseIdleConnections()
 		return err
 	}
 	defer xhttp.DrainBody(resp.Body)
@@ -221,15 +201,20 @@ func IsServerResolvable(endpoint Endpoint) error {
 // connect to list of endpoints and load all XL disk formats, validate the formats are correct
 // and are in quorum, if no formats are found attempt to initialize all of them for the first
 // time. additionally make sure to close all the disks used in this attempt.
-func connectLoadInitFormats(retryCount int, firstDisk bool, endpoints Endpoints, zoneCount, setCount, drivesPerSet int, deploymentID string) (*formatXLV3, error) {
+func connectLoadInitFormats(retryCount int, firstDisk bool, endpoints Endpoints, zoneCount, setCount, drivesPerSet int, deploymentID string) (storageDisks []StorageAPI, format *formatXLV3, err error) {
 	// Initialize all storage disks
 	storageDisks, errs := initStorageDisksWithErrors(endpoints)
-	defer closeStorageDisks(storageDisks)
+
+	defer func(storageDisks []StorageAPI) {
+		if err != nil {
+			closeStorageDisks(storageDisks)
+		}
+	}(storageDisks)
 
 	for i, err := range errs {
 		if err != nil {
 			if err != errDiskNotFound {
-				return nil, fmt.Errorf("Disk %s: %w", endpoints[i], err)
+				return nil, nil, fmt.Errorf("Disk %s: %w", endpoints[i], err)
 			}
 			if retryCount >= 5 {
 				logger.Info("Unable to connect to %s: %v\n", endpoints[i], IsServerResolvable(endpoints[i]))
@@ -238,11 +223,17 @@ func connectLoadInitFormats(retryCount int, firstDisk bool, endpoints Endpoints,
 	}
 
 	// Attempt to load all `format.json` from all disks.
-	formatConfigs, sErrs := loadFormatXLAll(storageDisks)
+	formatConfigs, sErrs := loadFormatXLAll(storageDisks, false)
 	// Check if we have
 	for i, sErr := range sErrs {
 		if _, ok := formatCriticalErrors[sErr]; ok {
-			return nil, fmt.Errorf("Disk %s: %w", endpoints[i], sErr)
+			return nil, nil, fmt.Errorf("Disk %s: %w", endpoints[i], sErr)
+		}
+		// not critical error but still print the error, nonetheless, which is perhaps unhandled
+		if sErr != errUnformattedDisk && sErr != errDiskNotFound && retryCount >= 5 {
+			if sErr != nil {
+				logger.Info("Unable to read 'format.json' from %s: %v\n", endpoints[i], sErr)
+			}
 		}
 	}
 
@@ -251,36 +242,37 @@ func connectLoadInitFormats(retryCount int, firstDisk bool, endpoints Endpoints,
 	// most part unless one of the formats is not consistent
 	// with expected XL format. For example if a user is
 	// trying to pool FS backend into an XL set.
-	if err := checkFormatXLValues(formatConfigs); err != nil {
-		return nil, err
+	if err = checkFormatXLValues(formatConfigs, drivesPerSet); err != nil {
+		return nil, nil, err
 	}
 
 	// All disks report unformatted we should initialized everyone.
 	if shouldInitXLDisks(sErrs) && firstDisk {
-		logger.Info("Formatting %v zone, %v set(s), %v drives per set.",
-			zoneCount, setCount, drivesPerSet)
+		logger.Info("Formatting %s zone, %v set(s), %v drives per set.",
+			humanize.Ordinal(zoneCount), setCount, drivesPerSet)
 
 		// Initialize erasure code format on disks
-		format, err := initFormatXL(context.Background(), storageDisks, setCount, drivesPerSet, deploymentID)
+		format, err = initFormatXL(GlobalContext, storageDisks, setCount, drivesPerSet, deploymentID)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
+
 		// Assign globalDeploymentID on first run for the
 		// minio server managing the first disk
 		globalDeploymentID = format.ID
-		return format, nil
+		return storageDisks, format, nil
 	}
 
 	// Return error when quorum unformatted disks - indicating we are
 	// waiting for first server to be online.
 	if quorumUnformattedDisks(sErrs) && !firstDisk {
-		return nil, errNotFirstDisk
+		return nil, nil, errNotFirstDisk
 	}
 
 	// Return error when quorum unformatted disks but waiting for rest
 	// of the servers to be online.
 	if quorumUnformattedDisks(sErrs) && firstDisk {
-		return nil, errFirstDiskWait
+		return nil, nil, errFirstDiskWait
 	}
 
 	// Following function is added to fix a regressions which was introduced
@@ -288,66 +280,55 @@ func connectLoadInitFormats(retryCount int, firstDisk bool, endpoints Endpoints,
 	// This migration failed to capture '.This' field properly which indicates
 	// the disk UUID association. Below function is called to handle and fix
 	// this regression, for more info refer https://github.com/minio/minio/issues/5667
-	if err := fixFormatXLV3(storageDisks, endpoints, formatConfigs); err != nil {
-		return nil, err
+	if err = fixFormatXLV3(storageDisks, endpoints, formatConfigs); err != nil {
+		return nil, nil, err
 	}
 
 	// If any of the .This field is still empty, we return error.
 	if formatXLV3ThisEmpty(formatConfigs) {
-		return nil, errXLV3ThisEmpty
+		return nil, nil, errXLV3ThisEmpty
 	}
 
-	format, err := getFormatXLInQuorum(formatConfigs)
+	format, err = getFormatXLInQuorum(formatConfigs)
 	if err != nil {
-		return nil, err
-	}
-
-	// Validate all format configs with reference format.
-	if err = validateXLFormats(format, formatConfigs, endpoints, setCount, drivesPerSet); err != nil {
-		return nil, err
-	}
-
-	// Get the deploymentID if set.
-	format.ID, err = formatXLGetDeploymentID(format, formatConfigs)
-	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if format.ID == "" {
 		// Not a first disk, wait until first disk fixes deploymentID
 		if !firstDisk {
-			return nil, errNotFirstDisk
+			return nil, nil, errNotFirstDisk
 		}
 		if err = formatXLFixDeploymentID(endpoints, storageDisks, format); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 
 	globalDeploymentID = format.ID
 
 	if err = formatXLFixLocalDeploymentID(endpoints, storageDisks, format); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// The will always recreate some directories inside .minio.sys of
 	// the local disk such as tmp, multipart and background-ops
 	initXLMetaVolumesInLocalDisks(storageDisks, formatConfigs)
 
-	return format, nil
+	return storageDisks, format, nil
 }
 
 // Format disks before initialization of object layer.
-func waitForFormatXL(firstDisk bool, endpoints Endpoints, zoneCount, setCount, drivesPerSet int, deploymentID string) (format *formatXLV3, err error) {
+func waitForFormatXL(firstDisk bool, endpoints Endpoints, zoneCount, setCount, drivesPerSet int, deploymentID string) ([]StorageAPI, *formatXLV3, error) {
 	if len(endpoints) == 0 || setCount == 0 || drivesPerSet == 0 {
-		return nil, errInvalidArgument
+		return nil, nil, errInvalidArgument
 	}
 
-	if err = formatXLMigrateLocalEndpoints(endpoints); err != nil {
-		return nil, err
+	if err := formatXLMigrateLocalEndpoints(endpoints); err != nil {
+		return nil, nil, err
 	}
 
-	if err = formatXLCleanupTmpLocalEndpoints(endpoints); err != nil {
-		return nil, err
+	if err := formatXLCleanupTmpLocalEndpoints(endpoints); err != nil {
+		return nil, nil, err
 	}
 
 	// prepare getElapsedTime() to calculate elapsed time since we started trying formatting disks.
@@ -364,7 +345,7 @@ func waitForFormatXL(firstDisk bool, endpoints Endpoints, zoneCount, setCount, d
 	for {
 		select {
 		case <-ticker.C:
-			format, err := connectLoadInitFormats(tries, firstDisk, endpoints, zoneCount, setCount, drivesPerSet, deploymentID)
+			storageDisks, format, err := connectLoadInitFormats(tries, firstDisk, endpoints, zoneCount, setCount, drivesPerSet, deploymentID)
 			if err != nil {
 				tries++
 				switch err {
@@ -385,12 +366,12 @@ func waitForFormatXL(firstDisk bool, endpoints Endpoints, zoneCount, setCount, d
 					continue
 				default:
 					// For all other unhandled errors we exit and fail.
-					return nil, err
+					return nil, nil, err
 				}
 			}
-			return format, nil
+			return storageDisks, format, nil
 		case <-globalOSSignalCh:
-			return nil, fmt.Errorf("Initializing data volumes gracefully stopped")
+			return nil, nil, fmt.Errorf("Initializing data volumes gracefully stopped")
 		}
 	}
 }

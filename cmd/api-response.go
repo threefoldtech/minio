@@ -429,7 +429,12 @@ func generateListVersionsResponse(bucket, prefix, marker, delimiter, encodingTyp
 			content.ETag = "\"" + object.ETag + "\""
 		}
 		content.Size = object.Size
-		content.StorageClass = object.StorageClass
+		if object.StorageClass != "" {
+			content.StorageClass = object.StorageClass
+		} else {
+			content.StorageClass = globalMinioDefaultStorageClass
+		}
+
 		content.Owner = owner
 		content.VersionID = "null"
 		content.IsLatest = true
@@ -475,7 +480,11 @@ func generateListObjectsV1Response(bucket, prefix, marker, delimiter, encodingTy
 			content.ETag = "\"" + object.ETag + "\""
 		}
 		content.Size = object.Size
-		content.StorageClass = object.StorageClass
+		if object.StorageClass != "" {
+			content.StorageClass = object.StorageClass
+		} else {
+			content.StorageClass = globalMinioDefaultStorageClass
+		}
 		content.Owner = owner
 		contents = append(contents, content)
 	}
@@ -521,7 +530,11 @@ func generateListObjectsV2Response(bucket, prefix, token, nextToken, startAfter,
 			content.ETag = "\"" + object.ETag + "\""
 		}
 		content.Size = object.Size
-		content.StorageClass = object.StorageClass
+		if object.StorageClass != "" {
+			content.StorageClass = object.StorageClass
+		} else {
+			content.StorageClass = globalMinioDefaultStorageClass
+		}
 		content.Owner = owner
 		if metadata {
 			content.UserMetadata = make(StringMap)
@@ -588,7 +601,8 @@ func generateCompleteMultpartUploadResponse(bucket, key, location, etag string) 
 		Location: location,
 		Bucket:   bucket,
 		Key:      key,
-		ETag:     etag,
+		// AWS S3 quotes the ETag in XML, make sure we are compatible here.
+		ETag: "\"" + etag + "\"",
 	}
 }
 
@@ -751,17 +765,6 @@ func writeErrorResponseJSON(ctx context.Context, w http.ResponseWriter, err APIE
 	errorResponse := getAPIErrorResponse(ctx, err, reqURL.Path, w.Header().Get(xhttp.AmzRequestID), globalDeploymentID)
 	encodedErrorResponse := encodeResponseJSON(errorResponse)
 	writeResponse(w, err.HTTPStatusCode, encodedErrorResponse, mimeJSON)
-}
-
-// writeVersionMismatchResponse - writes custom error responses for version mismatches.
-func writeVersionMismatchResponse(ctx context.Context, w http.ResponseWriter, err APIError, reqURL *url.URL, isJSON bool) {
-	if isJSON {
-		// Generate error response.
-		errorResponse := getAPIErrorResponse(ctx, err, reqURL.String(), w.Header().Get(xhttp.AmzRequestID), globalDeploymentID)
-		writeResponse(w, err.HTTPStatusCode, encodeResponseJSON(errorResponse), mimeJSON)
-	} else {
-		writeResponse(w, err.HTTPStatusCode, []byte(err.Description), mimeNone)
-	}
 }
 
 // writeCustomErrorResponseJSON - similar to writeErrorResponseJSON,

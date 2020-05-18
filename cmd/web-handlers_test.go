@@ -36,6 +36,7 @@ import (
 	jwtgo "github.com/dgrijalva/jwt-go"
 	humanize "github.com/dustin/go-humanize"
 	miniogopolicy "github.com/minio/minio-go/v6/pkg/policy"
+	xjwt "github.com/minio/minio/cmd/jwt"
 	"github.com/minio/minio/pkg/auth"
 	"github.com/minio/minio/pkg/bucket/policy"
 	"github.com/minio/minio/pkg/bucket/policy/condition"
@@ -241,6 +242,7 @@ func testServerInfoWebHandler(obj ObjectLayer, instanceType string, t TestErrHan
 	if serverInfoReply.MinioVersion != Version {
 		t.Fatalf("Cannot get minio version from server info handler")
 	}
+	serverInfoReply.MinioGlobalInfo["domains"] = []string(nil)
 	globalInfo := getGlobalInfo()
 	if !reflect.DeepEqual(serverInfoReply.MinioGlobalInfo, globalInfo) {
 		t.Fatalf("Global info did not match got %#v, expected %#v", serverInfoReply.MinioGlobalInfo, globalInfo)
@@ -318,7 +320,7 @@ func testDeleteBucketWebHandler(obj ObjectLayer, instanceType string, t TestErrH
 	bucketName := getRandomBucketName()
 	var opts ObjectOptions
 
-	err = obj.MakeBucketWithLocation(context.Background(), bucketName, "")
+	err = obj.MakeBucketWithLocation(context.Background(), bucketName, "", false)
 	if err != nil {
 		t.Fatalf("failed to create bucket: %s (%s)", err.Error(), instanceType)
 	}
@@ -396,7 +398,7 @@ func testDeleteBucketWebHandler(obj ObjectLayer, instanceType string, t TestErrH
 			continue
 		}
 
-		err = obj.MakeBucketWithLocation(context.Background(), bucketName, "")
+		err = obj.MakeBucketWithLocation(context.Background(), bucketName, "", false)
 		if err != nil {
 			// failed to create new bucket, abort.
 			t.Fatalf("failed to create new bucket (%s): %s", instanceType, err.Error())
@@ -424,7 +426,7 @@ func testListBucketsWebHandler(obj ObjectLayer, instanceType string, t TestErrHa
 
 	bucketName := getRandomBucketName()
 	// Create bucket.
-	err = obj.MakeBucketWithLocation(context.Background(), bucketName, "")
+	err = obj.MakeBucketWithLocation(context.Background(), bucketName, "", false)
 	if err != nil {
 		// failed to create newbucket, abort.
 		t.Fatalf("%s : %s", instanceType, err)
@@ -448,7 +450,7 @@ func testListBucketsWebHandler(obj ObjectLayer, instanceType string, t TestErrHa
 		t.Fatalf("Cannot find the bucket already created by MakeBucket")
 	}
 	if listBucketsReply.Buckets[0].Name != bucketName {
-		t.Fatalf("Found another bucket other than already created by MakeBucket")
+		t.Fatalf("Found another bucket %q other than already created by MakeBucket", listBucketsReply.Buckets[0].Name)
 	}
 }
 
@@ -475,7 +477,7 @@ func testListObjectsWebHandler(obj ObjectLayer, instanceType string, t TestErrHa
 	objectSize := 1 * humanize.KiByte
 
 	// Create bucket.
-	err = obj.MakeBucketWithLocation(context.Background(), bucketName, "")
+	err = obj.MakeBucketWithLocation(context.Background(), bucketName, "", false)
 	if err != nil {
 		// failed to create newbucket, abort.
 		t.Fatalf("%s : %s", instanceType, err)
@@ -546,7 +548,7 @@ func testListObjectsWebHandler(obj ObjectLayer, instanceType string, t TestErrHa
 	if err = obj.SetBucketPolicy(context.Background(), bucketName, bucketPolicy); err != nil {
 		t.Fatalf("unexpected error. %v", err)
 	}
-	globalPolicySys.Set(bucketName, *bucketPolicy)
+	globalPolicySys.Set(bucketName, bucketPolicy)
 	defer globalPolicySys.Remove(bucketName)
 
 	// Unauthenticated ListObjects with READ bucket policy should succeed.
@@ -579,7 +581,7 @@ func testRemoveObjectWebHandler(obj ObjectLayer, instanceType string, t TestErrH
 	objectSize := 1 * humanize.KiByte
 
 	// Create bucket.
-	err = obj.MakeBucketWithLocation(context.Background(), bucketName, "")
+	err = obj.MakeBucketWithLocation(context.Background(), bucketName, "", false)
 	if err != nil {
 		// failed to create newbucket, abort.
 		t.Fatalf("%s : %s", instanceType, err)
@@ -753,12 +755,10 @@ func TestWebCreateURLToken(t *testing.T) {
 }
 
 func getTokenString(accessKey, secretKey string) (string, error) {
-	utcNow := UTCNow()
-	mapClaims := jwtgo.MapClaims{}
-	mapClaims["exp"] = utcNow.Add(defaultJWTExpiry).Unix()
-	mapClaims["sub"] = accessKey
-	mapClaims["accessKey"] = accessKey
-	token := jwtgo.NewWithClaims(jwtgo.SigningMethodHS512, mapClaims)
+	claims := xjwt.NewMapClaims()
+	claims.SetExpiry(UTCNow().Add(defaultJWTExpiry))
+	claims.SetAccessKey(accessKey)
+	token := jwtgo.NewWithClaims(jwtgo.SigningMethodHS512, claims)
 	return token.SignedString([]byte(secretKey))
 }
 
@@ -858,7 +858,7 @@ func testUploadWebHandler(obj ObjectLayer, instanceType string, t TestErrHandler
 		return rec.Code
 	}
 	// Create bucket.
-	err = obj.MakeBucketWithLocation(context.Background(), bucketName, "")
+	err = obj.MakeBucketWithLocation(context.Background(), bucketName, "", false)
 	if err != nil {
 		// failed to create newbucket, abort.
 		t.Fatalf("%s : %s", instanceType, err)
@@ -906,7 +906,7 @@ func testUploadWebHandler(obj ObjectLayer, instanceType string, t TestErrHandler
 	if err := obj.SetBucketPolicy(context.Background(), bucketName, bucketPolicy); err != nil {
 		t.Fatalf("unexpected error. %v", err)
 	}
-	globalPolicySys.Set(bucketName, *bucketPolicy)
+	globalPolicySys.Set(bucketName, bucketPolicy)
 	defer globalPolicySys.Remove(bucketName)
 
 	// Unauthenticated upload with WRITE policy should succeed.
@@ -955,7 +955,7 @@ func testDownloadWebHandler(obj ObjectLayer, instanceType string, t TestErrHandl
 	}
 
 	// Create bucket.
-	err = obj.MakeBucketWithLocation(context.Background(), bucketName, "")
+	err = obj.MakeBucketWithLocation(context.Background(), bucketName, "", false)
 	if err != nil {
 		// failed to create newbucket, abort.
 		t.Fatalf("%s : %s", instanceType, err)
@@ -1002,7 +1002,7 @@ func testDownloadWebHandler(obj ObjectLayer, instanceType string, t TestErrHandl
 	}
 
 	if !bytes.Equal(bodyContent, bytes.NewBufferString("Authentication failed, check your access credentials").Bytes()) {
-		t.Fatalf("Expected authentication error message, got %v", bodyContent)
+		t.Fatalf("Expected authentication error message, got %s", string(bodyContent))
 	}
 
 	// Unauthenticated download should fail.
@@ -1025,7 +1025,7 @@ func testDownloadWebHandler(obj ObjectLayer, instanceType string, t TestErrHandl
 	if err := obj.SetBucketPolicy(context.Background(), bucketName, bucketPolicy); err != nil {
 		t.Fatalf("unexpected error. %v", err)
 	}
-	globalPolicySys.Set(bucketName, *bucketPolicy)
+	globalPolicySys.Set(bucketName, bucketPolicy)
 	defer globalPolicySys.Remove(bucketName)
 
 	// Unauthenticated download with READ policy should succeed.
@@ -1060,7 +1060,7 @@ func testWebHandlerDownloadZip(obj ObjectLayer, instanceType string, t TestErrHa
 	fileThree := "cccccccccccccc"
 
 	// Create bucket.
-	err = obj.MakeBucketWithLocation(context.Background(), bucket, "")
+	err = obj.MakeBucketWithLocation(context.Background(), bucket, "", false)
 	if err != nil {
 		// failed to create newbucket, abort.
 		t.Fatalf("%s : %s", instanceType, err)
@@ -1147,7 +1147,7 @@ func testWebPresignedGetHandler(obj ObjectLayer, instanceType string, t TestErrH
 	objectSize := 1 * humanize.KiByte
 
 	// Create bucket.
-	err = obj.MakeBucketWithLocation(context.Background(), bucketName, "")
+	err = obj.MakeBucketWithLocation(context.Background(), bucketName, "", false)
 	if err != nil {
 		// failed to create newbucket, abort.
 		t.Fatalf("%s : %s", instanceType, err)
@@ -1248,7 +1248,7 @@ func testWebGetBucketPolicyHandler(obj ObjectLayer, instanceType string, t TestE
 	rec := httptest.NewRecorder()
 
 	bucketName := getRandomBucketName()
-	if err = obj.MakeBucketWithLocation(context.Background(), bucketName, ""); err != nil {
+	if err = obj.MakeBucketWithLocation(context.Background(), bucketName, "", false); err != nil {
 		t.Fatal("Unexpected error: ", err)
 	}
 
@@ -1323,7 +1323,7 @@ func testWebListAllBucketPoliciesHandler(obj ObjectLayer, instanceType string, t
 	rec := httptest.NewRecorder()
 
 	bucketName := getRandomBucketName()
-	if err = obj.MakeBucketWithLocation(context.Background(), bucketName, ""); err != nil {
+	if err = obj.MakeBucketWithLocation(context.Background(), bucketName, "", false); err != nil {
 		t.Fatal("Unexpected error: ", err)
 	}
 
@@ -1428,7 +1428,7 @@ func testWebSetBucketPolicyHandler(obj ObjectLayer, instanceType string, t TestE
 
 	// Create a bucket
 	bucketName := getRandomBucketName()
-	if err = obj.MakeBucketWithLocation(context.Background(), bucketName, ""); err != nil {
+	if err = obj.MakeBucketWithLocation(context.Background(), bucketName, "", false); err != nil {
 		t.Fatal("Unexpected error: ", err)
 	}
 
@@ -1476,8 +1476,11 @@ func testWebSetBucketPolicyHandler(obj ObjectLayer, instanceType string, t TestE
 
 // TestWebCheckAuthorization - Test Authorization for all web handlers
 func TestWebCheckAuthorization(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Prepare XL backend
-	obj, fsDirs, err := prepareXL16()
+	obj, fsDirs, err := prepareXL16(ctx)
 	if err != nil {
 		t.Fatalf("Initialization of object layer failed for XL setup: %s", err)
 	}
@@ -1565,8 +1568,11 @@ func TestWebCheckAuthorization(t *testing.T) {
 
 // TestWebObjectLayerFaultyDisks - Test Web RPC responses with faulty disks
 func TestWebObjectLayerFaultyDisks(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Prepare XL backend
-	obj, fsDirs, err := prepareXL16()
+	obj, fsDirs, err := prepareXL16(ctx)
 	if err != nil {
 		t.Fatalf("Initialization of object layer failed for XL setup: %s", err)
 	}
@@ -1581,7 +1587,7 @@ func TestWebObjectLayerFaultyDisks(t *testing.T) {
 	}
 
 	bucketName := "mybucket"
-	err = obj.MakeBucketWithLocation(context.Background(), bucketName, "")
+	err = obj.MakeBucketWithLocation(context.Background(), bucketName, "", false)
 	if err != nil {
 		t.Fatal("Cannot make bucket:", err)
 	}

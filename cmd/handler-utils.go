@@ -28,11 +28,11 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 
 	xhttp "github.com/minio/minio/cmd/http"
 	"github.com/minio/minio/cmd/logger"
 	"github.com/minio/minio/pkg/auth"
-	"github.com/minio/minio/pkg/bucket/object/tagging"
 	"github.com/minio/minio/pkg/handlers"
 	"github.com/minio/minio/pkg/madmin"
 )
@@ -50,7 +50,7 @@ func parseLocationConstraint(r *http.Request) (location string, s3Error APIError
 	locationConstraint := createBucketLocationConfiguration{}
 	err := xmlDecoder(r.Body, &locationConstraint, r.ContentLength)
 	if err != nil && r.ContentLength != 0 {
-		logger.LogIf(context.Background(), err)
+		logger.LogIf(GlobalContext, err)
 		// Treat all other failures as XML parsing errors.
 		return "", ErrMalformedXML
 	} // else for both err as nil or io.EOF
@@ -160,26 +160,6 @@ func extractMetadataFromMap(ctx context.Context, v map[string][]string, m map[st
 	return nil
 }
 
-// extractTags extracts tag key and value from given http header. It then
-// - Parses the input format X-Amz-Tagging:"Key1=Value1&Key2=Value2" into a map[string]string
-// with entries in the format X-Amg-Tag-Key1:Value1, X-Amz-Tag-Key2:Value2
-// - Validates the tags
-// - Returns the Tag in original string format "Key1=Value1&Key2=Value2"
-func extractTags(ctx context.Context, tags string) (string, error) {
-	// Check if the metadata has tagging related header
-	if tags != "" {
-		tagging, err := tagging.FromString(tags)
-		if err != nil {
-			return "", err
-		}
-		if err := tagging.Validate(); err != nil {
-			return "", err
-		}
-		return tagging.String(), nil
-	}
-	return "", nil
-}
-
 // The Query string for the redirect URL the client is
 // redirected on successful upload.
 func getRedirectPostRawQuery(objInfo ObjectInfo) string {
@@ -201,7 +181,9 @@ func getReqAccessCred(r *http.Request, region string) (cred auth.Credentials) {
 		if owner {
 			return globalActiveCred
 		}
-		cred, _ = globalIAMSys.GetUser(claims.AccessKey())
+		if claims != nil {
+			cred, _ = globalIAMSys.GetUser(claims.AccessKey)
+		}
 	}
 	return cred
 }
@@ -358,34 +340,19 @@ func httpTraceHdrs(f http.HandlerFunc) http.HandlerFunc {
 
 func collectAPIStats(api string, f http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		globalHTTPStats.currentS3Requests.Inc(api)
+		defer globalHTTPStats.currentS3Requests.Dec(api)
 
-		isS3Request := !strings.HasPrefix(r.URL.Path, minioReservedBucketPath)
-		apiStatsWriter := &recordAPIStats{w, UTCNow(), false, 0, isS3Request}
+		statsWriter := logger.NewResponseWriter(w)
 
-		// Time start before the call is about to start.
-		tBefore := UTCNow()
-
-		if isS3Request {
-			globalHTTPStats.currentS3Requests.Inc(api)
-		}
-		// Execute the request
-		f.ServeHTTP(apiStatsWriter, r)
-
-		if isS3Request {
-			globalHTTPStats.currentS3Requests.Dec(api)
-		}
-
-		// Firstbyte read.
-		tAfter := apiStatsWriter.TTFB
+		f.ServeHTTP(statsWriter, r)
 
 		// Time duration in secs since the call started.
-		//
 		// We don't need to do nanosecond precision in this
 		// simply for the fact that it is not human readable.
-		durationSecs := tAfter.Sub(tBefore).Seconds()
+		durationSecs := time.Since(statsWriter.StartTime).Seconds()
 
-		// Update http statistics
-		globalHTTPStats.updateStats(api, r, apiStatsWriter, durationSecs)
+		globalHTTPStats.updateStats(api, r, statsWriter, durationSecs)
 	}
 }
 
@@ -401,7 +368,7 @@ func getResource(path string, host string, domains []string) (string, error) {
 		if host, _, err = net.SplitHostPort(host); err != nil {
 			reqInfo := (&logger.ReqInfo{}).AppendTags("host", host)
 			reqInfo.AppendTags("path", path)
-			ctx := logger.SetReqInfo(context.Background(), reqInfo)
+			ctx := logger.SetReqInfo(GlobalContext, reqInfo)
 			logger.LogIf(ctx, err)
 			return "", err
 		}

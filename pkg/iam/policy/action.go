@@ -17,8 +17,6 @@
 package iampolicy
 
 import (
-	"encoding/json"
-
 	"github.com/minio/minio/pkg/bucket/policy/condition"
 	"github.com/minio/minio/pkg/wildcard"
 )
@@ -37,6 +35,10 @@ const (
 
 	// DeleteBucketAction - DeleteBucket Rest API action.
 	DeleteBucketAction = "s3:DeleteBucket"
+
+	// ForceDeleteBucketAction - DeleteBucket Rest API action when x-minio-force-delete flag
+	// is specified.
+	ForceDeleteBucketAction = "s3:ForceDeleteBucket"
 
 	// DeleteBucketPolicyAction - DeleteBucketPolicy Rest API action.
 	DeleteBucketPolicyAction = "s3:DeleteBucketPolicy"
@@ -90,9 +92,6 @@ const (
 	// PutObjectAction - PutObject Rest API action.
 	PutObjectAction = "s3:PutObject"
 
-	// BypassGovernanceModeAction - bypass governance mode for DeleteObject Rest API action.
-	BypassGovernanceModeAction = "s3:BypassGovernanceMode"
-
 	// BypassGovernanceRetentionAction - bypass governance retention for PutObjectRetention, PutObject and DeleteObject Rest API action.
 	BypassGovernanceRetentionAction = "s3:BypassGovernanceRetention"
 
@@ -114,6 +113,12 @@ const (
 	// PutBucketObjectLockConfigurationAction - PutBucketObjectLockConfiguration Rest API action
 	PutBucketObjectLockConfigurationAction = "s3:PutBucketObjectLockConfiguration"
 
+	// GetBucketTaggingAction - GetBucketTagging Rest API action
+	GetBucketTaggingAction = "s3:GetBucketTagging"
+
+	// PutBucketTaggingAction - PutBucketTagging Rest API action
+	PutBucketTaggingAction = "s3:PutBucketTagging"
+
 	// GetObjectTaggingAction - Get Object Tags API action
 	GetObjectTaggingAction = "s3:GetObjectTagging"
 
@@ -123,16 +128,22 @@ const (
 	// DeleteObjectTaggingAction - Delete Object Tags API action
 	DeleteObjectTaggingAction = "s3:DeleteObjectTagging"
 
+	// PutBucketEncryptionAction - PutBucketEncryption REST API action
+	PutBucketEncryptionAction = "s3:PutEncryptionConfiguration"
+
+	// GetBucketEncryptionAction - GetBucketEncryption REST API action
+	GetBucketEncryptionAction = "s3:GetEncryptionConfiguration"
+
 	// AllActions - all API actions
 	AllActions = "s3:*"
 )
 
 // List of all supported actions.
 var supportedActions = map[Action]struct{}{
-	AllActions:                             {},
 	AbortMultipartUploadAction:             {},
 	CreateBucketAction:                     {},
 	DeleteBucketAction:                     {},
+	ForceDeleteBucketAction:                {},
 	DeleteBucketPolicyAction:               {},
 	DeleteObjectAction:                     {},
 	GetBucketLocationAction:                {},
@@ -145,42 +156,50 @@ var supportedActions = map[Action]struct{}{
 	ListBucketMultipartUploadsAction:       {},
 	ListenBucketNotificationAction:         {},
 	ListMultipartUploadPartsAction:         {},
+	PutBucketLifecycleAction:               {},
+	GetBucketLifecycleAction:               {},
 	PutBucketNotificationAction:            {},
 	PutBucketPolicyAction:                  {},
 	PutObjectAction:                        {},
-	GetBucketLifecycleAction:               {},
-	PutBucketLifecycleAction:               {},
+	BypassGovernanceRetentionAction:        {},
 	PutObjectRetentionAction:               {},
 	GetObjectRetentionAction:               {},
 	GetObjectLegalHoldAction:               {},
 	PutObjectLegalHoldAction:               {},
-	PutBucketObjectLockConfigurationAction: {},
 	GetBucketObjectLockConfigurationAction: {},
-	BypassGovernanceModeAction:             {},
-	BypassGovernanceRetentionAction:        {},
+	PutBucketObjectLockConfigurationAction: {},
+	GetBucketTaggingAction:                 {},
+	PutBucketTaggingAction:                 {},
 	GetObjectTaggingAction:                 {},
 	PutObjectTaggingAction:                 {},
 	DeleteObjectTaggingAction:              {},
+	PutBucketEncryptionAction:              {},
+	GetBucketEncryptionAction:              {},
+	AllActions:                             {},
+}
+
+// List of all supported object actions.
+var supportedObjectActions = map[Action]struct{}{
+	AllActions:                      {},
+	AbortMultipartUploadAction:      {},
+	DeleteObjectAction:              {},
+	GetObjectAction:                 {},
+	ListMultipartUploadPartsAction:  {},
+	PutObjectAction:                 {},
+	BypassGovernanceRetentionAction: {},
+	PutObjectRetentionAction:        {},
+	GetObjectRetentionAction:        {},
+	PutObjectLegalHoldAction:        {},
+	GetObjectLegalHoldAction:        {},
+	GetObjectTaggingAction:          {},
+	PutObjectTaggingAction:          {},
+	DeleteObjectTaggingAction:       {},
 }
 
 // isObjectAction - returns whether action is object type or not.
 func (action Action) isObjectAction() bool {
-	switch action {
-	case AbortMultipartUploadAction, DeleteObjectAction, GetObjectAction:
-		fallthrough
-	case ListMultipartUploadPartsAction, PutObjectAction, AllActions:
-		return true
-	case BypassGovernanceModeAction, BypassGovernanceRetentionAction:
-		return true
-	case PutObjectRetentionAction, GetObjectRetentionAction:
-		return true
-	case PutObjectLegalHoldAction, GetObjectLegalHoldAction:
-		return true
-	case GetObjectTaggingAction, PutObjectTaggingAction, DeleteObjectTaggingAction:
-		return true
-	}
-
-	return false
+	_, ok := supportedObjectActions[action]
+	return ok
 }
 
 // Match - matches object name with resource pattern.
@@ -192,47 +211,6 @@ func (action Action) Match(a Action) bool {
 func (action Action) IsValid() bool {
 	_, ok := supportedActions[action]
 	return ok
-}
-
-// MarshalJSON - encodes Action to JSON data.
-func (action Action) MarshalJSON() ([]byte, error) {
-	if action.IsValid() || AdminAction(action).IsValid() {
-		return json.Marshal(string(action))
-	}
-
-	return nil, Errorf("invalid action '%v'", action)
-}
-
-// UnmarshalJSON - decodes JSON data to Action.
-func (action *Action) UnmarshalJSON(data []byte) error {
-	var s string
-
-	if err := json.Unmarshal(data, &s); err != nil {
-		return err
-	}
-
-	a := Action(s)
-	if !a.IsValid() {
-		return Errorf("invalid action '%v'", s)
-	}
-
-	*action = a
-
-	return nil
-}
-
-func parseAction(s string) (Action, error) {
-	adminAction, err := parseAdminAction(s)
-	if err == nil {
-		return Action(adminAction), nil
-	}
-	action := Action(s)
-
-	if action.IsValid() {
-		return action, nil
-	}
-
-	return action, Errorf("unsupported action '%v'", s)
 }
 
 // actionConditionKeyMap - holds mapping of supported condition key for an action.
@@ -288,15 +266,40 @@ var actionConditionKeyMap = map[Action]condition.KeySet{
 			condition.S3XAmzServerSideEncryptionCustomerAlgorithm,
 			condition.S3XAmzMetadataDirective,
 			condition.S3XAmzStorageClass,
+			condition.S3ObjectLockRetainUntilDate,
+			condition.S3ObjectLockMode,
+			condition.S3ObjectLockLegalHold,
 		}, condition.CommonKeys...)...),
-	PutObjectRetentionAction:               condition.NewKeySet(condition.CommonKeys...),
-	GetObjectRetentionAction:               condition.NewKeySet(condition.CommonKeys...),
-	PutObjectLegalHoldAction:               condition.NewKeySet(condition.CommonKeys...),
-	GetObjectLegalHoldAction:               condition.NewKeySet(condition.CommonKeys...),
-	BypassGovernanceModeAction:             condition.NewKeySet(condition.CommonKeys...),
-	BypassGovernanceRetentionAction:        condition.NewKeySet(condition.CommonKeys...),
+
+	// https://docs.aws.amazon.com/AmazonS3/latest/dev/list_amazons3.html
+	// LockLegalHold is not supported with PutObjectRetentionAction
+	PutObjectRetentionAction: condition.NewKeySet(
+		append([]condition.Key{
+			condition.S3ObjectLockRemainingRetentionDays,
+			condition.S3ObjectLockRetainUntilDate,
+			condition.S3ObjectLockMode,
+		}, condition.CommonKeys...)...),
+
+	GetObjectRetentionAction: condition.NewKeySet(condition.CommonKeys...),
+	PutObjectLegalHoldAction: condition.NewKeySet(
+		append([]condition.Key{
+			condition.S3ObjectLockLegalHold,
+		}, condition.CommonKeys...)...),
+	GetObjectLegalHoldAction: condition.NewKeySet(condition.CommonKeys...),
+
+	// https://docs.aws.amazon.com/AmazonS3/latest/dev/list_amazons3.html
+	BypassGovernanceRetentionAction: condition.NewKeySet(
+		append([]condition.Key{
+			condition.S3ObjectLockRemainingRetentionDays,
+			condition.S3ObjectLockRetainUntilDate,
+			condition.S3ObjectLockMode,
+			condition.S3ObjectLockLegalHold,
+		}, condition.CommonKeys...)...),
+
 	GetBucketObjectLockConfigurationAction: condition.NewKeySet(condition.CommonKeys...),
 	PutBucketObjectLockConfigurationAction: condition.NewKeySet(condition.CommonKeys...),
+	GetBucketTaggingAction:                 condition.NewKeySet(condition.CommonKeys...),
+	PutBucketTaggingAction:                 condition.NewKeySet(condition.CommonKeys...),
 	PutObjectTaggingAction:                 condition.NewKeySet(condition.CommonKeys...),
 	GetObjectTaggingAction:                 condition.NewKeySet(condition.CommonKeys...),
 	DeleteObjectTaggingAction:              condition.NewKeySet(condition.CommonKeys...),

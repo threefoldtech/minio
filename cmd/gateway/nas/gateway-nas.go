@@ -22,6 +22,7 @@ import (
 	"github.com/minio/cli"
 	minio "github.com/minio/minio/cmd"
 	"github.com/minio/minio/pkg/auth"
+	objectlock "github.com/minio/minio/pkg/bucket/object/lock"
 )
 
 const (
@@ -52,8 +53,11 @@ EXAMPLES:
      {{.Prompt}} {{.EnvVarSetCommand}} MINIO_SECRET_KEY{{.AssignmentOperator}}secretkey
      {{.Prompt}} {{.EnvVarSetCommand}} MINIO_CACHE_DRIVES{{.AssignmentOperator}}"/mnt/drive1,/mnt/drive2,/mnt/drive3,/mnt/drive4"
      {{.Prompt}} {{.EnvVarSetCommand}} MINIO_CACHE_EXCLUDE{{.AssignmentOperator}}"bucket1/*,*.png"
-     {{.Prompt}} {{.EnvVarSetCommand}} MINIO_CACHE_EXPIRY{{.AssignmentOperator}}40
-     {{.Prompt}} {{.EnvVarSetCommand}} MINIO_CACHE_QUOTA{{.AssignmentOperator}}80
+     {{.Prompt}} {{.EnvVarSetCommand}} MINIO_CACHE_QUOTA{{.AssignmentOperator}}90
+     {{.Prompt}} {{.EnvVarSetCommand}} MINIO_CACHE_AFTER{{.AssignmentOperator}}3
+     {{.Prompt}} {{.EnvVarSetCommand}} MINIO_CACHE_WATERMARK_LOW{{.AssignmentOperator}}75
+     {{.Prompt}} {{.EnvVarSetCommand}} MINIO_CACHE_WATERMARK_HIGH{{.AssignmentOperator}}85
+
      {{.Prompt}} {{.HelpName}} /shared/nasvol
 `
 
@@ -106,8 +110,8 @@ func (n *nasObjects) IsListenBucketSupported() bool {
 	return false
 }
 
-func (n *nasObjects) StorageInfo(ctx context.Context) minio.StorageInfo {
-	sinfo := n.ObjectLayer.StorageInfo(ctx)
+func (n *nasObjects) StorageInfo(ctx context.Context, _ bool) minio.StorageInfo {
+	sinfo := n.ObjectLayer.StorageInfo(ctx, false)
 	sinfo.Backend.GatewayOnline = sinfo.Backend.Type == minio.BackendFS
 	sinfo.Backend.Type = minio.BackendGateway
 	return sinfo
@@ -118,8 +122,18 @@ type nasObjects struct {
 	minio.ObjectLayer
 }
 
+// GetBucketObjectLockConfig - not implemented
+func (n *nasObjects) GetBucketObjectLockConfig(ctx context.Context, bucket string) (*objectlock.Config, error) {
+	return nil, minio.NotImplemented{}
+}
+
+// SetBucketObjectLockConfig - not implemented
+func (n *nasObjects) SetBucketObjectLockConfig(ctx context.Context, bucket string, _ *objectlock.Config) error {
+	return minio.NotImplemented{}
+}
+
 // IsReady returns whether the layer is ready to take requests.
 func (n *nasObjects) IsReady(ctx context.Context) bool {
-	sinfo := n.ObjectLayer.StorageInfo(ctx)
+	sinfo := n.ObjectLayer.StorageInfo(ctx, false)
 	return sinfo.Backend.Type == minio.BackendFS
 }

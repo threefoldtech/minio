@@ -50,5 +50,23 @@ var (
 			Optional:    true,
 			Type:        "sentence",
 		},
+		config.HelpKV{
+			Key:         After,
+			Description: `minimum accesses before caching an object`,
+			Optional:    true,
+			Type:        "number",
+		},
+		config.HelpKV{
+			Key:         WatermarkLow,
+			Description: `% of cache use at which to stop cache eviction`,
+			Optional:    true,
+			Type:        "number",
+		},
+		config.HelpKV{
+			Key:         WatermarkHigh,
+			Description: `% of cache use at which to start cache eviction`,
+			Optional:    true,
+			Type:        "number",
+		},
 	}
 )

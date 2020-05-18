@@ -17,6 +17,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -105,6 +106,8 @@ func toObjectErr(err error, params ...string) error {
 	case errXLWriteQuorum:
 		err = InsufficientWriteQuorum{}
 	case io.ErrUnexpectedEOF, io.ErrShortWrite:
+		err = IncompleteBody{}
+	case context.Canceled, context.DeadlineExceeded:
 		err = IncompleteBody{}
 	}
 	return err
@@ -252,14 +255,49 @@ func (e InvalidMarkerPrefixCombination) Error() string {
 type BucketPolicyNotFound GenericError
 
 func (e BucketPolicyNotFound) Error() string {
-	return "No bucket policy found for bucket: " + e.Bucket
+	return "No bucket policy configuration found for bucket: " + e.Bucket
 }
 
 // BucketLifecycleNotFound - no bucket lifecycle found.
 type BucketLifecycleNotFound GenericError
 
 func (e BucketLifecycleNotFound) Error() string {
-	return "No bucket life cycle found for bucket : " + e.Bucket
+	return "No bucket lifecycle configuration found for bucket : " + e.Bucket
+}
+
+// BucketSSEConfigNotFound - no bucket encryption found
+type BucketSSEConfigNotFound GenericError
+
+func (e BucketSSEConfigNotFound) Error() string {
+	return "No bucket encryption configuration found for bucket: " + e.Bucket
+}
+
+// BucketTaggingNotFound - no bucket tags found
+type BucketTaggingNotFound GenericError
+
+func (e BucketTaggingNotFound) Error() string {
+	return "No bucket tags found for bucket: " + e.Bucket
+}
+
+// BucketObjectLockConfigNotFound - no bucket object lock config found
+type BucketObjectLockConfigNotFound GenericError
+
+func (e BucketObjectLockConfigNotFound) Error() string {
+	return "No bucket object lock configuration found for bucket: " + e.Bucket
+}
+
+// BucketQuotaConfigNotFound - no bucket quota config found.
+type BucketQuotaConfigNotFound GenericError
+
+func (e BucketQuotaConfigNotFound) Error() string {
+	return "No quota config found for bucket : " + e.Bucket
+}
+
+// BucketQuotaExceeded - bucket quota exceeded.
+type BucketQuotaExceeded GenericError
+
+func (e BucketQuotaExceeded) Error() string {
+	return "Bucket quota exceeded for bucket: " + e.Bucket
 }
 
 /// Bucket related errors.
@@ -267,7 +305,7 @@ func (e BucketLifecycleNotFound) Error() string {
 // BucketNameInvalid - bucketname provided is invalid.
 type BucketNameInvalid GenericError
 
-// Return string an error formatted as the given text.
+// Error returns string an error formatted as the given text.
 func (e BucketNameInvalid) Error() string {
 	return "Bucket name invalid: " + e.Bucket
 }
@@ -283,17 +321,17 @@ type ObjectNameTooLong GenericError
 // ObjectNamePrefixAsSlash - object name has a slash as prefix.
 type ObjectNamePrefixAsSlash GenericError
 
-// Return string an error formatted as the given text.
+// Error returns string an error formatted as the given text.
 func (e ObjectNameInvalid) Error() string {
 	return "Object name invalid: " + e.Bucket + "#" + e.Object
 }
 
-// Return string an error formatted as the given text.
+// Error returns string an error formatted as the given text.
 func (e ObjectNameTooLong) Error() string {
 	return "Object name too long: " + e.Bucket + "#" + e.Object
 }
 
-// Return string an error formatted as the given text.
+// Error returns string an error formatted as the given text.
 func (e ObjectNamePrefixAsSlash) Error() string {
 	return "Object name contains forward slash as pefix: " + e.Bucket + "#" + e.Object
 }
@@ -301,7 +339,7 @@ func (e ObjectNamePrefixAsSlash) Error() string {
 // AllAccessDisabled All access to this object has been disabled
 type AllAccessDisabled GenericError
 
-// Return string an error formatted as the given text.
+// Error returns string an error formatted as the given text.
 func (e AllAccessDisabled) Error() string {
 	return "All access to this object has been disabled"
 }
@@ -309,7 +347,7 @@ func (e AllAccessDisabled) Error() string {
 // IncompleteBody You did not provide the number of bytes specified by the Content-Length HTTP header.
 type IncompleteBody GenericError
 
-// Return string an error formatted as the given text.
+// Error returns string an error formatted as the given text.
 func (e IncompleteBody) Error() string {
 	return e.Bucket + "#" + e.Object + "has incomplete body"
 }
@@ -341,11 +379,10 @@ func (e ObjectTooSmall) Error() string {
 
 // OperationTimedOut - a timeout occurred.
 type OperationTimedOut struct {
-	Path string
 }
 
 func (e OperationTimedOut) Error() string {
-	return "Operation timed out: " + e.Path
+	return "Operation timed out"
 }
 
 /// Multipart related errors.

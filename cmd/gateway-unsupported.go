@@ -21,9 +21,13 @@ import (
 	"errors"
 
 	"github.com/minio/minio/cmd/logger"
+
+	"github.com/minio/minio-go/v6/pkg/tags"
+	bucketsse "github.com/minio/minio/pkg/bucket/encryption"
 	"github.com/minio/minio/pkg/bucket/lifecycle"
-	"github.com/minio/minio/pkg/bucket/object/tagging"
+	objectlock "github.com/minio/minio/pkg/bucket/object/lock"
 	"github.com/minio/minio/pkg/bucket/policy"
+
 	"github.com/minio/minio/pkg/madmin"
 )
 
@@ -34,8 +38,8 @@ type GatewayLocker struct {
 }
 
 // NewNSLock - implements gateway level locker
-func (l *GatewayLocker) NewNSLock(ctx context.Context, bucket string, object string) RWLocker {
-	return l.nsMutex.NewNSLock(ctx, nil, bucket, object)
+func (l *GatewayLocker) NewNSLock(ctx context.Context, bucket string, objects ...string) RWLocker {
+	return l.nsMutex.NewNSLock(ctx, nil, bucket, objects...)
 }
 
 // NewGatewayLayerWithLocker - initialize gateway with locker.
@@ -47,13 +51,13 @@ func NewGatewayLayerWithLocker(gwLayer ObjectLayer) ObjectLayer {
 type GatewayUnsupported struct{}
 
 // CrawlAndGetDataUsage - crawl is not implemented for gateway
-func (a GatewayUnsupported) CrawlAndGetDataUsage(ctx context.Context, endCh <-chan struct{}) DataUsageInfo {
+func (a GatewayUnsupported) CrawlAndGetDataUsage(ctx context.Context, bf *bloomFilter, updates chan<- DataUsageInfo) error {
 	logger.CriticalIf(ctx, errors.New("not implemented"))
-	return DataUsageInfo{}
+	return NotImplemented{}
 }
 
 // NewNSLock is a dummy stub for gateway.
-func (a GatewayUnsupported) NewNSLock(ctx context.Context, bucket string, object string) RWLocker {
+func (a GatewayUnsupported) NewNSLock(ctx context.Context, bucket string, objects ...string) RWLocker {
 	logger.CriticalIf(ctx, errors.New("not implemented"))
 	return nil
 }
@@ -128,6 +132,21 @@ func (a GatewayUnsupported) DeleteBucketLifecycle(ctx context.Context, bucket st
 	return NotImplemented{}
 }
 
+// GetBucketSSEConfig returns bucket encryption config on given bucket
+func (a GatewayUnsupported) GetBucketSSEConfig(ctx context.Context, bucket string) (*bucketsse.BucketSSEConfig, error) {
+	return nil, NotImplemented{}
+}
+
+// SetBucketSSEConfig sets bucket encryption config on given bucket
+func (a GatewayUnsupported) SetBucketSSEConfig(ctx context.Context, bucket string, config *bucketsse.BucketSSEConfig) error {
+	return NotImplemented{}
+}
+
+// DeleteBucketSSEConfig deletes bucket encryption config on given bucket
+func (a GatewayUnsupported) DeleteBucketSSEConfig(ctx context.Context, bucket string) error {
+	return NotImplemented{}
+}
+
 // ReloadFormat - Not implemented stub.
 func (a GatewayUnsupported) ReloadFormat(ctx context.Context, dryRun bool) error {
 	return NotImplemented{}
@@ -149,7 +168,7 @@ func (a GatewayUnsupported) ListBucketsHeal(ctx context.Context) (buckets []Buck
 }
 
 // HealObject - Not implemented stub
-func (a GatewayUnsupported) HealObject(ctx context.Context, bucket, object string, dryRun, remove bool, scanMode madmin.HealScanMode) (h madmin.HealResultItem, e error) {
+func (a GatewayUnsupported) HealObject(ctx context.Context, bucket, object string, opts madmin.HealOpts) (h madmin.HealResultItem, e error) {
 	return h, NotImplemented{}
 }
 
@@ -158,8 +177,13 @@ func (a GatewayUnsupported) ListObjectsV2(ctx context.Context, bucket, prefix, c
 	return result, NotImplemented{}
 }
 
+// Walk - Not implemented stub
+func (a GatewayUnsupported) Walk(ctx context.Context, bucket, prefix string, results chan<- ObjectInfo) error {
+	return NotImplemented{}
+}
+
 // HealObjects - Not implemented stub
-func (a GatewayUnsupported) HealObjects(ctx context.Context, bucket, prefix string, fn healObjectFn) (e error) {
+func (a GatewayUnsupported) HealObjects(ctx context.Context, bucket, prefix string, opts madmin.HealOpts, fn healObjectFn) (e error) {
 	return NotImplemented{}
 }
 
@@ -175,6 +199,35 @@ func (a GatewayUnsupported) GetMetrics(ctx context.Context) (*Metrics, error) {
 	return &Metrics{}, NotImplemented{}
 }
 
+// SetBucketTagging - not implemented
+func (a GatewayUnsupported) SetBucketTagging(ctx context.Context, bucket string, t *tags.Tags) error {
+	logger.LogIf(ctx, NotImplemented{})
+	return NotImplemented{}
+}
+
+// GetBucketObjectLockConfig - not implemented
+func (a GatewayUnsupported) GetBucketObjectLockConfig(ctx context.Context, bucket string) (*objectlock.Config, error) {
+	logger.LogIf(ctx, NotImplemented{})
+	return nil, NotImplemented{}
+}
+
+// SetBucketObjectLockConfig - not implemented
+func (a GatewayUnsupported) SetBucketObjectLockConfig(ctx context.Context, bucket string, _ *objectlock.Config) error {
+	logger.LogIf(ctx, NotImplemented{})
+	return NotImplemented{}
+}
+
+// GetBucketTagging - not implemented
+func (a GatewayUnsupported) GetBucketTagging(ctx context.Context, bucket string) (*tags.Tags, error) {
+	return nil, NotImplemented{}
+}
+
+// DeleteBucketTagging - not implemented.
+func (a GatewayUnsupported) DeleteBucketTagging(ctx context.Context, bucket string) error {
+	logger.LogIf(ctx, NotImplemented{})
+	return NotImplemented{}
+}
+
 // PutObjectTag - not implemented.
 func (a GatewayUnsupported) PutObjectTag(ctx context.Context, bucket, object string, tags string) error {
 	logger.LogIf(ctx, NotImplemented{})
@@ -182,9 +235,9 @@ func (a GatewayUnsupported) PutObjectTag(ctx context.Context, bucket, object str
 }
 
 // GetObjectTag - not implemented.
-func (a GatewayUnsupported) GetObjectTag(ctx context.Context, bucket, object string) (tagging.Tagging, error) {
+func (a GatewayUnsupported) GetObjectTag(ctx context.Context, bucket, object string) (*tags.Tags, error) {
 	logger.LogIf(ctx, NotImplemented{})
-	return tagging.Tagging{}, NotImplemented{}
+	return nil, NotImplemented{}
 }
 
 // DeleteObjectTag - not implemented.

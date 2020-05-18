@@ -78,135 +78,6 @@ func TestEncryptRequest(t *testing.T) {
 	}
 }
 
-var decryptRequestTests = []struct {
-	bucket, object string
-	header         map[string]string
-	metadata       map[string]string
-	shouldFail     bool
-}{
-	{
-		bucket: "bucket",
-		object: "object",
-		header: map[string]string{
-			crypto.SSECAlgorithm: "AES256",
-			crypto.SSECKey:       "MzJieXRlc2xvbmdzZWNyZXRrZXltdXN0cHJvdmlkZWQ=",
-			crypto.SSECKeyMD5:    "7PpPLAK26ONlVUGOWlusfg==",
-		},
-		metadata: map[string]string{
-			crypto.SSESealAlgorithm: crypto.InsecureSealAlgorithm,
-			crypto.SSEIV:            "7nQqotA8xgrPx6QK7Ap3GCfjKitqJSrGP7xzgErSJlw=",
-			crypto.SSECSealedKey:    "EAAfAAAAAAD7v1hQq3PFRUHsItalxmrJqrOq6FwnbXNarxOOpb8jTWONPPKyM3Gfjkjyj6NCf+aB/VpHCLCTBA==",
-		},
-		shouldFail: false,
-	},
-	{
-		bucket: "bucket",
-		object: "object",
-		header: map[string]string{
-			crypto.SSECAlgorithm: "AES256",
-			crypto.SSECKey:       "MzJieXRlc2xvbmdzZWNyZXRrZXltdXN0cHJvdmlkZWQ=",
-			crypto.SSECKeyMD5:    "7PpPLAK26ONlVUGOWlusfg==",
-		},
-		metadata: map[string]string{
-			crypto.SSESealAlgorithm: crypto.SealAlgorithm,
-			crypto.SSEIV:            "qEqmsONcorqlcZXJxaw32H04eyXyXwUgjHzlhkaIYrU=",
-			crypto.SSECSealedKey:    "IAAfAIM14ugTGcM/dIrn4iQMrkl1sjKyeBQ8FBEvRebYj8vWvxG+0cJRpC6NXRU1wJN50JaUOATjO7kz0wZ2mA==",
-		},
-		shouldFail: false,
-	},
-	{
-		bucket: "bucket",
-		object: "object",
-		header: map[string]string{
-			crypto.SSECAlgorithm: "AES256",
-			crypto.SSECKey:       "XAm0dRrJsEsyPb1UuFNezv1bl9hxuYsgUVC/MUctE2k=",
-			crypto.SSECKeyMD5:    "bY4wkxQejw9mUJfo72k53A==",
-		},
-		metadata: map[string]string{
-			crypto.SSESealAlgorithm: "HMAC-SHA3",
-			crypto.SSEIV:            "XAm0dRrJsEsyPb1UuFNezv1bl9hxuYsgUVC/MUctE2k=",
-			crypto.SSECSealedKey:    "SY5E9AvI2tI7/nUrUAssIGE32Hcs4rR9z/CUuPqu5N4=",
-		},
-		shouldFail: true,
-	},
-	{
-		bucket: "bucket",
-		object: "object",
-		header: map[string]string{
-			crypto.SSECAlgorithm: "AES256",
-			crypto.SSECKey:       "XAm0dRrJsEsyPb1UuFNezv1bl9hxuYsgUVC/MUctE2k=",
-			crypto.SSECKeyMD5:    "bY4wkxQejw9mUJfo72k53A==",
-		},
-		metadata: map[string]string{
-			crypto.SSESealAlgorithm: crypto.InsecureSealAlgorithm,
-			crypto.SSEIV:            "RrJsEsyPb1UuFNezv1bl9hxuYsgUVC/MUctE2k=",
-			crypto.SSECSealedKey:    "SY5E9AvI2tI7/nUrUAssIGE32Hcs4rR9z/CUuPqu5N4=",
-		},
-		shouldFail: true,
-	},
-	{
-		bucket: "bucket",
-		object: "object",
-		header: map[string]string{
-			crypto.SSECAlgorithm: "AES256",
-			crypto.SSECKey:       "XAm0dRrJsEsyPb1UuFNezv1bl9hxuYsgUVC/MUctE2k=",
-			crypto.SSECKeyMD5:    "bY4wkxQejw9mUJfo72k53A==",
-		},
-		metadata: map[string]string{
-			crypto.SSESealAlgorithm: crypto.InsecureSealAlgorithm,
-			crypto.SSEIV:            "XAm0dRrJsEsyPb1UuFNezv1bl9ehxuYsgUVC/MUctE2k=",
-			crypto.SSECSealedKey:    "SY5E9AvI2tI7/nUrUAssIGE32Hds4rR9z/CUuPqu5N4=",
-		},
-		shouldFail: true,
-	},
-	{
-		bucket: "bucket",
-		object: "object-2",
-		header: map[string]string{
-			crypto.SSECAlgorithm: "AES256",
-			crypto.SSECKey:       "MzJieXRlc2xvbmdzZWNyZXRrZXltdXN0cHJvdmlkZWQ=",
-			crypto.SSECKeyMD5:    "7PpPLAK26ONlVUGOWlusfg==",
-		},
-		metadata: map[string]string{
-			crypto.SSESealAlgorithm: crypto.SealAlgorithm,
-			crypto.SSEIV:            "qEqmsONcorqlcZXJxaw32H04eyXyXwUgjHzlhkaIYrU=",
-			crypto.SSECSealedKey:    "IAAfAIM14ugTGcM/dIrn4iQMrkl1sjKyeBQ8FBEvRebYj8vWvxG+0cJRpC6NXRU1wJN50JaUOATjO7kz0wZ2mA==",
-		},
-		shouldFail: true,
-	},
-}
-
-func TestDecryptRequest(t *testing.T) {
-	defer func(flag bool) { globalIsSSL = flag }(globalIsSSL)
-	globalIsSSL = true
-	for i, test := range decryptRequestTests[1:] {
-		client := bytes.NewBuffer(nil)
-		req := &http.Request{Header: http.Header{}}
-		for k, v := range test.header {
-			req.Header.Set(k, v)
-		}
-		_, err := DecryptRequest(client, req, test.bucket, test.object, test.metadata)
-		if err != nil && !test.shouldFail {
-			t.Fatalf("Test %d: Failed to encrypt request: %v", i, err)
-		}
-		if err == nil && test.shouldFail {
-			t.Fatalf("Test %d: should fail but passed", i)
-		}
-		if key, ok := test.metadata[crypto.SSECKey]; ok {
-			t.Errorf("Test %d: Client provided key survived in metadata - key: %s", i, key)
-		}
-		if kdf, ok := test.metadata[crypto.SSESealAlgorithm]; ok && !test.shouldFail {
-			t.Errorf("Test %d: ServerSideEncryptionKDF should not be part of metadata: %v", i, kdf)
-		}
-		if iv, ok := test.metadata[crypto.SSEIV]; ok && !test.shouldFail {
-			t.Errorf("Test %d: crypto.SSEIV should not be part of metadata: %v", i, iv)
-		}
-		if mac, ok := test.metadata[crypto.SSECSealedKey]; ok && !test.shouldFail {
-			t.Errorf("Test %d: ServerSideEncryptionKeyMAC should not be part of metadata: %v", i, mac)
-		}
-	}
-}
-
 var decryptObjectInfoTests = []struct {
 	info    ObjectInfo
 	headers http.Header
@@ -256,6 +127,78 @@ func TestDecryptObjectInfo(t *testing.T) {
 	}
 }
 
+var decryptETagTests = []struct {
+	ObjectKey  crypto.ObjectKey
+	ObjectInfo ObjectInfo
+	ShouldFail bool
+	ETag       string
+}{
+	{
+		ObjectKey:  [32]byte{},
+		ObjectInfo: ObjectInfo{ETag: "20000f00f27834c9a2654927546df57f9e998187496394d4ee80f3d9978f85f3c7d81f72600cdbe03d80dc5a13d69354"},
+		ETag:       "8ad3fe6b84bf38489e95c701c84355b6",
+	},
+	{
+		ObjectKey:  [32]byte{},
+		ObjectInfo: ObjectInfo{ETag: "20000f00f27834c9a2654927546df57f9e998187496394d4ee80f3d9978f85f3c7d81f72600cdbe03d80dc5a13d6935"},
+		ETag:       "",
+		ShouldFail: true, // ETag is not a valid hex value
+	},
+	{
+		ObjectKey:  [32]byte{},
+		ObjectInfo: ObjectInfo{ETag: "00000f00f27834c9a2654927546df57f9e998187496394d4ee80f3d9978f85f3c7d81f72600cdbe03d80dc5a13d69354"},
+		ETag:       "",
+		ShouldFail: true, // modified ETag
+	},
+
+	// Special tests for ETags that end with a '-x'
+	{
+		ObjectKey:  [32]byte{},
+		ObjectInfo: ObjectInfo{ETag: "916516b396f0f4d4f2a0e7177557bec4-1"},
+		ETag:       "916516b396f0f4d4f2a0e7177557bec4-1",
+	},
+	{
+		ObjectKey:  [32]byte{},
+		ObjectInfo: ObjectInfo{ETag: "916516b396f0f4d4f2a0e7177557bec4-738"},
+		ETag:       "916516b396f0f4d4f2a0e7177557bec4-738",
+	},
+	{
+		ObjectKey:  [32]byte{},
+		ObjectInfo: ObjectInfo{ETag: "916516b396f0f4d4f2a0e7177557bec4-Q"},
+		ETag:       "",
+		ShouldFail: true, // Q is not a number
+	},
+	{
+		ObjectKey:  [32]byte{},
+		ObjectInfo: ObjectInfo{ETag: "16516b396f0f4d4f2a0e7177557bec4-1"},
+		ETag:       "",
+		ShouldFail: true, // ETag prefix is not a valid hex value
+	},
+	{
+		ObjectKey:  [32]byte{},
+		ObjectInfo: ObjectInfo{ETag: "16516b396f0f4d4f2a0e7177557bec4-1-2"},
+		ETag:       "",
+		ShouldFail: true, // ETag contains multiple: -
+	},
+}
+
+func TestDecryptETag(t *testing.T) {
+	for i, test := range decryptETagTests {
+		etag, err := DecryptETag(test.ObjectKey, test.ObjectInfo)
+		if err != nil && !test.ShouldFail {
+			t.Fatalf("Test %d: should succeed but failed: %v", i, err)
+		}
+		if err == nil && test.ShouldFail {
+			t.Fatalf("Test %d: should fail but succeeded", i)
+		}
+		if err == nil {
+			if etag != test.ETag {
+				t.Fatalf("Test %d: ETag mismatch: got %s - want %s", i, etag, test.ETag)
+			}
+		}
+	}
+}
+
 // Tests for issue reproduced when getting the right encrypted
 // offset of the object.
 func TestGetDecryptedRange_Issue50(t *testing.T) {
@@ -280,15 +223,11 @@ func TestGetDecryptedRange_Issue50(t *testing.T) {
 		Parts: []ObjectPartInfo{
 			{
 				Number:     1,
-				Name:       "part.1",
-				ETag:       "etag1",
 				Size:       297580380,
 				ActualSize: 297435132,
 			},
 			{
 				Number:     2,
-				Name:       "part.2",
-				ETag:       "etag2",
 				Size:       297580380,
 				ActualSize: 297435132,
 			},

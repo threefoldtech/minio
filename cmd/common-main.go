@@ -18,8 +18,10 @@ package cmd
 
 import (
 	"crypto/x509"
+	"encoding/gob"
 	"errors"
 	"net"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -33,6 +35,17 @@ import (
 	"github.com/minio/minio/pkg/certs"
 	"github.com/minio/minio/pkg/env"
 )
+
+func init() {
+	logger.Init(GOPATH, GOROOT)
+	logger.RegisterError(config.FmtError)
+
+	// Initialize globalConsoleSys system
+	globalConsoleSys = NewConsoleLogger(GlobalContext)
+	logger.AddTarget(globalConsoleSys)
+
+	gob.Register(StorageErr(""))
+}
 
 func verifyObjectLayerFeatures(name string, objAPI ObjectLayer) {
 	if (globalAutoEncryption || GlobalKMS != nil) && !objAPI.IsEncryptionSupported() {
@@ -132,8 +145,14 @@ func handleCommonCmdArgs(ctx *cli.Context) {
 
 	// Fetch address option
 	globalCLIContext.Addr = ctx.GlobalString("address")
-	if globalCLIContext.Addr == "" || globalCLIContext.Addr == ":"+globalMinioDefaultPort {
+	if globalCLIContext.Addr == "" || globalCLIContext.Addr == ":"+GlobalMinioDefaultPort {
 		globalCLIContext.Addr = ctx.String("address")
+	}
+
+	// Check "no-compat" flag from command line argument.
+	globalCLIContext.StrictS3Compat = true
+	if ctx.IsSet("no-compat") || ctx.GlobalIsSet("no-compat") {
+		globalCLIContext.StrictS3Compat = false
 	}
 
 	// Set all config, certs and CAs directories.
@@ -151,16 +170,25 @@ func handleCommonCmdArgs(ctx *cli.Context) {
 	globalCertsCADir = &ConfigDir{path: filepath.Join(globalCertsDir.Get(), certsCADir)}
 
 	logger.FatalIf(mkdirAllIgnorePerm(globalCertsCADir.Get()), "Unable to create certs CA directory at %s", globalCertsCADir.Get())
-
-	// Check "compat" flag from command line argument.
-	globalCLIContext.StrictS3Compat = ctx.IsSet("compat") || ctx.GlobalIsSet("compat")
 }
 
 func handleCommonEnvVars() {
-	var err error
+	wormEnabled, err := config.LookupWorm()
+	if err != nil {
+		logger.Fatal(config.ErrInvalidWormValue(err), "Invalid worm configuration")
+	}
+	if wormEnabled {
+		logger.Fatal(errors.New("WORM is deprecated"), "global MINIO_WORM support is removed, please downgrade your server or migrate to https://github.com/minio/minio/tree/master/docs/retention")
+	}
+
 	globalBrowserEnabled, err = config.ParseBool(env.Get(config.EnvBrowser, config.EnableOn))
 	if err != nil {
 		logger.Fatal(config.ErrInvalidBrowserValue(err), "Invalid MINIO_BROWSER value in environment variable")
+	}
+
+	globalFSOSync, err = config.ParseBool(env.Get(config.EnvFSOSync, config.EnableOff))
+	if err != nil {
+		logger.Fatal(config.ErrInvalidFSOSyncValue(err), "Invalid MINIO_FS_OSYNC value in environment variable")
 	}
 
 	domains := env.Get(config.EnvDomain, "")
@@ -213,9 +241,15 @@ func handleCommonEnvVars() {
 		globalConfigEncrypted = true
 	}
 
-	globalWORMEnabled, err = config.LookupWorm()
-	if err != nil {
-		logger.Fatal(config.ErrInvalidWormValue(err), "Invalid worm configuration")
+	if env.IsSet(config.EnvAccessKeyOld) && env.IsSet(config.EnvSecretKeyOld) {
+		oldCred, err := auth.CreateCredentials(env.Get(config.EnvAccessKeyOld, ""), env.Get(config.EnvSecretKeyOld, ""))
+		if err != nil {
+			logger.Fatal(config.ErrInvalidCredentials(err),
+				"Unable to validate the old credentials inherited from the shell environment")
+		}
+		globalOldCred = oldCred
+		os.Unsetenv(config.EnvAccessKeyOld)
+		os.Unsetenv(config.EnvSecretKeyOld)
 	}
 }
 

@@ -263,7 +263,7 @@ func (zo *zerostorObjects) GetBucketInfo(ctx context.Context, bucket string) (bu
 }
 
 // DeleteBucket implements minio.ObjectLayer.DeleteBucket interface
-func (zo *zerostorObjects) DeleteBucket(ctx context.Context, bucket string) (err error) {
+func (zo *zerostorObjects) DeleteBucket(ctx context.Context, bucket string, forceDelete bool) (err error) {
 	log.WithFields(log.Fields{
 		"bucket": bucket,
 	}).Debug("DeleteBucket")
@@ -312,7 +312,7 @@ func (zo *zerostorObjects) ListBuckets(ctx context.Context) ([]minio.BucketInfo,
 }
 
 // MakeBucketWithLocation implements minio.ObjectLayer.MakeBucketWithLocation interface
-func (zo *zerostorObjects) MakeBucketWithLocation(ctx context.Context, bucket string, location string) error {
+func (zo *zerostorObjects) MakeBucketWithLocation(ctx context.Context, bucket string, location string, lockEnabled bool) error {
 	log.WithFields(log.Fields{
 		"bucket":   bucket,
 		"location": location,
@@ -510,7 +510,7 @@ func (zo *zerostorObjects) GetObjectNInfo(ctx context.Context, bucket, object st
 	// Setup cleanup function to cause the above go-routine to
 	// exit in case of partial read
 	pipeCloser := func() { pr.Close() }
-	return minio.NewGetObjectReaderFromReader(pr, objInfo, nil, pipeCloser)
+	return minio.NewGetObjectReaderFromReader(pr, objInfo, minio.ObjectOptions{}, pipeCloser)
 }
 
 func (zo *zerostorObjects) GetObject(ctx context.Context, bucket, object string, startOffset int64, length int64,
@@ -974,7 +974,7 @@ func (zo *zerostorObjects) Shutdown(ctx context.Context) error {
 }
 
 // StorageInfo implements ObjectLayer.StorageInfo
-func (zo *zerostorObjects) StorageInfo(ctx context.Context) (info minio.StorageInfo) {
+func (zo *zerostorObjects) StorageInfo(ctx context.Context, local bool) (info minio.StorageInfo) {
 	log.Debug("StorafeInfo")
 
 	var used []uint64

@@ -1,5 +1,5 @@
 /*
- * MinIO Cloud Storage, (C) 2019 MinIO, Inc.
+ * MinIO Cloud Storage, (C) 2019-2020 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,14 +21,15 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
-	"reflect"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/djherbis/atime"
@@ -37,7 +38,6 @@ import (
 	"github.com/minio/minio/cmd/logger"
 	"github.com/minio/minio/pkg/disk"
 	"github.com/minio/sio"
-	"github.com/ncw/directio"
 )
 
 const (
@@ -45,7 +45,7 @@ const (
 	cacheMetaJSONFile = "cache.json"
 	cacheDataFile     = "part.1"
 	cacheMetaVersion  = "1.0.0"
-
+	cacheExpiryDays   = time.Duration(90 * time.Hour * 24) // defaults to 90 days
 	// SSECacheEncrypted is the metadata key indicating that the object
 	// is a cache entry encrypted with cache KMS master key in globalCacheKMS.
 	SSECacheEncrypted = "X-Minio-Internal-Encrypted-Cache"
@@ -68,6 +68,8 @@ type cacheMeta struct {
 	Meta map[string]string `json:"meta,omitempty"`
 	// Ranges maps cached range to associated filename.
 	Ranges map[string]string `json:"ranges,omitempty"`
+	// Hits is a counter on the number of times this object has been accessed so far.
+	Hits int `json:"hits,omitempty"`
 }
 
 // RangeInfo has the range, file and range length information for a cached range.
@@ -123,69 +125,78 @@ func (m *cacheMeta) ToObjectInfo(bucket, object string) (o ObjectInfo) {
 
 // represents disk cache struct
 type diskCache struct {
-	dir      string // caching directory
-	quotaPct int    // max usage in %
-	expiry   int    // cache expiry in days
-	// mark false if drive is offline
-	online bool
-	// mutex to protect updates to online variable
-	onlineMutex *sync.RWMutex
-	// purge() listens on this channel to start the cache-purge process
-	purgeChan chan struct{}
-	pool      sync.Pool
+	gcCounter uint64 // ref: https://golang.org/pkg/sync/atomic/#pkg-note-BUG
+	// is set to 0 if drive is offline
+	online uint32
+
+	dir           string // caching directory
+	quotaPct      int    // max usage in %
+	pool          sync.Pool
+	after         int // minimum accesses before an object is cached.
+	lowWatermark  int
+	highWatermark int
+	// nsMutex namespace lock
+	nsMutex *nsLockMap
+	// Object functions pointing to the corresponding functions of backend implementation.
+	NewNSLockFn func(ctx context.Context, cachePath string) RWLocker
 }
 
 // Inits the disk cache dir if it is not initialized already.
-func newDiskCache(dir string, expiry int, quotaPct int) (*diskCache, error) {
+func newDiskCache(dir string, quotaPct, after, lowWatermark, highWatermark int) (*diskCache, error) {
 	if err := os.MkdirAll(dir, 0777); err != nil {
 		return nil, fmt.Errorf("Unable to initialize '%s' dir, %w", dir, err)
 	}
 	cache := diskCache{
-		dir:         dir,
-		expiry:      expiry,
-		quotaPct:    quotaPct,
-		purgeChan:   make(chan struct{}),
-		online:      true,
-		onlineMutex: &sync.RWMutex{},
+		dir:           dir,
+		quotaPct:      quotaPct,
+		after:         after,
+		lowWatermark:  lowWatermark,
+		highWatermark: highWatermark,
+		online:        1,
 		pool: sync.Pool{
 			New: func() interface{} {
-				b := directio.AlignedBlock(int(cacheBlkSize))
+				b := disk.AlignedBlock(int(cacheBlkSize))
 				return &b
 			},
 		},
+		nsMutex: newNSLock(false),
+	}
+	cache.NewNSLockFn = func(ctx context.Context, cachePath string) RWLocker {
+		return cache.nsMutex.NewNSLock(ctx, nil, cachePath, "")
 	}
 	return &cache, nil
 }
 
-// Returns if the disk usage is low.
-// Disk usage is low if usage is < 80% of cacheMaxDiskUsagePct
-// Ex. for a 100GB disk, if maxUsage is configured as 70% then cacheMaxDiskUsagePct is 70G
-// hence disk usage is low if the disk usage is less than 56G (because 80% of 70G is 56G)
+// diskUsageLow() returns true if disk usage falls below the low watermark w.r.t configured cache quota.
+// Ex. for a 100GB disk, if quota is configured as 70%  and watermark_low = 80% and
+// watermark_high = 90% then garbage collection starts when 63% of disk is used and
+// stops when disk usage drops to 56%
 func (c *diskCache) diskUsageLow() bool {
-	minUsage := c.quotaPct * 80 / 100
+	gcStopPct := c.quotaPct * c.lowWatermark / 100
 	di, err := disk.GetInfo(c.dir)
 	if err != nil {
 		reqInfo := (&logger.ReqInfo{}).AppendTags("cachePath", c.dir)
-		ctx := logger.SetReqInfo(context.Background(), reqInfo)
+		ctx := logger.SetReqInfo(GlobalContext, reqInfo)
 		logger.LogIf(ctx, err)
 		return false
 	}
 	usedPercent := (di.Total - di.Free) * 100 / di.Total
-	return int(usedPercent) < minUsage
+	return int(usedPercent) < gcStopPct
 }
 
-// Return if the disk usage is high.
-// Disk usage is high if disk used is > cacheMaxDiskUsagePct
+// Returns if the disk usage reaches high water mark w.r.t the configured cache quota.
+// gc starts if high water mark reached.
 func (c *diskCache) diskUsageHigh() bool {
+	gcTriggerPct := c.quotaPct * c.highWatermark / 100
 	di, err := disk.GetInfo(c.dir)
 	if err != nil {
 		reqInfo := (&logger.ReqInfo{}).AppendTags("cachePath", c.dir)
-		ctx := logger.SetReqInfo(context.Background(), reqInfo)
+		ctx := logger.SetReqInfo(GlobalContext, reqInfo)
 		logger.LogIf(ctx, err)
-		return true
+		return false
 	}
 	usedPercent := (di.Total - di.Free) * 100 / di.Total
-	return int(usedPercent) > c.quotaPct
+	return int(usedPercent) >= gcTriggerPct
 }
 
 // Returns if size space can be allocated without exceeding
@@ -194,7 +205,7 @@ func (c *diskCache) diskAvailable(size int64) bool {
 	di, err := disk.GetInfo(c.dir)
 	if err != nil {
 		reqInfo := (&logger.ReqInfo{}).AppendTags("cachePath", c.dir)
-		ctx := logger.SetReqInfo(context.Background(), reqInfo)
+		ctx := logger.SetReqInfo(GlobalContext, reqInfo)
 		logger.LogIf(ctx, err)
 		return false
 	}
@@ -202,12 +213,46 @@ func (c *diskCache) diskAvailable(size int64) bool {
 	return int(usedPercent) < c.quotaPct
 }
 
+// toClear returns how many bytes should be cleared to reach the low watermark quota.
+// returns 0 if below quota.
+func (c *diskCache) toClear() uint64 {
+	di, err := disk.GetInfo(c.dir)
+	if err != nil {
+		reqInfo := (&logger.ReqInfo{}).AppendTags("cachePath", c.dir)
+		ctx := logger.SetReqInfo(GlobalContext, reqInfo)
+		logger.LogIf(ctx, err)
+		return 0
+	}
+	return bytesToClear(int64(di.Total), int64(di.Free), uint64(c.quotaPct), uint64(c.lowWatermark))
+}
+
+var (
+	errDoneForNow = errors.New("done for now")
+)
+
 // Purge cache entries that were not accessed.
-func (c *diskCache) purge() {
+func (c *diskCache) purge(ctx context.Context) {
+	if c.diskUsageLow() {
+		return
+	}
+	toFree := c.toClear()
+	if toFree == 0 {
+		return
+	}
+	// expiry for cleaning up old cache.json files that
+	// need to be cleaned up.
+	expiry := UTCNow().Add(-cacheExpiryDays)
+	// defaulting max hits count to 100
+	scorer, err := newFileScorer(toFree, time.Now().Unix(), 100)
+	if err != nil {
+		logger.LogIf(ctx, err)
+		return
+	}
+
 	// this function returns FileInfo for cached range files and cache data file.
 	fiStatFn := func(ranges map[string]string, dataFile, pathPrefix string) map[string]os.FileInfo {
 		fm := make(map[string]os.FileInfo)
-		fname := pathJoin(pathPrefix, cacheDataFile)
+		fname := pathJoin(pathPrefix, dataFile)
 		if fi, err := os.Stat(fname); err == nil {
 			fm[fname] = fi
 		}
@@ -220,139 +265,162 @@ func (c *diskCache) purge() {
 		}
 		return fm
 	}
-	ctx := context.Background()
-	for {
-		olderThan := c.expiry * 24
-		for !c.diskUsageLow() {
-			// delete unaccessed objects older than expiry duration
-			expiry := UTCNow().Add(time.Hour * time.Duration(-1*olderThan))
-			olderThan /= 2
-			if olderThan < 1 {
-				break
-			}
-			deletedCount := 0
 
-			objDirs, err := ioutil.ReadDir(c.dir)
-			if err != nil {
-				log.Fatal(err)
-			}
+	filterFn := func(name string, typ os.FileMode) error {
+		if name == minioMetaBucket {
+			// Proceed to next file.
+			return nil
+		}
 
-			for _, obj := range objDirs {
-				if obj.Name() == minioMetaBucket {
-					continue
-				}
-				meta, _, err := c.statCachedMeta(pathJoin(c.dir, obj.Name()))
-				if err != nil {
-					// delete any partially filled cache entry left behind.
-					removeAll(pathJoin(c.dir, obj.Name()))
-					continue
-				}
-				// stat all cached file ranges and cacheDataFile.
-				fis := fiStatFn(meta.Ranges, cacheDataFile, pathJoin(c.dir, obj.Name()))
-				objInfo := meta.ToObjectInfo("", "")
-				cc := cacheControlOpts(objInfo)
+		cacheDir := pathJoin(c.dir, name)
+		meta, _, numHits, err := c.statCachedMeta(ctx, cacheDir)
+		if err != nil {
+			// delete any partially filled cache entry left behind.
+			removeAll(cacheDir)
+			// Proceed to next file.
+			return nil
+		}
 
-				for fname, fi := range fis {
-					if atime.Get(fi).Before(expiry) ||
-						cc.isStale(objInfo.ModTime) {
-						if err = removeAll(fname); err != nil {
-							logger.LogIf(ctx, err)
-						}
-						deletedCount++
-						// break early if sufficient disk space reclaimed.
-						if !c.diskUsageLow() {
-							break
-						}
+		// stat all cached file ranges and cacheDataFile.
+		cachedFiles := fiStatFn(meta.Ranges, cacheDataFile, pathJoin(c.dir, name))
+		objInfo := meta.ToObjectInfo("", "")
+		cc := cacheControlOpts(objInfo)
+		for fname, fi := range cachedFiles {
+			if cc != nil {
+				if cc.isStale(objInfo.ModTime) {
+					if err = removeAll(fname); err != nil {
+						logger.LogIf(ctx, err)
+					}
+					scorer.adjustSaveBytes(-fi.Size())
+
+					// break early if sufficient disk space reclaimed.
+					if c.diskUsageLow() {
+						// if we found disk usage is already low, we return nil filtering is complete.
+						return errDoneForNow
 					}
 				}
+				continue
 			}
-			if deletedCount == 0 {
-				break
-			}
+			scorer.addFile(fname, atime.Get(fi), fi.Size(), numHits)
 		}
-		lastRunTime := time.Now()
-		for {
-			<-c.purgeChan
-			timeElapsed := time.Since(lastRunTime)
-			if timeElapsed > time.Hour {
-				break
-			}
+		// clean up stale cache.json files for objects that never got cached but access count was maintained in cache.json
+		fi, err := os.Stat(pathJoin(cacheDir, cacheMetaJSONFile))
+		if err != nil || (fi.ModTime().Before(expiry) && len(cachedFiles) == 0) {
+			removeAll(cacheDir)
+			scorer.adjustSaveBytes(-fi.Size())
+			// Proceed to next file.
+			return nil
+		}
+
+		// if we found disk usage is already low, we return nil filtering is complete.
+		if c.diskUsageLow() {
+			return errDoneForNow
+		}
+
+		// Proceed to next file.
+		return nil
+	}
+
+	if err := readDirFilterFn(c.dir, filterFn); err != nil {
+		logger.LogIf(ctx, err)
+		return
+	}
+
+	for _, path := range scorer.fileNames() {
+		removeAll(path)
+		slashIdx := strings.LastIndex(path, SlashSeparator)
+		pathPrefix := path[0:slashIdx]
+		fname := path[slashIdx+1:]
+		if fname == cacheDataFile {
+			removeAll(pathPrefix)
 		}
 	}
 }
 
+func (c *diskCache) incGCCounter() {
+	atomic.AddUint64(&c.gcCounter, 1)
+}
+
+func (c *diskCache) resetGCCounter() {
+	atomic.StoreUint64(&c.gcCounter, 0)
+}
+
+func (c *diskCache) gcCount() uint64 {
+	return atomic.LoadUint64(&c.gcCounter)
+}
+
 // sets cache drive status
-func (c *diskCache) setOnline(status bool) {
-	c.onlineMutex.Lock()
-	c.online = status
-	c.onlineMutex.Unlock()
+func (c *diskCache) setOffline() {
+	atomic.StoreUint32(&c.online, 0)
 }
 
 // returns true if cache drive is online
 func (c *diskCache) IsOnline() bool {
-	c.onlineMutex.RLock()
-	defer c.onlineMutex.RUnlock()
-	return c.online
+	return atomic.LoadUint32(&c.online) != 0
 }
 
 // Stat returns ObjectInfo from disk cache
-func (c *diskCache) Stat(ctx context.Context, bucket, object string) (oi ObjectInfo, err error) {
+func (c *diskCache) Stat(ctx context.Context, bucket, object string) (oi ObjectInfo, numHits int, err error) {
+	var partial bool
+	var meta *cacheMeta
+
 	cacheObjPath := getCacheSHADir(c.dir, bucket, object)
-	oi, err = c.statCache(cacheObjPath)
+	// Stat the file to get file size.
+	meta, partial, numHits, err = c.statCachedMeta(ctx, cacheObjPath)
 	if err != nil {
 		return
 	}
+	if partial {
+		return oi, numHits, errFileNotFound
+	}
+	oi = meta.ToObjectInfo("", "")
 	oi.Bucket = bucket
 	oi.Name = object
 
 	if err = decryptCacheObjectETag(&oi); err != nil {
-		return oi, err
+		return
 	}
 	return
 }
 
 // statCachedMeta returns metadata from cache - including ranges cached, partial to indicate
 // if partial object is cached.
-func (c *diskCache) statCachedMeta(cacheObjPath string) (meta *cacheMeta, partial bool, err error) {
-	// Stat the file to get file size.
-	metaPath := pathJoin(cacheObjPath, cacheMetaJSONFile)
-	f, err := os.Open(metaPath)
-	if err != nil {
-		return meta, partial, err
+func (c *diskCache) statCachedMeta(ctx context.Context, cacheObjPath string) (meta *cacheMeta, partial bool, numHits int, err error) {
+
+	cLock := c.NewNSLockFn(ctx, cacheObjPath)
+	if err = cLock.GetRLock(globalObjectTimeout); err != nil {
+		return
 	}
-	defer f.Close()
-	meta = &cacheMeta{Version: cacheMetaVersion}
-	if err := jsonLoad(f, meta); err != nil {
-		return meta, partial, err
-	}
-	// get metadata of part.1 if full file has been cached.
-	partial = true
-	fi, err := os.Stat(pathJoin(cacheObjPath, cacheDataFile))
-	if err == nil {
-		meta.Stat.ModTime = atime.Get(fi)
-		partial = false
-	}
-	return meta, partial, nil
+
+	defer cLock.RUnlock()
+	return c.statCache(ctx, cacheObjPath)
 }
 
 // statRange returns ObjectInfo and RangeInfo from disk cache
-func (c *diskCache) statRange(ctx context.Context, bucket, object string, rs *HTTPRangeSpec) (oi ObjectInfo, rngInfo RangeInfo, err error) {
+func (c *diskCache) statRange(ctx context.Context, bucket, object string, rs *HTTPRangeSpec) (oi ObjectInfo, rngInfo RangeInfo, numHits int, err error) {
 	// Stat the file to get file size.
 	cacheObjPath := getCacheSHADir(c.dir, bucket, object)
+	var meta *cacheMeta
+	var partial bool
 
-	if rs == nil {
-		oi, err = c.statCache(cacheObjPath)
-		return oi, rngInfo, err
-	}
-	meta, _, err := c.statCachedMeta(cacheObjPath)
+	meta, partial, numHits, err = c.statCachedMeta(ctx, cacheObjPath)
 	if err != nil {
-		return oi, rngInfo, err
+		return
+	}
+
+	oi = meta.ToObjectInfo("", "")
+	oi.Bucket = bucket
+	oi.Name = object
+	if !partial {
+		err = decryptCacheObjectETag(&oi)
+		return
 	}
 
 	actualSize := uint64(meta.Stat.Size)
-	_, length, err := rs.GetOffsetLength(int64(actualSize))
+	var length int64
+	_, length, err = rs.GetOffsetLength(int64(actualSize))
 	if err != nil {
-		return oi, rngInfo, err
+		return
 	}
 
 	actualRngSize := uint64(length)
@@ -363,38 +431,61 @@ func (c *diskCache) statRange(ctx context.Context, bucket, object string, rs *HT
 	rng := rs.String(int64(actualSize))
 	rngFile, ok := meta.Ranges[rng]
 	if !ok {
-		return oi, rngInfo, ObjectNotFound{Bucket: bucket, Object: object}
+		return oi, rngInfo, numHits, ObjectNotFound{Bucket: bucket, Object: object}
+	}
+	if _, err = os.Stat(pathJoin(cacheObjPath, rngFile)); err != nil {
+		return oi, rngInfo, numHits, ObjectNotFound{Bucket: bucket, Object: object}
 	}
 	rngInfo = RangeInfo{Range: rng, File: rngFile, Size: int64(actualRngSize)}
 
-	oi = meta.ToObjectInfo("", "")
-	oi.Bucket = bucket
-	oi.Name = object
-
-	if err = decryptCacheObjectETag(&oi); err != nil {
-		return oi, rngInfo, err
-	}
+	err = decryptCacheObjectETag(&oi)
 	return
 }
 
 // statCache is a convenience function for purge() to get ObjectInfo for cached object
-func (c *diskCache) statCache(cacheObjPath string) (oi ObjectInfo, e error) {
+func (c *diskCache) statCache(ctx context.Context, cacheObjPath string) (meta *cacheMeta, partial bool, numHits int, err error) {
 	// Stat the file to get file size.
-	meta, partial, err := c.statCachedMeta(cacheObjPath)
+	metaPath := pathJoin(cacheObjPath, cacheMetaJSONFile)
+	f, err := os.Open(metaPath)
 	if err != nil {
-		return oi, err
+		return meta, partial, 0, err
 	}
-	if partial {
-		return oi, errFileNotFound
+	defer f.Close()
+	meta = &cacheMeta{Version: cacheMetaVersion}
+	if err := jsonLoad(f, meta); err != nil {
+		return meta, partial, 0, err
 	}
-	return meta.ToObjectInfo("", ""), nil
+	// get metadata of part.1 if full file has been cached.
+	partial = true
+	fi, err := os.Stat(pathJoin(cacheObjPath, cacheDataFile))
+	if err == nil {
+		meta.Stat.ModTime = atime.Get(fi)
+		partial = false
+	}
+	return meta, partial, meta.Hits, nil
 }
 
 // saves object metadata to disk cache
-func (c *diskCache) saveMetadata(ctx context.Context, bucket, object string, meta map[string]string, actualSize int64, rs *HTTPRangeSpec, rsFileName string) error {
-	fileName := getCacheSHADir(c.dir, bucket, object)
-	metaPath := pathJoin(fileName, cacheMetaJSONFile)
+// incHitsOnly is true if metadata update is incrementing only the hit counter
+func (c *diskCache) SaveMetadata(ctx context.Context, bucket, object string, meta map[string]string, actualSize int64, rs *HTTPRangeSpec, rsFileName string, incHitsOnly bool) error {
+	cachedPath := getCacheSHADir(c.dir, bucket, object)
+	cLock := c.NewNSLockFn(ctx, cachedPath)
+	if err := cLock.GetLock(globalObjectTimeout); err != nil {
+		return err
+	}
+	defer cLock.Unlock()
+	return c.saveMetadata(ctx, bucket, object, meta, actualSize, rs, rsFileName, incHitsOnly)
+}
 
+// saves object metadata to disk cache
+// incHitsOnly is true if metadata update is incrementing only the hit counter
+func (c *diskCache) saveMetadata(ctx context.Context, bucket, object string, meta map[string]string, actualSize int64, rs *HTTPRangeSpec, rsFileName string, incHitsOnly bool) error {
+	cachedPath := getCacheSHADir(c.dir, bucket, object)
+	metaPath := pathJoin(cachedPath, cacheMetaJSONFile)
+	// Create cache directory if needed
+	if err := os.MkdirAll(cachedPath, 0777); err != nil {
+		return err
+	}
 	f, err := os.OpenFile(metaPath, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		return err
@@ -405,6 +496,7 @@ func (c *diskCache) saveMetadata(ctx context.Context, bucket, object string, met
 	if err := jsonLoad(f, m); err != nil && err != io.EOF {
 		return err
 	}
+	// increment hits
 	if rs != nil {
 		if m.Ranges == nil {
 			m.Ranges = make(map[string]string)
@@ -413,44 +505,28 @@ func (c *diskCache) saveMetadata(ctx context.Context, bucket, object string, met
 	} else {
 		// this is necessary cleanup of range files if entire object is cached.
 		for _, f := range m.Ranges {
-			removeAll(pathJoin(fileName, f))
+			removeAll(pathJoin(cachedPath, f))
 		}
 		m.Ranges = nil
 	}
 	m.Stat.Size = actualSize
 	m.Stat.ModTime = UTCNow()
-	m.Meta = meta
+	if !incHitsOnly {
+		// reset meta
+		m.Meta = meta
+	} else {
+		if m.Meta == nil {
+			m.Meta = make(map[string]string)
+		}
+		if etag, ok := meta["etag"]; ok {
+			m.Meta["etag"] = etag
+		}
+	}
+
+	m.Hits++
+
 	m.Checksum = CacheChecksumInfoV1{Algorithm: HighwayHash256S.String(), Blocksize: cacheBlkSize}
-
 	return jsonSave(f, m)
-}
-
-// Backend metadata could have changed through server side copy - reset cache metadata if that is the case
-func (c *diskCache) updateMetadataIfChanged(ctx context.Context, bucket, object string, bkObjectInfo, cacheObjInfo ObjectInfo) error {
-
-	bkMeta := make(map[string]string)
-	cacheMeta := make(map[string]string)
-	for k, v := range bkObjectInfo.UserDefined {
-		if HasPrefix(k, ReservedMetadataPrefix) {
-			// Do not need to send any internal metadata
-			continue
-		}
-		bkMeta[http.CanonicalHeaderKey(k)] = v
-	}
-	for k, v := range cacheObjInfo.UserDefined {
-		if HasPrefix(k, ReservedMetadataPrefix) {
-			// Do not need to send any internal metadata
-			continue
-		}
-		cacheMeta[http.CanonicalHeaderKey(k)] = v
-	}
-	if !reflect.DeepEqual(bkMeta, cacheMeta) ||
-		bkObjectInfo.ETag != cacheObjInfo.ETag ||
-		bkObjectInfo.ContentType != cacheObjInfo.ContentType ||
-		bkObjectInfo.Expires != cacheObjInfo.Expires {
-		return c.saveMetadata(ctx, bucket, object, getMetadata(bkObjectInfo), bkObjectInfo.Size, nil, "")
-	}
-	return nil
 }
 
 func getCacheSHADir(dir, bucket, object string) string {
@@ -548,21 +624,40 @@ func newCacheEncryptMetadata(bucket, object string, metadata map[string]string) 
 }
 
 // Caches the object to disk
-func (c *diskCache) Put(ctx context.Context, bucket, object string, data io.Reader, size int64, rs *HTTPRangeSpec, opts ObjectOptions) error {
+func (c *diskCache) Put(ctx context.Context, bucket, object string, data io.Reader, size int64, rs *HTTPRangeSpec, opts ObjectOptions, incHitsOnly bool) error {
 	if c.diskUsageHigh() {
-		select {
-		case c.purgeChan <- struct{}{}:
-		default:
-		}
+		c.incGCCounter()
+		io.Copy(ioutil.Discard, data)
 		return errDiskFull
 	}
+	cachePath := getCacheSHADir(c.dir, bucket, object)
+	cLock := c.NewNSLockFn(ctx, cachePath)
+	if err := cLock.GetLock(globalObjectTimeout); err != nil {
+		return err
+	}
+	defer cLock.Unlock()
+
+	meta, _, numHits, err := c.statCache(ctx, cachePath)
+	// Case where object not yet cached
+	if os.IsNotExist(err) && c.after >= 1 {
+		return c.saveMetadata(ctx, bucket, object, opts.UserDefined, size, nil, "", false)
+	}
+	// Case where object already has a cache metadata entry but not yet cached
+	if err == nil && numHits < c.after {
+		cETag := extractETag(meta.Meta)
+		bETag := extractETag(opts.UserDefined)
+		if cETag == bETag {
+			return c.saveMetadata(ctx, bucket, object, opts.UserDefined, size, nil, "", false)
+		}
+		incHitsOnly = true
+	}
+
 	if rs != nil {
 		return c.putRange(ctx, bucket, object, data, size, rs, opts)
 	}
 	if !c.diskAvailable(size) {
 		return errDiskFull
 	}
-	cachePath := getCacheSHADir(c.dir, bucket, object)
 	if err := os.MkdirAll(cachePath, 0777); err != nil {
 		return err
 	}
@@ -572,7 +667,6 @@ func (c *diskCache) Put(ctx context.Context, bucket, object string, data io.Read
 	}
 	var reader = data
 	var actualSize = uint64(size)
-	var err error
 	if globalCacheKMS != nil {
 		reader, err = newCacheEncryptReader(data, bucket, object, metadata)
 		if err != nil {
@@ -582,17 +676,19 @@ func (c *diskCache) Put(ctx context.Context, bucket, object string, data io.Read
 	}
 	n, err := c.bitrotWriteToCache(cachePath, cacheDataFile, reader, actualSize)
 	if IsErr(err, baseErrs...) {
-		c.setOnline(false)
+		// take the cache drive offline
+		c.setOffline()
 	}
 	if err != nil {
 		removeAll(cachePath)
 		return err
 	}
+
 	if actualSize != uint64(n) {
 		removeAll(cachePath)
 		return IncompleteBody{}
 	}
-	return c.saveMetadata(ctx, bucket, object, metadata, n, nil, "")
+	return c.saveMetadata(ctx, bucket, object, metadata, n, nil, "", incHitsOnly)
 }
 
 // Caches the range to disk
@@ -628,7 +724,8 @@ func (c *diskCache) putRange(ctx context.Context, bucket, object string, data io
 	cacheFile := MustGetUUID()
 	n, err := c.bitrotWriteToCache(cachePath, cacheFile, reader, actualSize)
 	if IsErr(err, baseErrs...) {
-		c.setOnline(false)
+		// take the cache drive offline
+		c.setOffline()
 	}
 	if err != nil {
 		removeAll(cachePath)
@@ -638,7 +735,7 @@ func (c *diskCache) putRange(ctx context.Context, bucket, object string, data io
 		removeAll(cachePath)
 		return IncompleteBody{}
 	}
-	return c.saveMetadata(ctx, bucket, object, metadata, int64(objSize), rs, cacheFile)
+	return c.saveMetadata(ctx, bucket, object, metadata, int64(objSize), rs, cacheFile, false)
 }
 
 // checks streaming bitrot checksum of cached object before returning data
@@ -718,7 +815,7 @@ func (c *diskCache) bitrotReadFromCache(ctx context.Context, filePath string, of
 		if !bytes.Equal(hashBytes, checksumHash) {
 			err = fmt.Errorf("hashes do not match expected %s, got %s",
 				hex.EncodeToString(checksumHash), hex.EncodeToString(hashBytes))
-			logger.LogIf(context.Background(), err)
+			logger.LogIf(GlobalContext, err)
 			return err
 		}
 
@@ -738,13 +835,18 @@ func (c *diskCache) bitrotReadFromCache(ctx context.Context, filePath string, of
 }
 
 // Get returns ObjectInfo and reader for object from disk cache
-func (c *diskCache) Get(ctx context.Context, bucket, object string, rs *HTTPRangeSpec, h http.Header, opts ObjectOptions) (gr *GetObjectReader, err error) {
-	var objInfo ObjectInfo
+func (c *diskCache) Get(ctx context.Context, bucket, object string, rs *HTTPRangeSpec, h http.Header, opts ObjectOptions) (gr *GetObjectReader, numHits int, err error) {
 	cacheObjPath := getCacheSHADir(c.dir, bucket, object)
-	var rngInfo RangeInfo
+	cLock := c.NewNSLockFn(ctx, cacheObjPath)
+	if err := cLock.GetRLock(globalObjectTimeout); err != nil {
+		return nil, numHits, err
+	}
 
-	if objInfo, rngInfo, err = c.statRange(ctx, bucket, object, rs); err != nil {
-		return nil, toObjectErr(err, bucket, object)
+	defer cLock.RUnlock()
+	var objInfo ObjectInfo
+	var rngInfo RangeInfo
+	if objInfo, rngInfo, numHits, err = c.statRange(ctx, bucket, object, rs); err != nil {
+		return nil, numHits, toObjectErr(err, bucket, object)
 	}
 	cacheFile := cacheDataFile
 	objSize := objInfo.Size
@@ -760,12 +862,13 @@ func (c *diskCache) Get(ctx context.Context, bucket, object string, rs *HTTPRang
 	if HasSuffix(object, SlashSeparator) {
 		// The lock taken above is released when
 		// objReader.Close() is called by the caller.
-		return NewGetObjectReaderFromReader(bytes.NewBuffer(nil), objInfo, opts.CheckCopyPrecondFn, nsUnlocker)
+		gr, gerr := NewGetObjectReaderFromReader(bytes.NewBuffer(nil), objInfo, opts, nsUnlocker)
+		return gr, numHits, gerr
 	}
 
-	fn, off, length, nErr := NewGetObjectReader(rs, objInfo, opts.CheckCopyPrecondFn, nsUnlocker)
+	fn, off, length, nErr := NewGetObjectReader(rs, objInfo, opts, nsUnlocker)
 	if nErr != nil {
-		return nil, nErr
+		return nil, numHits, nErr
 	}
 	filePath := pathJoin(cacheObjPath, cacheFile)
 	pr, pw := io.Pipe()
@@ -782,7 +885,7 @@ func (c *diskCache) Get(ctx context.Context, bucket, object string, rs *HTTPRang
 
 	gr, gerr := fn(pr, h, opts.CheckCopyPrecondFn, pipeCloser)
 	if gerr != nil {
-		return gr, gerr
+		return gr, numHits, gerr
 	}
 	if globalCacheKMS != nil {
 		// clean up internal SSE cache metadata
@@ -792,15 +895,24 @@ func (c *diskCache) Get(ctx context.Context, bucket, object string, rs *HTTPRang
 		// overlay Size with actual object size and not the range size
 		gr.ObjInfo.Size = objSize
 	}
-	return gr, nil
+	return gr, numHits, nil
 
 }
 
 // Deletes the cached object
-func (c *diskCache) Delete(ctx context.Context, bucket, object string) (err error) {
-	cachePath := getCacheSHADir(c.dir, bucket, object)
-	return removeAll(cachePath)
+func (c *diskCache) delete(ctx context.Context, cacheObjPath string) (err error) {
+	cLock := c.NewNSLockFn(ctx, cacheObjPath)
+	if err := cLock.GetLock(globalObjectTimeout); err != nil {
+		return err
+	}
+	defer cLock.Unlock()
+	return removeAll(cacheObjPath)
+}
 
+// Deletes the cached object
+func (c *diskCache) Delete(ctx context.Context, bucket, object string) (err error) {
+	cacheObjPath := getCacheSHADir(c.dir, bucket, object)
+	return c.delete(ctx, cacheObjPath)
 }
 
 // convenience function to check if object is cached on this diskCache

@@ -199,7 +199,7 @@ func TestGatewayListObject(t *testing.T) {
 	var (
 		data = make([]byte, dataLen)
 	)
-	err = zo.MakeBucketWithLocation(ctx, bucket, "")
+	err = zo.MakeBucketWithLocation(ctx, bucket, "", false)
 	if err != nil {
 		t.Fatalf("create bucket `%v`: %v", bucket, err)
 	}
@@ -292,7 +292,7 @@ func TestGatewayBucketRoundTrip(t *testing.T) {
 
 	// create buckets
 	for _, bkt := range buckets {
-		err = zo.MakeBucketWithLocation(ctx, bkt, "")
+		err = zo.MakeBucketWithLocation(ctx, bkt, "", false)
 		if err != nil {
 			t.Fatalf("create bucket `%v`: %v", bkt, err)
 		}
@@ -325,7 +325,7 @@ func TestGatewayBucketRoundTrip(t *testing.T) {
 	}
 
 	// delete bucket
-	if err := zo.DeleteBucket(ctx, buckets[0]); err != nil {
+	if err := zo.DeleteBucket(ctx, buckets[0], false); err != nil {
 		t.Fatalf("DeleteBucket failed: %v", err)
 	}
 
@@ -350,7 +350,7 @@ func TestGatewayBucketPolicy(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err = zo.MakeBucketWithLocation(ctx, bucket, "")
+	err = zo.MakeBucketWithLocation(ctx, bucket, "", false)
 	if err != nil {
 		t.Fatalf("create bucket `%v`: %v", bucket, err)
 	}
@@ -398,7 +398,7 @@ func TestMultipartUploadComplete(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err = zo.MakeBucketWithLocation(ctx, bucket, "")
+	err = zo.MakeBucketWithLocation(ctx, bucket, "", false)
 	if err != nil {
 		t.Fatalf("create bucket `%v`: %v", bucket, err)
 	}
@@ -481,7 +481,7 @@ func TestMultipartUploadListAbort(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err = zo.MakeBucketWithLocation(ctx, bucket, "")
+	err = zo.MakeBucketWithLocation(ctx, bucket, "", false)
 	if err != nil {
 		t.Fatalf("create bucket `%v`: %v", bucket, err)
 	}
@@ -615,7 +615,7 @@ func TestMultipartUploadCopyComplete(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err = zo.MakeBucketWithLocation(ctx, bucket, "")
+	err = zo.MakeBucketWithLocation(ctx, bucket, "", false)
 	if err != nil {
 		t.Fatalf("create bucket `%v`: %v", bucket, err)
 	}

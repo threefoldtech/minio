@@ -22,6 +22,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	xhttp "github.com/minio/minio/cmd/http"
 	"github.com/minio/minio/cmd/logger"
 	"github.com/minio/minio/pkg/bucket/lifecycle"
 	"github.com/minio/minio/pkg/bucket/policy"
@@ -48,6 +49,12 @@ func (api objectAPIHandlers) PutBucketLifecycleHandler(w http.ResponseWriter, r 
 	vars := mux.Vars(r)
 	bucket := vars["bucket"]
 
+	// PutBucketLifecycle always needs a Content-Md5
+	if _, ok := r.Header[xhttp.ContentMD5]; !ok {
+		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(ErrMissingContentMD5), r.URL, guessIsBrowserReq(r))
+		return
+	}
+
 	if s3Error := checkRequestAuthType(ctx, r, policy.PutBucketLifecycleAction, bucket, ""); s3Error != ErrNone {
 		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(s3Error), r.URL, guessIsBrowserReq(r))
 		return
@@ -59,15 +66,15 @@ func (api objectAPIHandlers) PutBucketLifecycleHandler(w http.ResponseWriter, r 
 		return
 	}
 
-	// PutBucketLifecycle always needs a Content-Md5
-	if _, ok := r.Header["Content-Md5"]; !ok {
-		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(ErrMissingContentMD5), r.URL, guessIsBrowserReq(r))
+	bucketLifecycle, err := lifecycle.ParseLifecycleConfig(io.LimitReader(r.Body, r.ContentLength))
+	if err != nil {
+		writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
 		return
 	}
 
-	bucketLifecycle, err := lifecycle.ParseLifecycleConfig(io.LimitReader(r.Body, r.ContentLength))
-	if err != nil {
-		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(ErrMalformedXML), r.URL, guessIsBrowserReq(r))
+	// Validate the received bucket policy document
+	if err = bucketLifecycle.Validate(); err != nil {
+		writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
 		return
 	}
 
@@ -76,7 +83,7 @@ func (api objectAPIHandlers) PutBucketLifecycleHandler(w http.ResponseWriter, r 
 		return
 	}
 
-	globalLifecycleSys.Set(bucket, *bucketLifecycle)
+	globalLifecycleSys.Set(bucket, bucketLifecycle)
 	globalNotificationSys.SetBucketLifecycle(ctx, bucket, bucketLifecycle)
 
 	// Success.

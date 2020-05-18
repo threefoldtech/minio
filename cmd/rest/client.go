@@ -47,7 +47,7 @@ type Client struct {
 	httpClient          *http.Client
 	httpIdleConnsCloser func()
 	url                 *url.URL
-	newAuthToken        func() string
+	newAuthToken        func(audience string) string
 }
 
 // URL query separator constants
@@ -62,7 +62,7 @@ func (c *Client) CallWithContext(ctx context.Context, method string, values url.
 		return nil, &NetworkError{err}
 	}
 	req = req.WithContext(ctx)
-	req.Header.Set("Authorization", "Bearer "+c.newAuthToken())
+	req.Header.Set("Authorization", "Bearer "+c.newAuthToken(req.URL.Query().Encode()))
 	req.Header.Set("X-Minio-Time", time.Now().UTC().Format(time.RFC3339))
 	if length > 0 {
 		req.ContentLength = length
@@ -71,6 +71,12 @@ func (c *Client) CallWithContext(ctx context.Context, method string, values url.
 	if err != nil {
 		c.httpClient.CloseIdleConnections()
 		return nil, &NetworkError{err}
+	}
+
+	final := resp.Trailer.Get("FinalStatus")
+	if final != "" && final != "Success" {
+		defer xhttp.DrainBody(resp.Body)
+		return nil, errors.New(final)
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -102,7 +108,7 @@ func (c *Client) Close() {
 }
 
 // NewClient - returns new REST client.
-func NewClient(url *url.URL, newCustomTransport func() *http.Transport, newAuthToken func() string) (*Client, error) {
+func NewClient(url *url.URL, newCustomTransport func() *http.Transport, newAuthToken func(aud string) string) (*Client, error) {
 	// Transport is exactly same as Go default in https://golang.org/pkg/net/http/#RoundTripper
 	// except custom DialContext and TLSClientConfig.
 	tr := newCustomTransport()

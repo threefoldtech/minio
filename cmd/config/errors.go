@@ -24,6 +24,12 @@ var (
 		"Browser can only accept `on` and `off` values. To disable web browser access, set this value to `off`",
 	)
 
+	ErrInvalidFSOSyncValue = newErrFn(
+		"Invalid O_SYNC value",
+		"Please check the passed value",
+		"Can only accept `on` and `off` values. To enable O_SYNC for fs backend, set this value to `on`",
+	)
+
 	ErrInvalidDomainValue = newErrFn(
 		"Invalid domain value",
 		"Please check the passed value",
@@ -33,7 +39,7 @@ var (
 	ErrInvalidErasureSetSize = newErrFn(
 		"Invalid erasure set size",
 		"Please check the passed value",
-		"Erasure set can only accept any of [4, 6, 8, 10, 12, 14, 16] values",
+		"Erasure set can only accept any of [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16] values",
 	)
 
 	ErrInvalidWormValue = newErrFn(
@@ -64,6 +70,24 @@ var (
 		"Invalid cache quota value",
 		"Please check the passed value",
 		"MINIO_CACHE_QUOTA: Valid cache quota value must be between 0-100",
+	)
+
+	ErrInvalidCacheAfter = newErrFn(
+		"Invalid cache after value",
+		"Please check the passed value",
+		"MINIO_CACHE_AFTER: Valid cache after value must be 0 or greater",
+	)
+
+	ErrInvalidCacheWatermarkLow = newErrFn(
+		"Invalid cache low watermark value",
+		"Please check the passed value",
+		"MINIO_CACHE_WATERMARK_LOW: Valid cache low watermark value must be between 0-100",
+	)
+
+	ErrInvalidCacheWatermarkHigh = newErrFn(
+		"Invalid cache high watermark value",
+		"Please check the passed value",
+		"MINIO_CACHE_WATERMARK_HIGH: Valid cache high watermark value must be between 0-100",
 	)
 
 	ErrInvalidCacheEncryptionKey = newErrFn(
@@ -149,6 +173,12 @@ Refer to the link https://github.com/minio/minio/tree/master/docs/erasure/storag
 		`FS mode requires only one writable disk path
 Example 1:
    $ minio server /data/minio/`,
+	)
+
+	ErrUnsupportedBackend = newErrFn(
+		"Unable to write to the backend",
+		"Please ensure your disk supports O_DIRECT",
+		"",
 	)
 
 	ErrUnableToWriteInBackend = newErrFn(

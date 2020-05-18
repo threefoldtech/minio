@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"path"
 	"sort"
 	"strings"
@@ -28,7 +27,6 @@ import (
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/minio/minio/cmd/config"
-	"github.com/minio/minio/cmd/logger"
 	"github.com/minio/minio/pkg/madmin"
 )
 
@@ -42,9 +40,6 @@ const (
 
 	// MinIO configuration file.
 	minioConfigFile = "config.json"
-
-	// MinIO configuration backup file
-	minioConfigBackupFile = minioConfigFile + ".backup"
 )
 
 func listServerConfigHistory(ctx context.Context, objAPI ObjectLayer, withData bool, count int) (
@@ -188,16 +183,14 @@ func (sys *ConfigSys) Load(objAPI ObjectLayer) error {
 }
 
 // WatchConfigNASDisk - watches nas disk on periodic basis.
-func (sys *ConfigSys) WatchConfigNASDisk(objAPI ObjectLayer) {
+func (sys *ConfigSys) WatchConfigNASDisk(ctx context.Context, objAPI ObjectLayer) {
 	configInterval := globalRefreshIAMInterval
 	watchDisk := func() {
-		ticker := time.NewTicker(configInterval)
-		defer ticker.Stop()
 		for {
 			select {
-			case <-GlobalServiceDoneCh:
+			case <-ctx.Done():
 				return
-			case <-ticker.C:
+			case <-time.After(configInterval):
 				loadConfig(objAPI)
 			}
 		}
@@ -212,33 +205,7 @@ func (sys *ConfigSys) Init(objAPI ObjectLayer) error {
 		return errInvalidArgument
 	}
 
-	doneCh := make(chan struct{})
-	defer close(doneCh)
-
-	// Initializing configuration needs a retry mechanism for
-	// the following reasons:
-	//  - Read quorum is lost just after the initialization
-	//    of the object layer.
-	//  - Write quorum not met when upgrading configuration
-	//    version is needed.
-	retryTimerCh := newRetryTimerSimple(doneCh)
-	for {
-		select {
-		case <-retryTimerCh:
-			if err := initConfig(objAPI); err != nil {
-				if err == errDiskNotFound ||
-					strings.Contains(err.Error(), InsufficientReadQuorum{}.Error()) ||
-					strings.Contains(err.Error(), InsufficientWriteQuorum{}.Error()) {
-					logger.Info("Waiting for configuration to be initialized..")
-					continue
-				}
-				return err
-			}
-			return nil
-		case <-globalOSSignalCh:
-			return fmt.Errorf("Initializing config sub-system gracefully stopped")
-		}
-	}
+	return initConfig(objAPI)
 }
 
 // NewConfigSys - creates new config system object.
