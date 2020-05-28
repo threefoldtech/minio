@@ -12,6 +12,8 @@ import (
 
 	"github.com/minio/minio/cmd/gateway/zerostor/meta"
 	"github.com/minio/minio/cmd/gateway/zerostor/tlog"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/minio/minio/cmd/gateway/zerostor/config"
 	log "github.com/sirupsen/logrus"
@@ -36,6 +38,80 @@ func (m *metaManager) Close() {
 	m.mux.RUnlock()
 }
 
+type metricType string
+
+const (
+	metricDataIOErrors  metricType = "data_io_errors"
+	metricIndexIOErrors metricType = "index_io_errors"
+	metricDataFaults    metricType = "data_faults"
+	metricIndexFaults   metricType = "index_faults"
+	metricConnError     metricType = "connection_errors"
+)
+
+type metricsSet struct {
+	metrics map[metricType]prometheus.Counter
+	history map[metricType]float64
+
+	// Size and free are defined alone because
+	// they are gauges not counters
+	Size prometheus.Gauge
+	Free prometheus.Gauge
+}
+
+func newMetricsSet(address string, ns string) metricsSet {
+	set := []metricType{
+		metricDataIOErrors,
+		metricDataFaults,
+		metricIndexIOErrors,
+		metricIndexFaults,
+		metricConnError,
+	}
+	metrics := make(map[metricType]prometheus.Counter)
+	history := make(map[metricType]float64)
+	opts := prometheus.CounterOpts{
+		Namespace: "minio",
+		Subsystem: "zerostor",
+		ConstLabels: prometheus.Labels{
+			"address":   address,
+			"namespace": ns,
+		},
+	}
+
+	for _, typ := range set {
+		mOpts := opts
+		mOpts.Name = string(typ)
+		metrics[typ] = promauto.NewCounter(mOpts)
+		history[typ] = 0
+	}
+	sizeOpts := prometheus.GaugeOpts(opts)
+	sizeOpts.Name = "data_size"
+	freeOpts := prometheus.GaugeOpts(opts)
+	freeOpts.Name = "data_free_space"
+
+	return metricsSet{
+		metrics: metrics,
+		history: history,
+		Size:    promauto.NewGauge(sizeOpts),
+		Free:    promauto.NewGauge(freeOpts),
+	}
+}
+
+// Set takes a total count, then the metric set makes sure it
+// only add the difference from last reported value to the counter
+// because we only receive full count from namespace info
+func (m *metricsSet) Set(metric metricType, value float64) {
+	old := m.history[metric]
+	if value > old {
+		m.metrics[metric].Add(value - old)
+		m.history[metric] = value
+	}
+}
+
+func (m *metricsSet) Add(metric metricType, value float64) {
+	m.metrics[metric].Add(value)
+	m.history[metric] += value
+}
+
 // zsClient defines 0-stor client wrapper
 type zsClient struct {
 	*client.Client
@@ -43,28 +119,56 @@ type zsClient struct {
 	cluster datastor.Cluster
 }
 
+func (zc *zsClient) Inner() *client.Client {
+	return zc.Client
+}
+
 func (zc *zsClient) healthReporter(ctx context.Context) {
+	// zc.cluster.
+	gauges := make(map[string]metricsSet)
+	for iter := zc.cluster.GetShardIterator(nil); iter.Next(); {
+		shard := iter.Shard()
+
+		gauges[shard.Identifier()] = newMetricsSet(shard.Address(), shard.Namespace())
+	}
+
 	for {
-		select {
-		case <-ctx.Done():
-			//in case context was canceled when we were waiting
-			return
-		case <-time.After(10 * time.Minute):
-		}
+
 		log.Debug("checking cluster health")
 
 		for iter := zc.cluster.GetShardIterator(nil); iter.Next(); {
 			shard := iter.Shard()
-			err := shardHealth(shard)
+			gauge := gauges[shard.Identifier()]
+			ns, err := shard.GetNamespace()
 			if err != nil {
+				gauge.Add(metricConnError, 1)
 				log.WithFields(log.Fields{
 					"shard": shard.Identifier(),
 				}).WithError(err).Error("error while checking shard health")
-			} else {
-				log.WithFields(log.Fields{
-					"shard": shard.Identifier(),
-				}).Error("shard state is okay")
+				continue
 			}
+
+			gauge.Size.Set(float64(ns.Used))
+			gauge.Free.Set(float64(ns.Free))
+
+			if ns.Health == nil {
+				// health is not supported by this shard
+				// type
+				continue
+			}
+
+			health := ns.Health
+			gauge.Set(metricDataFaults, float64(health.DataFaults))
+			gauge.Set(metricDataIOErrors, float64(health.DataIOErrors))
+			gauge.Set(metricIndexFaults, float64(health.IndexFaults))
+			gauge.Set(metricIndexIOErrors, float64(health.IndexIOErrors))
+		}
+
+		select {
+		case <-ctx.Done():
+			//in case context was canceled when we were waiting
+			return
+		case <-time.After(1 * time.Minute):
 		}
 	}
 }
@@ -171,6 +275,7 @@ type Client interface {
 	Read(metadata *metatypes.Metadata, writer io.Writer, offset, length int64) error
 	Delete(meta metatypes.Metadata) error
 	getKey(bucket, object string) []byte
+	Inner() *client.Client
 }
 
 func newConfigManager(cfg config.Config, metaDir, metaPrivKey string) (ConfigManager, error) {
@@ -251,13 +356,4 @@ func createMetaManager(ctx context.Context, cfg config.Config, metaDir, metaPriv
 	}
 
 	return zoMetaManager, nil
-}
-
-func shardHealth(shard datastor.Shard) error {
-	key, err := shard.CreateObject([]byte("test write"))
-	if err != nil {
-		return err
-	}
-
-	return shard.DeleteObject(key)
 }

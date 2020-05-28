@@ -98,7 +98,7 @@ require (
 	github.com/soheilhy/cmux v0.1.4 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/streadway/amqp v0.0.0-20190404075320-75d898a42a94
-	github.com/threefoldtech/0-stor v0.0.0-20200211083237-3323d031911e
+	github.com/threefoldtech/0-stor v0.0.0-20200519175319-a6114955c764
 	github.com/tinylib/msgp v1.1.1
 	github.com/ugorji/go v1.1.5-pre // indirect
 	github.com/valyala/tcplisten v0.0.0-20161114210144-ceec8f93295a

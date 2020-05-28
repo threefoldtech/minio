@@ -19,6 +19,9 @@ type Config struct {
 	client.Config `yaml:",inline"`
 
 	Minio struct {
+		Healer struct {
+			Listen string `yaml:"listen"`
+		} `json:"healer"`
 		TLog   *TLog `yaml:"tlog,omitempty"`
 		Master *TLog `yaml:"master,omitempty"`
 	} `yaml:"minio"`

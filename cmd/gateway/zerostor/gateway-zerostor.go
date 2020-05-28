@@ -24,7 +24,6 @@ import (
 	minio "github.com/minio/minio/cmd"
 	"github.com/minio/minio/cmd/gateway/zerostor/config"
 	"github.com/minio/minio/cmd/gateway/zerostor/meta"
-	"github.com/minio/minio/cmd/gateway/zerostor/repair"
 
 	"github.com/minio/minio/pkg/auth"
 	"github.com/minio/minio/pkg/bucket/policy"
@@ -34,7 +33,6 @@ import (
 
 const (
 	zerostorBackend         = "zerostor"
-	zerostorRepairBackend   = "zerostor-repair"
 	minioZstorConfigFileVar = "MINIO_ZEROSTOR_CONFIG_FILE"
 	minioZstorMetaDirVar    = "MINIO_ZEROSTOR_META_DIR"
 	minioZstorMetaPrivKey   = "MINIO_ZEROSTOR_META_PRIVKEY"
@@ -106,13 +104,6 @@ ENVIRONMENT VARIABLES:
 		CustomHelpTemplate: zerostorGatewayTemplate,
 	})
 
-	minio.RegisterGatewayCommand(cli.Command{
-		Name:               zerostorRepairBackend,
-		Usage:              "checks all objects in the store and repair if necessary",
-		Action:             zerostorRepairMain,
-		CustomHelpTemplate: zerostorRepairTemplate,
-	})
-
 	debugFlag = os.Getenv("MINIO_ZEROSTOR_DEBUG") == "1"
 }
 
@@ -144,26 +135,6 @@ func zerostorGatewayMain(ctx *cli.Context) {
 		metaDir:     metaDir,
 		metaPrivKey: os.Getenv(minioZstorMetaPrivKey),
 	})
-}
-
-func zerostorRepairMain(ctx *cli.Context) {
-	setupZosLogging()
-	// config file
-	confFile := os.Getenv(minioZstorConfigFileVar)
-	if confFile == "" {
-		confFile = filepath.Join(ctx.String("config-dir"), "zerostor.yaml")
-	}
-
-	// meta dir
-	metaDir := os.Getenv(minioZstorMetaDirVar)
-	if metaDir == "" {
-		metaDir = filepath.Join(ctx.String("config-dir"), "zerostor_meta")
-	}
-
-	if err := repair.CheckAndRepair(confFile, metaDir, os.Getenv(minioZstorMetaPrivKey)); err != nil {
-		log.Println("check and repair failed:", err)
-		os.Exit(1)
-	}
 }
 
 // Zerostor implements minio.Gateway interface
@@ -207,7 +178,9 @@ func (z *Zerostor) NewGatewayLayer(creds auth.Credentials) (minio.ObjectLayer, e
 		maxFileSize: maxFileSizeFromConfig(cfg),
 	}
 
+	healer := NewHealerAPI(cfg.Minio.Healer.Listen, zsManager)
 	go zo.handleConfigReload(z.confFile, z.metaDir, z.metaPrivKey)
+	go healer.Start()
 
 	return zo, nil
 }
@@ -1037,6 +1010,12 @@ func (zo *zerostorObjects) IsCompressionSupported() bool {
 
 func (zo *zerostorObjects) IsListenBucketSupported() bool {
 	return false
+}
+
+func (zo *zerostorObjects) HealBucket(ctx context.Context, bucket string, dryRun, remove bool) (madmin.HealResultItem, error) {
+	log.Warnf("not implemented yet")
+	return madmin.HealResultItem{}, nil
+
 }
 
 //Operation an alias type for zstorObObjectErr to just make sure it's different from params

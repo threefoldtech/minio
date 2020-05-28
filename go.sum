@@ -444,6 +444,8 @@ github.com/templexxx/reedsolomon v0.0.0-20170725134912-0a1f6992d698 h1:3K2VT6NnH
 github.com/templexxx/reedsolomon v0.0.0-20170725134912-0a1f6992d698/go.mod h1:ToWcj2sZ6xHl14JjZiVDktYpFtrFZJXBlsu7TV23lNg=
 github.com/threefoldtech/0-stor v0.0.0-20200211083237-3323d031911e h1:tlWslflZT1w9gR5LBFzCdo5llFqoJJcLLbLrmTJ311o=
 github.com/threefoldtech/0-stor v0.0.0-20200211083237-3323d031911e/go.mod h1:DK4J50gHUY8gQUCeN4StleeZPOpZnLO2D3D8mslQfmw=
+github.com/threefoldtech/0-stor v0.0.0-20200519175319-a6114955c764 h1:fh2QsJ1Ei5iMsOAY06Df2ltHJULm/Or+HF+MQ2PPcCM=
+github.com/threefoldtech/0-stor v0.0.0-20200519175319-a6114955c764/go.mod h1:DK4J50gHUY8gQUCeN4StleeZPOpZnLO2D3D8mslQfmw=
 github.com/tidwall/gjson v1.3.5 h1:2oW9FBNu8qt9jy5URgrzsVx/T/KSn3qn/smJQ0crlDQ=
 github.com/tidwall/gjson v1.3.5/go.mod h1:P256ACg0Mn+j1RXIDXoss50DeIABTYK1PULOJHhxOls=
 github.com/tidwall/match v1.0.1 h1:PnKP62LPNxHKTwvHHZZzdOAOCtsJTjo6dZLCwpKm5xc=
