@@ -10,6 +10,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/minio/minio/cmd/gateway/zerostor/config"
 	"github.com/threefoldtech/0-stor/client"
 	"github.com/threefoldtech/0-stor/client/datastor"
 	"github.com/threefoldtech/0-stor/client/datastor/pipeline"
@@ -30,6 +31,11 @@ const (
 	EnvAccessKey = "ACCESS_KEY"
 	//EnvSecretKey minio secret key
 	EnvSecretKey = "SECRET_KEY"
+
+	// EnvTlogServer tlog server
+	EnvTlogServer = "TLOG"
+	// EnvMaster master
+	EnvMaster = "MASTER"
 )
 
 func env(k, d string) string {
@@ -68,6 +74,28 @@ func shards(s string) ([]datastor.ShardConfig, error) {
 	return shards, nil
 }
 
+func toTlogConfig(s string) (*config.TLog, error) {
+	if s == "" {
+		return nil, nil
+	}
+	u, err := url.Parse(fmt.Sprintf("zdb://%s", s))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse tlog config '%s': %s", s, err)
+	}
+
+	if u.User == nil {
+		return nil, fmt.Errorf("failed to parse tlog config '%s' expected format is 'namespace:password@ip:port", s)
+	}
+
+	password, _ := u.User.Password()
+
+	return &config.TLog{
+		Address:   u.Host,
+		Password:  password,
+		Namespace: u.User.Username(),
+	}, nil
+}
+
 // this entrypoint will build min-io config from ENV vars for zerostor
 func main() {
 	for _, e := range os.Environ() {
@@ -97,18 +125,34 @@ func main() {
 		log.Fatal("PARITY is required and must be an int")
 	}
 
-	cfg := client.Config{
-		DataStor: client.DataStorConfig{
-			Shards: shards,
-			Pipeline: pipeline.Config{
-				BlockSize: blockSize,
-				Distribution: pipeline.ObjectDistributionConfig{
-					DataShardCount:   dataShards,
-					ParityShardCount: parityShards,
-				},
+	tlogConfig, err := toTlogConfig(env(EnvTlogServer, ""))
+	if err != nil {
+		log.Fatalf("failed to parse shards: %s", err)
+	}
+
+	masterConfig, err := toTlogConfig(env(EnvMaster, ""))
+	if err != nil {
+		log.Fatalf("failed to parse shards: %s", err)
+	}
+
+	dataStorConfig := client.DataStorConfig{
+		Shards: shards,
+		Pipeline: pipeline.Config{
+			BlockSize: blockSize,
+			Distribution: pipeline.ObjectDistributionConfig{
+				DataShardCount:   dataShards,
+				ParityShardCount: parityShards,
 			},
 		},
 	}
+
+	cfg := config.Config{
+		Config: client.Config{
+			DataStor: dataStorConfig,
+		},
+	}
+	cfg.Minio.TLog = tlogConfig
+	cfg.Minio.Master = masterConfig
 
 	p := filepath.Join(os.TempDir(), "minio.yaml")
 	f, err := os.Create(p)
