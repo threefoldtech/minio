@@ -57,11 +57,11 @@ jobs:
         target: ${{ steps.setname.outputs.build }}
 
     - name: Crosslink flist (development)
-      if: success() && github.ref == 'refs/heads/master'
+      if: success() && github.ref == 'refs/heads/master-rework'
       uses: threefoldtech/publish-flist@master
       with:
         token: ${{ secrets.HUB_JWT }}
         action: crosslink
         user: tf-official-apps
-        name: minio:development:latest.flist
+        name: minio:latest.flist
         target: tf-autobuilder/${{ steps.setname.outputs.build }}
