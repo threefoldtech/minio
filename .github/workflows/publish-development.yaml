@@ -1,5 +1,5 @@
 name: Release (development)
-on: 
+on:
   push:
     branches:
       - '*'
@@ -36,7 +36,7 @@ jobs:
       id: setname
       run: |
         echo "::set-output name=build::minio:v$(date +%y%m%d.%-H%M%S.0)-dev.flist"
-        
+
     - name: Publish flist (${{ github.sha }})
       if: success()
       uses: threefoldtech/publish-flist@master
@@ -45,16 +45,17 @@ jobs:
         action: publish
         user: tf-autobuilder
         root: archive
-        name: minio-${{ github.sha }}.flist
-    
-    - name: Symlink flist (development)
+        name: minio-${{ github.sha }}-bins.flist
+
+    - name: merge with base
+      if: success()
       uses: threefoldtech/publish-flist@master
       with:
         token: ${{ secrets.HUB_JWT }}
-        action: symlink
+        action: merge
         user: tf-autobuilder
-        name: minio-${{ github.sha }}.flist
-        target: ${{ steps.setname.outputs.build }}
+        name: ${{ steps.setname.outputs.build }}
+        target: tf-official-apps/base:latest.flist tf-autobuilder/minio-${{ github.sha }}-bins.flist
 
     - name: Crosslink flist (development)
       if: success() && github.ref == 'refs/heads/master-rework'
