@@ -200,25 +200,27 @@ func (t *fsTLogger) LinkPart(bucket, uploadID, partID, blob string) error {
 }
 
 // NewMultipartUpload initializes a new multipart upload
-func (t *fsTLogger) NewMultipartUpload(bucket, object string, opts minio.ObjectOptions) (string, error) {
+func (t *fsTLogger) NewMultipartUpload(bucket, object, uploadID string, meta map[string]string) error {
 	t.recorder.Begin()
 	defer t.recorder.End()
 
-	upload, err := t.Manager.NewMultipartUpload(bucket, object, opts)
+	err := t.Manager.NewMultipartUpload(bucket, object, uploadID, meta)
 	if err != nil {
-		return "", err
+		return err
 	}
-	optsBytes, err := json.Marshal(opts)
+
+	metaBytes, err := json.Marshal(meta)
 	if err != nil {
-		return "", err
+		return err
 	}
 	_, err = t.recorder.Record(Record{
 		OperationUploadNew,
 		bucket,
 		object,
-		optsBytes,
+		uploadID,
+		metaBytes,
 	}, true)
-	return upload, err
+	return err
 }
 
 // WriteObjMeta write meta.ObjectMeta

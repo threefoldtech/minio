@@ -15,6 +15,7 @@ import (
 
 	"github.com/gomodule/redigo/redis"
 	"github.com/pkg/errors"
+	"github.com/satori/uuid"
 	log "github.com/sirupsen/logrus"
 	"github.com/threefoldtech/0-stor/client/datastor"
 	"github.com/threefoldtech/0-stor/client/metastor"
@@ -129,7 +130,7 @@ func zerostorGatewayMain(ctx *cli.Context) {
 	if metaDir == "" {
 		metaDir = filepath.Join(ctx.String("config-dir"), "zerostor_meta")
 	}
-
+	log.Info("Meta directory: ", metaDir)
 	minio.StartGateway(ctx, &Zerostor{
 		confFile:    confFile,
 		metaDir:     metaDir,
@@ -366,6 +367,10 @@ func (zo *zerostorObjects) DeleteObject(ctx context.Context, bucket, object stri
 		"bucket": bucket,
 		"object": object,
 	}).Debug("DeleteObject")
+
+	if zo.isReadOnly() {
+		return ErrReadOnlyZeroStor
+	}
 
 	zstor := zo.manager.GetClient()
 	defer zstor.Close()
@@ -710,8 +715,8 @@ func (zo *zerostorObjects) NewMultipartUpload(ctx context.Context, bucket, objec
 	}
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
-
-	uploadID, err = metaMgr.NewMultipartUpload(bucket, object, opts)
+	uploadID = uuid.NewV4().String()
+	err = metaMgr.NewMultipartUpload(bucket, object, uploadID, opts.UserDefined)
 	if err != nil {
 		err = zstorToObjectErr(errors.WithStack(err), Operation("NewMultipartUpload"), bucket, object)
 	}

@@ -72,7 +72,7 @@ func (r Record) Int(at int) int {
 	}
 
 	if o := r.At(at); o != nil {
-		return o.(int)
+		return int(o.(int64))
 	}
 
 	return 0
@@ -133,16 +133,17 @@ func (r Record) Play(metaManager meta.Manager) error {
 		}
 		_, err = metaManager.PutObject(&metaData, r.String(2), r.String(3))
 	case OperationObjectWriteMeta:
-		var metaData metatypes.Metadata
+		var metaData meta.ObjectMeta
 		if err = r.JSON(1, &metaData); err != nil {
 			return err
 		}
+		err = metaManager.WriteObjMeta(&metaData)
 	case OperationUploadNew:
-		var opts minio.ObjectOptions
-		if err = r.JSON(3, &opts); err != nil {
+		var meta map[string]string
+		if err = r.JSON(4, &meta); err != nil {
 			return err
 		}
-		_, err = metaManager.NewMultipartUpload(r.String(1), r.String(2), opts)
+		err = metaManager.NewMultipartUpload(r.String(1), r.String(2), r.String(3), meta)
 	case OperationUploadDelete:
 		err = metaManager.DeleteUpload(r.String(1), r.String(2))
 	case OperationUploadComplete:

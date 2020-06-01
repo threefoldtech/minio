@@ -42,7 +42,7 @@ type Manager interface {
 	LinkPart(bucket, uploadID, partID, blob string) error
 	ListObjects(ctx context.Context, bucket, prefix, marker, delimiter string, maxKeys int) (minio.ListObjectsInfo, error)
 	ListObjectsV2(ctx context.Context, bucket, prefix, continuationToken, delimiter string, maxKeys int, fetchOwner bool, startAfter string) (minio.ListObjectsV2Info, error)
-	NewMultipartUpload(bucket, object string, opts minio.ObjectOptions) (string, error)
+	NewMultipartUpload(bucket, object string, uploadID string, meta map[string]string) error
 	ListMultipartUploads(bucket string) (minio.ListMultipartsInfo, error)
 	DeleteUpload(bucket, uploadID string) error
 	ListUploadParts(bucket, uploadID string) ([]minio.PartInfo, error)

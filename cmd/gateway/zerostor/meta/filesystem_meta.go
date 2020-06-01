@@ -697,9 +697,8 @@ func (m *filesystemMeta) StreamMultiPartsMeta(ctx context.Context, bucket, uploa
 }
 
 // NewMultipartUpload initializes a new multipart upload
-func (m *filesystemMeta) NewMultipartUpload(bucket, object string, opts minio.ObjectOptions) (string, error) {
+func (m *filesystemMeta) NewMultipartUpload(bucket, object, uploadID string, meta map[string]string) error {
 	// create upload ID
-	uploadID := uuid.NewV4().String()
 
 	info := multiPartInfo{
 		MultipartInfo: minio.MultipartInfo{
@@ -707,14 +706,14 @@ func (m *filesystemMeta) NewMultipartUpload(bucket, object string, opts minio.Ob
 			Object:    object,
 			Initiated: time.Now(),
 		},
-		Metadata: opts.UserDefined,
+		Metadata: meta,
 	}
 
 	// creates the dir
 	uploadDir := m.uploadDirName(bucket, uploadID)
 
 	if err := os.MkdirAll(uploadDir, dirPerm); err != nil {
-		return uploadID, err
+		return err
 	}
 
 	// creates meta file
@@ -726,11 +725,11 @@ func (m *filesystemMeta) NewMultipartUpload(bucket, object string, opts minio.Ob
 			"object":    object,
 			"subsystem": "disk",
 		}).Error("failed to initialize multipart upload")
-		return "", err
+		return err
 	}
 	defer f.Close()
 
-	return uploadID, m.encodeData(f, &info)
+	return m.encodeData(f, &info)
 }
 
 // ListPartInfo lists multipart upload parts
