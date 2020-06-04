@@ -170,7 +170,7 @@ func main() {
 	os.Setenv("MINIO_ZEROSTOR_CONFIG_FILE", p)
 	os.Setenv("MINIO_ACCESS_KEY", env(EnvAccessKey, ""))
 	os.Setenv("MINIO_SECRET_KEY", env(EnvSecretKey, ""))
-	os.Setenv("MINIO_CONFIG_DIR", "/data")
+	os.Setenv("MINIO_ZEROSTOR_META_DIR", "/data")
 	os.Setenv("MINIO_UPDATE", "off")
 
 	if err := syscall.Exec("/bin/minio", []string{"minio", "gateway", "zerostor"}, os.Environ()); err != nil {
