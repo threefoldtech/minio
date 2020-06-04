@@ -12,16 +12,20 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	minio "github.com/minio/minio/cmd"
 	"github.com/minio/minio/cmd/gateway/zerostor/utils"
 	"github.com/minio/minio/pkg/bucket/policy"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/satori/uuid"
 	"github.com/threefoldtech/0-stor/client/metastor/metatypes"
 
@@ -29,16 +33,31 @@ import (
 )
 
 const (
-	bucketDir      = "buckets"
-	objectDir      = "objects"
-	blobDir        = "blobs"
-	uploadDir      = "uploads"
-	uploadMetaFile = ".meta"
+	bucketDir       = "buckets"
+	objectDir       = "objects"
+	blobDir         = "blobs"
+	uploadDir       = "uploads"
+	uploadMetaFile  = ".meta"
+	monitorInterval = 5 * time.Minute
 )
 
 var (
 	dirPerm  = os.FileMode(0755)
 	filePerm = os.FileMode(0644)
+)
+
+var (
+	metaDataSizeMetric = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: "minio",
+		Subsystem: "metadata",
+		Name:      "meta_data_size",
+	})
+
+	metaDataFreeSpaceMetric = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: "minio",
+		Subsystem: "metadata",
+		Name:      "meta_data_free_space",
+	})
 )
 
 // multiPartInfo represents info/metadata of a multipart upload
@@ -838,7 +857,86 @@ func (m *filesystemMeta) initialize() error {
 		m.gcm = gcm
 	}
 
+	// start monitoring the metadata directory
+	go m.monitorMetadataDir(context.Background())
+
 	return nil
+}
+
+func (m *filesystemMeta) monitorMetadataDir(ctx context.Context) {
+	ticker := time.NewTicker(monitorInterval)
+	metrics := make(map[string]prometheus.Gauge)
+
+	for {
+		select {
+		case <-ticker.C:
+			// count number of files in the bucketdir
+			m.setBucketCounters(metrics)
+
+			// count total size of objects in blobdir
+			_, blodDirSize, err := walk(m.blobDir)
+			if err != nil {
+				log.Errorf("failed to read total size from blob dir %s", m.blobDir)
+				continue
+			}
+			metaDataSizeMetric.Set(float64(blodDirSize))
+
+			// count the available free space of the blobdir
+			var stat syscall.Statfs_t
+			err = syscall.Statfs(m.blobDir, &stat)
+			if err != nil {
+				log.Error("failed to read the available free space from blob dir")
+				continue
+			}
+			metaDataFreeSpaceMetric.Set(float64(stat.Bavail * uint64(stat.Bsize)))
+		case <-ctx.Done():
+			ticker.Stop()
+			return
+		}
+	}
+}
+
+func (m *filesystemMeta) setBucketCounters(metrics map[string]prometheus.Gauge) {
+	buckets, err := m.ListBuckets()
+	if err != nil {
+		log.Errorf("failed to read bucket directory")
+		return
+	}
+	for _, bucket := range buckets {
+		metric, ok := metrics[bucket.Name]
+		if !ok {
+			metric = promauto.NewGauge(prometheus.GaugeOpts{
+				Namespace:   "minio",
+				Subsystem:   "metadata",
+				Name:        "number_of_files",
+				ConstLabels: prometheus.Labels{"bucket": bucket.Name},
+			})
+			metrics[bucket.Name] = metric
+		}
+		bucketPath := path.Join(m.objDir, bucket.Name)
+		count, _, err := walk(bucketPath)
+		if err != nil {
+			log.Errorf("failed to get amount of files in bucket %s", bucketPath)
+			continue
+		}
+		metric.Set(float64(count))
+	}
+}
+
+func walk(path string) (int64, int64, error) {
+	var count int64
+	var size int64
+	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			size += info.Size()
+			count++
+		}
+		return err
+	})
+	return count, size, err
 }
 
 func (m *filesystemMeta) encodeData(w io.Writer, object interface{}) error {
