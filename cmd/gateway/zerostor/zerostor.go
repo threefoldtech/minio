@@ -6,6 +6,7 @@ import (
 	"io"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -292,8 +293,13 @@ func createClient(cfg config.Config) (*client.Client, datastor.Cluster, error) {
 		return nil, nil, err
 	}
 
+	jobs := cfg.Jobs
+	if jobs == 0 {
+		jobs = runtime.NumCPU()
+	}
+
 	// create data pipeline, using our datastor cluster
-	dataPipeline, err := pipeline.NewPipeline(cfg.DataStor.Pipeline, cluster, 0)
+	dataPipeline, err := pipeline.NewPipeline(cfg.DataStor.Pipeline, cluster, jobs)
 	if err != nil {
 		return nil, nil, err
 	}

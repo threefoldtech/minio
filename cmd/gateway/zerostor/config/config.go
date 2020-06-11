@@ -18,6 +18,9 @@ const (
 type Config struct {
 	client.Config `yaml:",inline"`
 
+	// number of pipline jobs
+	Jobs int `yaml:"jobs"`
+
 	Minio struct {
 		Healer struct {
 			Listen string `yaml:"listen"`
