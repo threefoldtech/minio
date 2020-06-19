@@ -955,7 +955,8 @@ func (zo *zerostorObjects) Shutdown(ctx context.Context) error {
 func (zo *zerostorObjects) StorageInfo(ctx context.Context, local bool) (info minio.StorageInfo) {
 	log.Debug("StorafeInfo")
 
-	var used []uint64
+	var used, total, available []uint64
+	var mountpaths []string
 
 	offline := madmin.BackendDisks{}
 	online := madmin.BackendDisks{}
@@ -963,17 +964,23 @@ func (zo *zerostorObjects) StorageInfo(ctx context.Context, local bool) (info mi
 	// iterate all shards, get info from each of it
 	// returns immediately once we got an answer
 	for _, shard := range zo.cfg.DataStor.Shards {
-		u, _, err := zo.shardUsage(zo.cfg.Namespace, zo.cfg.Password, shard)
+		u, t, err := zo.shardUsage(zo.cfg.Namespace, zo.cfg.Password, shard)
 		if err != nil {
 			offline[shard.Address] = 0
 			log.WithError(err).WithField("shard", shard).Error("failed to get shard info")
 		}
-		online[shard.Address] = 0
+		online[shard.Address] = 1
 		used = append(used, u)
+		total = append(total, t)
+		available = append(available, t-u)
+		mountpaths = append(mountpaths, zo.cfg.Namespace)
 	}
 
 	info = minio.StorageInfo{
-		Used: used,
+		Used:       used,
+		Total:      total,
+		Available:  available,
+		MountPaths: mountpaths,
 	}
 
 	info.Backend.Type = minio.BackendErasure
