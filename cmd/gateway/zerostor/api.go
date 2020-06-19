@@ -29,18 +29,20 @@ var (
 
 // HealerAPI type
 type HealerAPI struct {
-	listen string
-	cfg    ConfigManager
-	jobs   map[string]HealJob
-	m      sync.RWMutex
+	listen     string
+	cfg        ConfigManager
+	jobs       map[string]HealJob
+	m          sync.RWMutex
+	isReadOnly func() bool
 }
 
 // NewHealerAPI creates a new healer api that listens on thie address
-func NewHealerAPI(listen string, cfg ConfigManager) *HealerAPI {
+func NewHealerAPI(listen string, cfg ConfigManager, isReadOnly func() bool) *HealerAPI {
 	return &HealerAPI{
-		listen: listen,
-		cfg:    cfg,
-		jobs:   make(map[string]HealJob),
+		listen:     listen,
+		cfg:        cfg,
+		jobs:       make(map[string]HealJob),
+		isReadOnly: isReadOnly,
 	}
 }
 
@@ -154,6 +156,19 @@ func (a *HealerAPI) repairBucket(writer http.ResponseWriter, request *http.Reque
 
 func (a *HealerAPI) setup() *mux.Router {
 	router := mux.NewRouter()
+
+	// middleware function to disable healer API if minio is running in slave mode
+	mw := func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if a.isReadOnly() {
+				w.WriteHeader(http.StatusForbidden)
+				return
+			}
+			h.ServeHTTP(w, r)
+		})
+	}
+
+	router.Use(mw)
 	router.HandleFunc("/repair", a.repairBucket).Methods(http.MethodPost)
 	router.HandleFunc("/repair/{bucket}", a.repairBucket).Methods(http.MethodPost)
 	router.PathPrefix("/repair/{bucket}/").HandlerFunc(a.repairObject).Methods(http.MethodPost)

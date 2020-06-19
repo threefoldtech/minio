@@ -179,7 +179,7 @@ func (z *Zerostor) NewGatewayLayer(creds auth.Credentials) (minio.ObjectLayer, e
 		maxFileSize: maxFileSizeFromConfig(cfg),
 	}
 
-	healer := NewHealerAPI(cfg.Minio.Healer.Listen, zsManager)
+	healer := NewHealerAPI(cfg.Minio.Healer.Listen, zsManager, zo.isReadOnly)
 	go zo.handleConfigReload(z.confFile, z.metaDir, z.metaPrivKey)
 	go healer.Start()
 
