@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"path"
 	"path/filepath"
 	"runtime"
@@ -47,6 +48,10 @@ const (
 	metricDataFaults    metricType = "data_faults"
 	metricIndexFaults   metricType = "index_faults"
 	metricConnError     metricType = "connection_errors"
+)
+
+var (
+	gauges = make(map[string]metricsSet)
 )
 
 type metricsSet struct {
@@ -125,10 +130,12 @@ func (zc *zsClient) Inner() *client.Client {
 }
 
 func (zc *zsClient) healthReporter(ctx context.Context) {
-	// zc.cluster.
-	gauges := make(map[string]metricsSet)
 	for iter := zc.cluster.GetShardIterator(nil); iter.Next(); {
 		shard := iter.Shard()
+
+		if _, ok := gauges[shard.Identifier()]; ok {
+			continue
+		}
 
 		gauges[shard.Identifier()] = newMetricsSet(shard.Address(), shard.Namespace())
 	}
@@ -307,6 +314,15 @@ func createClient(cfg config.Config) (*client.Client, datastor.Cluster, error) {
 	return client.NewClient(nil, dataPipeline), cluster, nil
 }
 
+func isFileExists(p string) bool {
+	stat, err := os.Stat(p)
+	if err != nil {
+		return false
+	}
+
+	return !stat.IsDir()
+}
+
 func createMetaManager(ctx context.Context, cfg config.Config, metaDir, metaPrivKey string) (meta.Manager, error) {
 	var zoMetaManager meta.Manager
 	metaManager, err := meta.InitializeMetaManager(metaDir, metaPrivKey)
@@ -316,9 +332,19 @@ func createMetaManager(ctx context.Context, cfg config.Config, metaDir, metaPriv
 	}
 	zoMetaManager = metaManager
 
+	tlogStateFile := path.Join(metaDir, tlog.StateFile)
+	masterStateFile := path.Join(metaDir, tlog.MasterStateFile)
+
 	if cfg.Minio.TLog != nil {
+		// Here we run as master.
+		// in case of promotion, we need to make sure we use the last state file used by the slave
+		// so we don't resync everything from the tlog.
+		if isFileExists(masterStateFile) {
+			os.Rename(masterStateFile, tlogStateFile)
+		}
+
 		tlogCfg := cfg.Minio.TLog
-		tlogMetaManager, err := tlog.InitializeMetaManager(tlogCfg.Address, tlogCfg.Namespace, tlogCfg.Password, path.Join(metaDir, tlog.StateDir), metaManager)
+		tlogMetaManager, err := tlog.InitializeMetaManager(tlogCfg.Address, tlogCfg.Namespace, tlogCfg.Password, tlogStateFile, metaManager)
 		if err != nil {
 			log.Println("failed to create tlog meta manager: ", err.Error())
 			return nil, err
@@ -338,10 +364,16 @@ func createMetaManager(ctx context.Context, cfg config.Config, metaDir, metaPriv
 
 	}
 
-	if cfg.Minio.Master != nil { //check if master is configure
-		//start synchronizing with master zdb
+	if cfg.Minio.Master != nil {
+		// Here we run as a "slave" since a master is configured
+		// in case of demotion, we need to make sure we use the last state file used by the master
+		// so we don't resync everything from the tlog.
+		if isFileExists(tlogStateFile) {
+			os.Rename(tlogStateFile, masterStateFile)
+		}
+
 		masterCfg := cfg.Minio.Master
-		syncher := tlog.NewSyncher(masterCfg.Address, masterCfg.Namespace, masterCfg.Password, path.Join(metaDir, "master.state"), metaManager)
+		syncher := tlog.NewSyncher(masterCfg.Address, masterCfg.Namespace, masterCfg.Password, masterStateFile, metaManager)
 		go func() {
 			for {
 				if err := syncher.Sync(ctx); err != nil {
@@ -356,6 +388,7 @@ func createMetaManager(ctx context.Context, cfg config.Config, metaDir, metaPriv
 				}
 
 				//zerostor shutting down. (cancel function called)
+				log.Debug("synchronization terminated")
 				break
 			}
 		}()

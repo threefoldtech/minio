@@ -44,6 +44,8 @@ const (
 var (
 	dirPerm  = os.FileMode(0755)
 	filePerm = os.FileMode(0644)
+
+	metrics = make(map[string]prometheus.Gauge)
 )
 
 var (
@@ -865,7 +867,6 @@ func (m *filesystemMeta) initialize() error {
 
 func (m *filesystemMeta) monitorMetadataDir(ctx context.Context) {
 	ticker := time.NewTicker(monitorInterval)
-	metrics := make(map[string]prometheus.Gauge)
 
 	for {
 		select {

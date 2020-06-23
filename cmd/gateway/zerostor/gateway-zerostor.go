@@ -38,8 +38,8 @@ const (
 	minioZstorMetaDirVar    = "MINIO_ZEROSTOR_META_DIR"
 	minioZstorMetaPrivKey   = "MINIO_ZEROSTOR_META_PRIVKEY"
 	minioZstorDebug         = "MINIO_ZEROSTOR_DEBUG"
-	defaultNamespaceMaxSize = 10e14  // default max size =  1PB
-	metaMaxSize             = 7.34e6 // max size allowed for meta
+	defaultNamespaceMaxSize = 10e14   // default max size =  1PB
+	metaMaxSize             = 7340032 // max size allowed for meta (7M)
 )
 
 var (
@@ -108,17 +108,8 @@ ENVIRONMENT VARIABLES:
 	debugFlag = os.Getenv("MINIO_ZEROSTOR_DEBUG") == "1"
 }
 
-func setupZosLogging() {
-	log.SetFormatter(&ZOSLogFormatter{
-		Default: &log.TextFormatter{},
-		Error:   &log.JSONFormatter{},
-	})
-}
-
 // Handler for 'minio gateway zerostor' command line.
 func zerostorGatewayMain(ctx *cli.Context) {
-	setupZosLogging()
-
 	// config file
 	confFile := os.Getenv(minioZstorConfigFileVar)
 	if confFile == "" {
@@ -968,6 +959,7 @@ func (zo *zerostorObjects) StorageInfo(ctx context.Context, local bool) (info mi
 		if err != nil {
 			offline[shard.Address] = 0
 			log.WithError(err).WithField("shard", shard).Error("failed to get shard info")
+			continue
 		}
 		online[shard.Address] = 1
 		used = append(used, u)
@@ -1103,18 +1095,22 @@ func maxFileSizeFromConfig(cfg config.Config) int64 {
 	// Namespace, Key, Size, StorageSize, CreateEpoch, LastWriteEpoch, ChunkSize, PreviousKey and NextKey.
 	// any change to the metatypes.MetaData or relevant 0-stor implementation, requires an update in this value
 	metaWithoutChunks := 96
+	// we will also add full file name + 2k bytes for custom user metadata
+	metaWithoutChunks += 255 + (2 * 1024)
 
 	// max size of metatypes.Object. This includes the fields: Key and ShardID
 	objectSize := 26
 	// max number of objects in each chunk
-	objectCount := (cfg.DataStor.Pipeline.Distribution.DataShardCount + cfg.DataStor.Pipeline.Distribution.ParityShardCount)
+	objectCount := cfg.DataStor.Pipeline.Distribution.DataShardCount + cfg.DataStor.Pipeline.Distribution.ParityShardCount
 
 	// max size of each chunk. This includes the fields: Size, Object[], Hash
 	chunkSize := 8 + 32 + (objectCount * objectSize)
 
 	// total metadata size = metaWithoutChunks + (chunkSize * chunkCount)
+
 	// and chunkCount = filesize/blocksize
 	// we use this to figure out the maximum filesize that can be stored in 0-stor without the metadata exceeding metaMaxSize
+
 	maxFileSize := ((metaMaxSize - metaWithoutChunks) / chunkSize) * cfg.DataStor.Pipeline.BlockSize
 
 	return int64(maxFileSize)

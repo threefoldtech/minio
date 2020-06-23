@@ -96,7 +96,7 @@ func (s *Syncher) sync() error {
 	log.WithFields(log.Fields{
 		"subsystem": "sync",
 		"last-key":  fmt.Sprintf("%X", key),
-	}).Error("synchronizing with master")
+	}).Debug("synchronizing with master")
 
 	return s.p.play(key, func(key []byte, rec Record) error {
 		if err := rec.Play(s.meta); err != nil {
