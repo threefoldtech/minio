@@ -5,16 +5,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"github.com/minio/minio/cmd/gateway/zerostor/config"
 	"github.com/minio/minio/cmd/gateway/zerostor/repair"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	log "github.com/sirupsen/logrus"
 	"github.com/threefoldtech/0-stor/client/datastor/pipeline/storage"
+	"gopkg.in/yaml.v2"
 )
 
 var (
@@ -154,6 +157,42 @@ func (a *HealerAPI) repairBucket(writer http.ResponseWriter, request *http.Reque
 	job.Process(status)
 }
 
+func (a HealerAPI) updateConfig(writer http.ResponseWriter, request *http.Request) {
+	cfg := config.Config{}
+
+	defer request.Body.Close()
+	if err := json.NewDecoder(request.Body).Decode(&cfg); err != nil {
+		writer.WriteHeader(http.StatusBadRequest)
+		writer.Write([]byte("bad format for configuration"))
+		return
+	}
+
+	// persist the config on disk
+	p := "/data/minio.yaml" //from entrypoint.go:161
+	f, err := os.Create(p)
+	if err != nil {
+		writer.WriteHeader(http.StatusBadRequest)
+		writer.Write([]byte(fmt.Sprintf("failed to create config file: %v", err)))
+		return
+	}
+	defer f.Close()
+
+	enc := yaml.NewEncoder(f)
+	if err := enc.Encode(cfg); err != nil {
+		writer.WriteHeader(http.StatusBadRequest)
+		writer.Write([]byte(fmt.Sprintf("failed to create config file: %v", err)))
+	}
+
+	// then hot reload
+	if err := a.cfg.Reload(cfg); err != nil {
+		writer.WriteHeader(http.StatusInternalServerError)
+		writer.Write([]byte(fmt.Sprintf("failed to reload configuration: %v", err)))
+		return
+	}
+
+	writer.WriteHeader(http.StatusOK)
+}
+
 func (a *HealerAPI) setup() *mux.Router {
 	router := mux.NewRouter()
 
@@ -174,6 +213,7 @@ func (a *HealerAPI) setup() *mux.Router {
 	router.PathPrefix("/repair/{bucket}/").HandlerFunc(a.repairObject).Methods(http.MethodPost)
 	router.HandleFunc("/jobs", a.getJobs).Methods(http.MethodGet)
 	router.HandleFunc("/jobs/{id}", a.cancelJob).Methods(http.MethodDelete)
+	router.HandleFunc("/config", a.updateConfig).Methods(http.MethodPost)
 	return router
 }
 

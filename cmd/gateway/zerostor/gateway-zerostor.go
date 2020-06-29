@@ -171,7 +171,7 @@ func (z *Zerostor) NewGatewayLayer(creds auth.Credentials) (minio.ObjectLayer, e
 	}
 
 	healer := NewHealerAPI(cfg.Minio.Healer.Listen, zsManager, zo.isReadOnly)
-	go zo.handleConfigReload(z.confFile, z.metaDir, z.metaPrivKey)
+	go zo.handleConfigReload(z.confFile)
 	go healer.Start()
 
 	return zo, nil
@@ -188,7 +188,7 @@ func (zo *zerostorObjects) isReadOnly() bool {
 	return zo.cfg.Minio.Master != nil
 }
 
-func (zo *zerostorObjects) handleConfigReload(confFile, metaDir, metaPrivKey string) {
+func (zo *zerostorObjects) handleConfigReload(confFile string) {
 	sigCh := make(chan os.Signal, 1)
 
 	signal.Notify(sigCh, syscall.SIGHUP)
@@ -203,7 +203,7 @@ func (zo *zerostorObjects) handleConfigReload(confFile, metaDir, metaPrivKey str
 		}
 		zo.cfg = cfg
 		zo.maxFileSize = maxFileSizeFromConfig(cfg)
-		zo.manager.Reload(cfg, metaDir, metaPrivKey)
+		zo.manager.Reload(cfg)
 	}
 }
 

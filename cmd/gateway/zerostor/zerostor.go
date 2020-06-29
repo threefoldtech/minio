@@ -213,8 +213,12 @@ func (zc *zsClient) getKey(bucket, object string) []byte {
 type configManager struct {
 	zstorClient *zsClient
 	mux         sync.RWMutex
+
+	metaDir     string
+	metaPrivKey string
 	metaManager metaManager
-	cancel      func()
+
+	cancel func()
 }
 
 func (c *configManager) GetClient() Client {
@@ -227,7 +231,7 @@ func (c *configManager) GetMeta() metaManager {
 	return c.metaManager
 }
 
-func (c *configManager) Reload(cfg config.Config, metaDir, metaPrivKey string) error {
+func (c *configManager) Reload(cfg config.Config) error {
 	c.mux.Lock()
 	defer c.mux.Unlock()
 
@@ -249,7 +253,7 @@ func (c *configManager) Reload(cfg config.Config, metaDir, metaPrivKey string) e
 	ctx, cancel := context.WithCancel(context.Background())
 	c.cancel = cancel
 
-	meta, err := createMetaManager(ctx, cfg, metaDir, metaPrivKey)
+	meta, err := createMetaManager(ctx, cfg, c.metaDir, c.metaPrivKey)
 	if err != nil {
 		log.Println("failed to create meta manager: ", err.Error())
 		return err
@@ -272,7 +276,7 @@ func (c *configManager) Close() error {
 type ConfigManager interface {
 	GetClient() Client
 	GetMeta() metaManager
-	Reload(cfg config.Config, metaDir, metaPrivKey string) error
+	Reload(cfg config.Config) error
 	Close() error
 }
 
@@ -287,8 +291,11 @@ type Client interface {
 }
 
 func newConfigManager(cfg config.Config, metaDir, metaPrivKey string) (ConfigManager, error) {
-	zsManager := configManager{}
-	err := zsManager.Reload(cfg, metaDir, metaPrivKey)
+	zsManager := configManager{
+		metaDir:     metaDir,
+		metaPrivKey: metaPrivKey,
+	}
+	err := zsManager.Reload(cfg)
 
 	return &zsManager, err
 }

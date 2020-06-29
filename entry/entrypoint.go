@@ -36,6 +36,10 @@ const (
 	EnvTlogServer = "TLOG"
 	// EnvMaster master
 	EnvMaster = "MASTER"
+
+	//MetaDir is the directory where the metadata and configuration files is stored
+	// you want this to be persited on disk
+	MetaDir = "/data"
 )
 
 func env(k, d string) string {
@@ -154,26 +158,32 @@ func main() {
 	cfg.Minio.TLog = tlogConfig
 	cfg.Minio.Master = masterConfig
 
-	p := filepath.Join(os.TempDir(), "minio.yaml")
-	f, err := os.Create(p)
-	if err != nil {
-		log.Fatal("failed to create config file", err)
+	p := filepath.Join(MetaDir, "minio.yaml")
+	var f *os.File
+	if !exists(p) {
+		f, err = os.Create(p)
+		if err != nil {
+			log.Fatal("failed to create config file", err)
+		}
+		enc := yaml.NewEncoder(f)
+		if err := enc.Encode(cfg); err != nil {
+			log.Fatalf("failed to write config: %s", err)
+		}
+		f.Close()
 	}
-
-	enc := yaml.NewEncoder(f)
-	if err := enc.Encode(cfg); err != nil {
-		log.Fatalf("failed to write config: %s", err)
-	}
-
-	f.Close()
 
 	os.Setenv("MINIO_ZEROSTOR_CONFIG_FILE", p)
 	os.Setenv("MINIO_ACCESS_KEY", env(EnvAccessKey, ""))
 	os.Setenv("MINIO_SECRET_KEY", env(EnvSecretKey, ""))
-	os.Setenv("MINIO_ZEROSTOR_META_DIR", "/data")
+	os.Setenv("MINIO_ZEROSTOR_META_DIR", MetaDir)
 	os.Setenv("MINIO_UPDATE", "off")
 
 	if err := syscall.Exec("/bin/minio", []string{"minio", "gateway", "zerostor"}, os.Environ()); err != nil {
 		log.Fatalf("failed to exec minio: %s", err)
 	}
+}
+
+func exists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
 }
