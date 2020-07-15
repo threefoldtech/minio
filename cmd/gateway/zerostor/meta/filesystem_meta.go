@@ -128,7 +128,7 @@ func (m *filesystemMeta) DeleteBucket(name string) error {
 func (m *filesystemMeta) IsBucketEmpty(name string) (bool, error) {
 
 	dir, err := os.Open(m.bucketObjectsDir(name))
-	if os.IsNotExist(err) {
+	if m.isNotExist(err) {
 		return true, nil
 	} else if err != nil {
 		return false, err
@@ -234,7 +234,7 @@ func (m *filesystemMeta) DeleteUpload(bucket, uploadID string) error {
 // DeleteObject deletes an object file from a bucket
 func (m *filesystemMeta) DeleteObject(bucket, object string) error {
 	objFile := m.objectFile(bucket, object)
-	if err := utils.RemoveFile(m.objectFile(bucket, object)); err != nil && !os.IsNotExist(err) {
+	if err := utils.RemoveFile(m.objectFile(bucket, object)); err != nil && !m.isNotExist(err) {
 		return err
 	}
 
@@ -243,7 +243,7 @@ func (m *filesystemMeta) DeleteObject(bucket, object string) error {
 
 	for prefix != bucketDir {
 		files, err := ioutil.ReadDir(prefix)
-		if os.IsNotExist(err) {
+		if m.isNotExist(err) {
 			prefix = filepath.Dir(prefix)
 			continue
 		} else if err != nil {
@@ -251,7 +251,7 @@ func (m *filesystemMeta) DeleteObject(bucket, object string) error {
 		}
 
 		if len(files) == 0 {
-			if err := os.RemoveAll(prefix); err != nil && !os.IsNotExist(err) {
+			if err := os.RemoveAll(prefix); err != nil && !m.isNotExist(err) {
 				return err
 			}
 			prefix = filepath.Dir(prefix)
@@ -270,13 +270,45 @@ func (m *filesystemMeta) LinkObject(bucket, object, fileID string) error {
 	}
 
 	objectFile := m.objectFile(bucket, object)
+	if stat, err := os.Stat(objectFile); err == nil {
+		if stat.IsDir() {
+			return minio.ObjectExistsAsDirectory{Bucket: bucket, Object: object}
+		}
+	}
+
 	objectDir := filepath.Dir(objectFile)
 
-	blobFile := m.blobFile(fileID)
-
-	if err := os.MkdirAll(objectDir, dirPerm); err != nil {
-		return err
+	stat, err := os.Stat(objectDir)
+	if os.IsNotExist(err) {
+		if err := os.MkdirAll(objectDir, dirPerm); err != nil {
+			return err
+		}
+		stat, err = os.Stat(objectDir)
+		if err != nil {
+			return err
+		}
+	} else if err != nil {
+		return errors.Wrapf(err, "failed to check directory '%s'", objectDir)
 	}
+
+	if !stat.IsDir() {
+		meta, err := m.GetObjectMeta(bucket, filepath.Dir(object))
+		if err != nil {
+			return err
+		}
+
+		if meta.ObjectSize == 0 {
+			// this is just a place holder for a prefix
+			m.DeleteObject(bucket, filepath.Dir(object))
+			if err := os.MkdirAll(objectDir, dirPerm); err != nil {
+				return err
+			}
+		} else {
+			return minio.ObjectAlreadyExists{Bucket: bucket, Object: filepath.Dir(object)}
+		}
+	}
+
+	blobFile := m.blobFile(fileID)
 	relBlob, err := filepath.Rel(objectDir, blobFile)
 	if err != nil {
 		return err
@@ -1047,6 +1079,18 @@ func (m *filesystemMeta) createBlob(metaData *metatypes.Metadata, multiUpload bo
 	return objMeta, m.WriteObjMeta(&objMeta)
 }
 
+func (m *filesystemMeta) isNotExist(err error) bool {
+	if err == nil {
+		return false
+	} else if os.IsNotExist(err) {
+		return true
+	} else if strings.HasSuffix(err.Error(), "not a directory") {
+		return true
+	}
+
+	return false
+}
+
 func (m *filesystemMeta) scanDelimited(ctx context.Context, bucket, prefix, after string, maxKeys int, result *minio.ListObjectsV2Info) (string, error) {
 	log.WithFields(log.Fields{
 		"bucket":    bucket,
@@ -1056,7 +1100,6 @@ func (m *filesystemMeta) scanDelimited(ctx context.Context, bucket, prefix, afte
 	}).Debug("scan delimited bucket")
 
 	root := filepath.Join(m.objDir, bucket)
-	os.MkdirAll(root, 0755)
 
 	dir := filepath.Join(root, prefix)
 
@@ -1065,7 +1108,7 @@ func (m *filesystemMeta) scanDelimited(ctx context.Context, bucket, prefix, afte
 	var stat os.FileInfo
 	var err error
 	stat, err = os.Stat(dir)
-	if os.IsNotExist(err) {
+	if m.isNotExist(err) {
 		return "", nil
 	} else if err != nil {
 		return "", err
@@ -1214,7 +1257,9 @@ func (m *filesystemMeta) scan(ctx context.Context, bucket, prefix, after string,
 func (m *filesystemMeta) decodeObjMeta(file string) (ObjectMeta, error) {
 	// open file
 	f, err := os.Open(file)
-	if os.IsNotExist(err) {
+	//log.Debugf("result of checking (%s): %s", file, err)
+
+	if m.isNotExist(err) {
 		return ObjectMeta{}, minio.ObjectNotFound{}
 	} else if err != nil {
 		log.WithError(err).WithFields(log.Fields{
