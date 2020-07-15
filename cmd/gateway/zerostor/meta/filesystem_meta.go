@@ -1047,43 +1047,28 @@ func (m *filesystemMeta) createBlob(metaData *metatypes.Metadata, multiUpload bo
 	return objMeta, m.WriteObjMeta(&objMeta)
 }
 
-func (m *filesystemMeta) scan(ctx context.Context, bucket, prefix, after string, delimited bool, maxKeys int, result *minio.ListObjectsV2Info) (string, error) {
+func (m *filesystemMeta) scanDelimited(ctx context.Context, bucket, prefix, after string, maxKeys int, result *minio.ListObjectsV2Info) (string, error) {
 	log.WithFields(log.Fields{
 		"bucket":    bucket,
-		"prefix":    prefix,
+		"directory": prefix,
 		"after":     after,
-		"delimited": delimited,
 		"maxKeys":   maxKeys,
-	}).Debug("scan bucket")
+	}).Debug("scan delimited bucket")
 
 	root := filepath.Join(m.objDir, bucket)
 	os.MkdirAll(root, 0755)
 
-	var prefixed string
-	if delimited {
-		//so prefixed should be a directory
-		prefixed = filepath.Join(root, prefix)
-	} else {
-		//otherwise we search the root
-		prefixed = root
-	}
+	dir := filepath.Join(root, prefix)
 
 	var last string
 
 	var stat os.FileInfo
 	var err error
-	for {
-		stat, err = os.Stat(prefixed)
-		if os.IsNotExist(err) {
-			prefixed = filepath.Dir(prefixed)
-			continue
-		} else if err != nil {
-			return "", err
-		}
-		if len(prefixed) < len(root) {
-			return "", fmt.Errorf("corrupt bucket tree") // this should never happen
-		}
-		break
+	stat, err = os.Stat(dir)
+	if os.IsNotExist(err) {
+		return "", nil
+	} else if err != nil {
+		return "", err
 	}
 
 	if !stat.IsDir() {
@@ -1097,13 +1082,13 @@ func (m *filesystemMeta) scan(ctx context.Context, bucket, prefix, after string,
 		return "", nil
 	}
 
-	err = filepath.Walk(prefixed, func(path string, info os.FileInfo, err error) error {
-		if prefixed == path {
+	err = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if dir == path {
 			return nil
 		}
 
 		if err != nil {
-			return errors.Wrapf(err, "failed to walk '%s'", prefixed)
+			return errors.Wrapf(err, "failed to walk '%s'", dir)
 		}
 
 		select {
@@ -1123,16 +1108,68 @@ func (m *filesystemMeta) scan(ctx context.Context, bucket, prefix, after string,
 		}
 
 		maxKeys--
-		if !delimited && !strings.HasPrefix(name, prefix) {
+
+		last = name
+		if info.IsDir() {
+			result.Prefixes = append(result.Prefixes, filepath.Clean(name)+"/")
+			return filepath.SkipDir
+		}
+
+		md, err := m.decodeObjMeta(m.objectFile(bucket, name))
+		if err != nil {
+			return err
+		}
+
+		result.Objects = append(result.Objects, CreateObjectInfo(bucket, name, &md))
+		return nil
+	})
+
+	return last, err
+}
+
+func (m *filesystemMeta) scanFlat(ctx context.Context, bucket, prefix, after string, maxKeys int, result *minio.ListObjectsV2Info) (string, error) {
+	log.WithFields(log.Fields{
+		"bucket":  bucket,
+		"prefix":  prefix,
+		"after":   after,
+		"maxKeys": maxKeys,
+	}).Debug("scan flat bucket")
+
+	root := filepath.Join(m.objDir, bucket)
+	os.MkdirAll(root, 0755)
+	last := ""
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if root == path {
+			return nil
+		}
+
+		if err != nil {
+			return errors.Wrapf(err, "failed to walk '%s'", path)
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		if maxKeys == 0 {
+			return errMaxKeyReached
+		}
+
+		name := strings.TrimLeft(strings.TrimPrefix(path, root), "/")
+		if strings.Compare(name, after) <= 0 {
+			//scanning until reach the "after"
+			return nil
+		}
+
+		maxKeys--
+		if !strings.HasPrefix(name, prefix) {
 			//match on full prefix and the full object name doesn't have this file/dir
 			return nil
 		}
 
 		last = name
-		if delimited && info.IsDir() {
-			result.Prefixes = append(result.Prefixes, filepath.Clean(name)+"/")
-			return filepath.SkipDir
-		}
 
 		if info.IsDir() {
 			//flat listing (no delmeter)
@@ -1146,9 +1183,6 @@ func (m *filesystemMeta) scan(ctx context.Context, bucket, prefix, after string,
 			return nil
 		}
 
-		//we found a file
-		// if file, get metadata of this file
-
 		md, err := m.decodeObjMeta(m.objectFile(bucket, name))
 		if err != nil {
 			return err
@@ -1159,6 +1193,22 @@ func (m *filesystemMeta) scan(ctx context.Context, bucket, prefix, after string,
 	})
 
 	return last, err
+}
+
+func (m *filesystemMeta) scan(ctx context.Context, bucket, prefix, after string, delimited bool, maxKeys int, result *minio.ListObjectsV2Info) (string, error) {
+	log.WithFields(log.Fields{
+		"bucket":    bucket,
+		"prefix":    prefix,
+		"after":     after,
+		"delimited": delimited,
+		"maxKeys":   maxKeys,
+	}).Debug("scan bucket")
+
+	if delimited {
+		return m.scanDelimited(ctx, bucket, prefix, after, maxKeys, result)
+	} else {
+		return m.scanFlat(ctx, bucket, prefix, after, maxKeys, result)
+	}
 }
 
 func (m *filesystemMeta) decodeObjMeta(file string) (ObjectMeta, error) {

@@ -98,6 +98,7 @@ require (
 	github.com/soheilhy/cmux v0.1.4 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/streadway/amqp v0.0.0-20190404075320-75d898a42a94
+	github.com/stretchr/testify v1.4.0
 	github.com/threefoldtech/0-stor v0.0.0-20200611085121-906f319ec562
 	github.com/tinylib/msgp v1.1.1
 	github.com/ugorji/go v1.1.5-pre // indirect
@@ -123,4 +124,3 @@ require (
 	gopkg.in/olivere/elastic.v5 v5.0.80
 	gopkg.in/yaml.v2 v2.2.4
 )
-

@@ -85,15 +85,18 @@ type Stream struct {
 
 // InitializeMetaManager creates the the meta manager and loads the buckets
 func InitializeMetaManager(dir string, key string) (Manager, error) {
-	meta := &filesystemMeta{
+	meta := newFilesystemMetaManager(dir, key)
+	return meta, meta.initialize()
+}
+
+func newFilesystemMetaManager(dir string, key string) *filesystemMeta {
+	return &filesystemMeta{
 		objDir:    filepath.Join(dir, objectDir),
 		bucketDir: filepath.Join(dir, bucketDir),
 		blobDir:   filepath.Join(dir, blobDir),
 		uploadDir: filepath.Join(dir, uploadDir),
 		key:       key,
 	}
-
-	return meta, meta.initialize()
 }
 
 func getUserMetadataValue(key string, userMeta map[string]string) string {
