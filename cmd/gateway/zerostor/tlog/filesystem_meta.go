@@ -90,6 +90,25 @@ func (t *fsTLogger) PutObject(metaData *metatypes.Metadata, bucket, object strin
 	return info, err
 }
 
+// PutObject creates metadata for an object
+func (t *fsTLogger) Mkdir(bucket, object string) error {
+	t.recorder.Begin()
+	defer t.recorder.End()
+
+	err := t.Manager.Mkdir(bucket, object)
+	if err != nil {
+		return err
+	}
+
+	_, err = t.recorder.Record(Record{
+		OperationObjectMkdir,
+		bucket,
+		object,
+	}, true)
+
+	return err
+}
+
 // PutObjectPart creates metadata for an object upload part
 func (t *fsTLogger) PutObjectPart(objMeta meta.ObjectMeta, bucket, uploadID string, partID int) (minio.PartInfo, error) {
 	t.recorder.Begin()

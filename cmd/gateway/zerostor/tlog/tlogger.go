@@ -31,6 +31,10 @@ const (
 	OperationObjectLink = "object:link"
 	//OperationObjectPut put object
 	OperationObjectPut = "object:put"
+
+	//OperationObjectMkdir mkdir
+	OperationObjectMkdir = "object:mkdir"
+
 	//OperationObjectWriteMeta write object meta
 	OperationObjectWriteMeta = "object:write-meta"
 

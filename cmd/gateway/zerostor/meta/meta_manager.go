@@ -51,6 +51,7 @@ type Manager interface {
 	DeleteObject(bucket, object string) error
 	PutObjectPart(objMeta ObjectMeta, bucket, uploadID string, partID int) (minio.PartInfo, error)
 	PutObject(metaData *metatypes.Metadata, bucket, object string) (minio.ObjectInfo, error)
+	Mkdir(bucket, object string) error
 	GetObjectInfo(bucket, object string) (minio.ObjectInfo, error)
 	GetObjectMeta(bucket, object string) (ObjectMeta, error)
 	StreamObjectMeta(ctx context.Context, bucket, object string) <-chan Stream
@@ -75,6 +76,7 @@ type ObjectMeta struct {
 	ObjectModTime  int64
 	ObjectUserMeta map[string]string
 	Filename       string
+	IsDir          bool
 }
 
 // Stream is used to stream ObjMeta through a chan

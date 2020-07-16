@@ -180,6 +180,10 @@ func (m *filesystemMeta) SetBucketPolicy(name string, policy *policy.Policy) err
 	return m.saveBucket(bkt, true)
 }
 
+func (m *filesystemMeta) Mkdir(bucket, object string) error {
+	return os.MkdirAll(m.objectFile(bucket, object), 0766)
+}
+
 // PutObject creates metadata for an object
 func (m *filesystemMeta) PutObject(metaData *metatypes.Metadata, bucket, object string) (minio.ObjectInfo, error) {
 	objMeta, err := m.createBlob(metaData, false)
@@ -417,6 +421,7 @@ func (m *filesystemMeta) CompleteMultipartUpload(bucket, object, uploadID string
 	var modTime int64
 	var previousPart ObjectMeta
 	var firstPart ObjectMeta
+	firstPart.Filename = "00000000-0000-0000-0000-000000000000"
 
 	// use upload parts to set NextBlob in all blobs metaData
 	for ix, part := range parts {
@@ -1257,7 +1262,6 @@ func (m *filesystemMeta) scan(ctx context.Context, bucket, prefix, after string,
 func (m *filesystemMeta) decodeObjMeta(file string) (ObjectMeta, error) {
 	// open file
 	f, err := os.Open(file)
-	//log.Debugf("result of checking (%s): %s", file, err)
 
 	if m.isNotExist(err) {
 		return ObjectMeta{}, minio.ObjectNotFound{}
@@ -1307,6 +1311,7 @@ func CreateObjectInfo(bucket, object string, md *ObjectMeta) minio.ObjectInfo {
 		Size:            md.ObjectSize,
 		ModTime:         zstorEpochToTimestamp(md.ObjectModTime),
 		ETag:            etag,
+		IsDir:           md.IsDir,
 		ContentType:     getUserMetadataValue(contentTypeKey, md.ObjectUserMeta),
 		ContentEncoding: getUserMetadataValue(contentEncodingKey, md.ObjectUserMeta),
 		StorageClass:    storageClass,

@@ -132,6 +132,8 @@ func (r Record) Play(metaManager meta.Manager) error {
 			return err
 		}
 		_, err = metaManager.PutObject(&metaData, r.String(2), r.String(3))
+	case OperationObjectMkdir:
+		err = metaManager.Mkdir(r.String(1), r.String(2))
 	case OperationObjectWriteMeta:
 		var metaData meta.ObjectMeta
 		if err = r.JSON(1, &metaData); err != nil {

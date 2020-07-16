@@ -27,6 +27,7 @@ import (
 	"github.com/minio/minio/cmd/gateway/zerostor/meta"
 
 	"github.com/minio/minio/pkg/auth"
+	objectlock "github.com/minio/minio/pkg/bucket/object/lock"
 	"github.com/minio/minio/pkg/bucket/policy"
 	"github.com/minio/minio/pkg/hash"
 	"github.com/minio/minio/pkg/madmin"
@@ -114,6 +115,10 @@ func zerostorGatewayMain(ctx *cli.Context) {
 	confFile := os.Getenv(minioZstorConfigFileVar)
 	if confFile == "" {
 		confFile = filepath.Join(ctx.String("config-dir"), "zerostor.yaml")
+	}
+
+	if os.Getenv(minioZstorDebug) == "1" {
+		log.SetLevel(log.DebugLevel)
 	}
 
 	// meta dir
@@ -350,7 +355,12 @@ func (zo *zerostorObjects) DeleteBucketPolicy(ctx context.Context, bucket string
 }
 
 func (zo *zerostorObjects) DeleteObjects(ctx context.Context, bucket string, objects []string) ([]error, error) {
-	return nil, fmt.Errorf("TODO: not implemented")
+	log.WithFields(log.Fields{
+		"bucket":  bucket,
+		"objects": objects,
+	}).Debug("DeleteObjects")
+
+	return nil, minio.NotImplemented{}
 }
 
 func (zo *zerostorObjects) DeleteObject(ctx context.Context, bucket, object string) error {
@@ -559,6 +569,11 @@ func (zo *zerostorObjects) GetObjectInfo(ctx context.Context, bucket, object str
 	return objInfo, err
 }
 
+func (zo *zerostorObjects) GetBucketObjectLockConfig(context.Context, string) (*objectlock.Config, error) {
+	return nil, minio.BucketObjectLockConfigNotFound{}
+
+}
+
 func (zo *zerostorObjects) ListObjects(ctx context.Context, bucket, prefix, marker, delimiter string,
 	maxKeys int) (result minio.ListObjectsInfo, err error) {
 	log.WithFields(log.Fields{
@@ -632,6 +647,14 @@ func (zo *zerostorObjects) PutObject(ctx context.Context, bucket, object string,
 
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
+
+	if strings.HasSuffix(object, "/") && data.Reader.Size() == 0 {
+		return minio.ObjectInfo{
+			Bucket: bucket,
+			Name:   object,
+			IsDir:  true,
+		}, metaMgr.Mkdir(bucket, object)
+	}
 
 	objMeta, err := zo.putObject(ctx, bucket, object, data, opts, "")
 	if err != nil {
@@ -1044,23 +1067,23 @@ func zstorToObjectErr(err error, op Operation, params ...string) error {
 		object = params[1]
 	}
 
-	log.WithError(err).WithFields(
+	cause := errors.Cause(err)
+
+	switch cause {
+	case metastor.ErrNotFound, datastor.ErrMissingKey, datastor.ErrMissingData, datastor.ErrKeyNotFound, minio.ObjectNotFound{}:
+		cause = minio.ObjectNotFound{
+			Bucket: bucket,
+			Object: object,
+		}
+	}
+
+	log.WithError(cause).WithFields(
 		log.Fields{
 			"bucket":    bucket,
 			"object":    object,
 			"operation": op,
 		},
 	).Error("operation failed")
-
-	cause := errors.Cause(err)
-
-	switch cause {
-	case metastor.ErrNotFound, datastor.ErrMissingKey, datastor.ErrMissingData, datastor.ErrKeyNotFound:
-		cause = minio.ObjectNotFound{
-			Bucket: bucket,
-			Object: object,
-		}
-	}
 
 	return cause
 }
