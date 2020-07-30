@@ -178,7 +178,10 @@ func main() {
 	os.Setenv("MINIO_ZEROSTOR_META_DIR", MetaDir)
 	os.Setenv("MINIO_UPDATE", "off")
 
-	if err := syscall.Exec("/bin/minio", []string{"minio", "gateway", "zerostor"}, os.Environ()); err != nil {
+	args := []string{"minio", "gateway", "zerostor"}
+	args = append(args, os.Args[1:]...)
+
+	if err := syscall.Exec("/bin/minio", args, os.Environ()); err != nil {
 		log.Fatalf("failed to exec minio: %s", err)
 	}
 }
