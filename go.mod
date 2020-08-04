@@ -30,7 +30,6 @@ require (
 	github.com/fatih/color v1.7.0
 	github.com/fatih/structs v1.1.0
 	github.com/garyburd/redigo v1.6.0
-	github.com/ghodss/yaml v1.0.1-0.20190212211648-25d852aebe32 // indirect
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/go-sql-driver/mysql v1.4.1
 	github.com/gomodule/redigo v2.0.0+incompatible
@@ -45,7 +44,6 @@ require (
 	github.com/hashicorp/raft v1.1.1-0.20190703171940-f639636d18e0 // indirect
 	github.com/hashicorp/vault/api v1.0.4
 	github.com/inconshreveable/go-update v0.0.0-20160112193335-8152e7eb6ccf
-	github.com/jonboulle/clockwork v0.1.0 // indirect
 	github.com/json-iterator/go v1.1.9
 	github.com/klauspost/compress v1.10.3
 	github.com/klauspost/cpuid v1.2.4
@@ -71,7 +69,6 @@ require (
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/mmcloughlin/avo v0.0.0-20200303042253-6df701fe672f // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
-	github.com/modern-go/reflect2 v1.0.1 // indirect
 	github.com/montanaflynn/stats v0.5.0
 	github.com/nats-io/gnatsd v1.4.1 // indirect
 	github.com/nats-io/go-nats v1.7.2 // indirect
@@ -95,20 +92,17 @@ require (
 	github.com/shirou/gopsutil v2.20.3-0.20200314133625-53cec6b37e6a+incompatible
 	github.com/sirupsen/logrus v1.5.0
 	github.com/smartystreets/assertions v0.0.0-20190401211740-f487f9de1cd3 // indirect
-	github.com/soheilhy/cmux v0.1.4 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/streadway/amqp v0.0.0-20190404075320-75d898a42a94
-	github.com/stretchr/testify v1.4.0
-	github.com/threefoldtech/0-stor v0.0.0-20200611085121-906f319ec562
+	github.com/stretchr/testify v1.5.1
+	github.com/threefoldtech/0-stor v0.0.0-20200804141219-f3ab330666ee
 	github.com/tinylib/msgp v1.1.1
-	github.com/ugorji/go v1.1.5-pre // indirect
 	github.com/valyala/tcplisten v0.0.0-20161114210144-ceec8f93295a
 	github.com/vmihailenco/msgpack v4.0.4+incompatible
 	github.com/willf/bitset v1.1.10 // indirect
 	github.com/willf/bloom v2.0.3+incompatible
 	github.com/xdg/scram v0.0.0-20180814205039-7eeb5667e42c
 	github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2 // indirect
-	go.etcd.io/bbolt v1.3.3 // indirect
 	go.uber.org/zap v1.15.0 // indirect
 	golang.org/x/crypto v0.0.0-20191117063200-497ca9f6d64f
 	golang.org/x/net v0.0.0-20200324143707-d3edc9973b7e
