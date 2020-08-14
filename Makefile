@@ -60,6 +60,18 @@ build: checks
 	@echo "Building minio binary to './minio'"
 	@GO111MODULE=on CGO_ENABLED=0 go build -tags kqueue -trimpath --ldflags "$(LDFLAGS)" -o $(PWD)/minio 1>/dev/null
 
+entrypoint:
+	@echo "Building entry binary to './entrypoint'"
+	@cd entry && GO111MODULE=on CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static"' -o $(PWD)/entrypoint 1>/dev/null
+
+flist: build entrypoint
+	@echo "building flist tar"
+	@mkdir -p flist/bin
+	@mkdir -p flist/tmp
+	@mkdir -p flist/data
+	@cp minio entrypoint flist/bin
+	@tar -czf minio.tar.gz -C flist .
+
 docker: checks
 	@echo "Building minio docker image '$(TAG)'"
 	@GOOS=linux GO111MODULE=on CGO_ENABLED=0 go build -tags kqueue -trimpath --ldflags "$(LDFLAGS)" -o $(PWD)/minio 1>/dev/null

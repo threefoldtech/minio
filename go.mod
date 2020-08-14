@@ -19,6 +19,7 @@ require (
 	github.com/colinmarc/hdfs/v2 v2.1.1
 	github.com/coredns/coredns v1.4.0
 	github.com/dchest/siphash v1.2.1
+	github.com/dgraph-io/badger/v2 v2.0.3
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/djherbis/atime v1.0.0
 	github.com/dustin/go-humanize v1.0.0
@@ -26,6 +27,7 @@ require (
 	github.com/elazarl/go-bindata-assetfs v1.0.0
 	github.com/fatih/color v1.7.0
 	github.com/fatih/structs v1.1.0
+	github.com/garyburd/redigo v1.5.0
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/go-sql-driver/mysql v1.5.0
 	github.com/gomodule/redigo v2.0.0+incompatible
@@ -67,15 +69,18 @@ require (
 	github.com/prometheus/client_golang v1.0.0
 	github.com/rjeczalik/notify v0.9.2
 	github.com/rs/cors v1.7.0
+	github.com/satori/uuid v1.2.0
 	github.com/secure-io/sio-go v0.3.0
 	github.com/shirou/gopsutil v2.20.3-0.20200314133625-53cec6b37e6a+incompatible
 	github.com/sirupsen/logrus v1.6.0
-	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/streadway/amqp v0.0.0-20190404075320-75d898a42a94
+	github.com/stretchr/testify v1.5.1
+	github.com/threefoldtech/0-stor v0.0.0-20200812131307-257ee29e34aa
 	github.com/tidwall/gjson v1.3.5
 	github.com/tidwall/sjson v1.0.4
 	github.com/tinylib/msgp v1.1.2
 	github.com/valyala/tcplisten v0.0.0-20161114210144-ceec8f93295a
+	github.com/vmihailenco/msgpack v4.0.4+incompatible
 	github.com/willf/bitset v1.1.11 // indirect
 	github.com/willf/bloom v2.0.3+incompatible
 	github.com/xdg/scram v0.0.0-20180814205039-7eeb5667e42c
