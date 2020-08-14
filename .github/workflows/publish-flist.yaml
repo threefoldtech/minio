@@ -58,7 +58,7 @@ jobs:
         target: tf-official-apps/base:latest.flist tf-autobuilder/minio-${{ github.sha }}-bins.flist
 
     - name: Crosslink flist (development)
-      if: success() && github.ref == 'refs/heads/master-rework'
+      if: success() && github.ref == 'refs/heads/master'
       uses: threefoldtech/publish-flist@master
       with:
         token: ${{ secrets.HUB_JWT }}
