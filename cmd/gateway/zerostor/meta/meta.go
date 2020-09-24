@@ -111,6 +111,7 @@ type Record struct {
 	Path Path
 	Data []byte
 	Time time.Time
+	Link bool
 }
 
 // Store defines the interface to a low level metastore

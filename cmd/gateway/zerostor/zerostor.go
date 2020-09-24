@@ -13,7 +13,9 @@ import (
 	"time"
 
 	"github.com/minio/minio/cmd/gateway/zerostor/meta"
+	"github.com/minio/minio/cmd/gateway/zerostor/meta/badger"
 	"github.com/minio/minio/cmd/gateway/zerostor/tlog"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -378,9 +380,13 @@ func isFileExists(p string) bool {
 func NewMetaManager(ctx context.Context, cfg config.Config, metaDir, metaPrivKey string) (meta.Manager, error) {
 	var zoMetaManager meta.Manager
 	//store, err := meta.NewFilesystemStore(metaDir)
-	store, err := meta.NewBadgerStore(metaDir)
+	if err := os.MkdirAll(metaDir, 0766); err != nil && !os.IsExist(err) {
+		return nil, errors.Wrapf(err, "failed to create meta directory")
+	}
+
+	store, err := badger.NewBadgerSimpleStore(metaDir)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to create badger meta store")
 	}
 	metaManager := meta.NewMetaManager(store, metaPrivKey)
 	zoMetaManager = metaManager

@@ -21,6 +21,7 @@ import (
 	minio "github.com/minio/minio/cmd"
 	"github.com/minio/minio/cmd/gateway/zerostor/config"
 	"github.com/minio/minio/cmd/gateway/zerostor/meta"
+	"github.com/minio/minio/cmd/gateway/zerostor/meta/badger"
 	"github.com/minio/minio/pkg/hash"
 	"github.com/pkg/errors"
 	"github.com/threefoldtech/0-stor/client"
@@ -790,7 +791,7 @@ func (c *testConfigMgr) Close() error {
 func newTestConfigMgr(dir string, pipe pipeline.Pipeline) (ConfigManager, error) {
 
 	// store, err := meta.NewFilesystemStore(dir)
-	store, err := meta.NewBadgerStore(dir)
+	store, err := badger.NewBadgerSimpleStore(dir)
 	if err != nil {
 		return nil, err
 	}

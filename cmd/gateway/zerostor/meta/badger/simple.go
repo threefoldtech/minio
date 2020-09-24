@@ -1,4 +1,4 @@
-package meta
+package badger
 
 import (
 	"fmt"
@@ -8,11 +8,12 @@ import (
 	"time"
 
 	badger "github.com/dgraph-io/badger/v2"
+	"github.com/minio/minio/cmd/gateway/zerostor/meta"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 )
 
-type badgerStore struct {
+type badgerSimpleStore struct {
 	db *badger.DB
 }
 
@@ -29,21 +30,22 @@ var (
 	isPrefixOptions = badger.IteratorOptions{PrefetchValues: false}
 )
 
-//NewBadgerStore creates a new badger store
-func NewBadgerStore(dir string) (Store, error) {
+// NewBadgerSimpleStore creates a new badger store. that stores
+// keys in flat format. key = path.
+func NewBadgerSimpleStore(dir string) (meta.Store, error) {
 	db, err := badger.Open(badger.DefaultOptions(filepath.Join(dir, "db")))
 	if err != nil {
 		return nil, err
 	}
 
-	return &badgerStore{db}, nil
+	return &badgerSimpleStore{db}, nil
 }
 
-func (s *badgerStore) Close() error {
+func (s *badgerSimpleStore) Close() error {
 	return s.db.Close()
 }
 
-func (s *badgerStore) Set(path Path, data []byte) error {
+func (s *badgerSimpleStore) Set(path meta.Path, data []byte) error {
 	return s.db.Update(func(txn *badger.Txn) error {
 		m := MetaTypeFile
 		if path.IsDir() {
@@ -59,7 +61,7 @@ func (s *badgerStore) Set(path Path, data []byte) error {
 	})
 }
 
-func (s *badgerStore) isPrefix(txn *badger.Txn, key string) bool {
+func (s *badgerSimpleStore) isPrefix(txn *badger.Txn, key string) bool {
 	it := txn.NewIterator(isPrefixOptions)
 	defer it.Close()
 	k := []byte(key + "/")
@@ -67,7 +69,7 @@ func (s *badgerStore) isPrefix(txn *badger.Txn, key string) bool {
 	return it.ValidForPrefix(k)
 }
 
-func (s *badgerStore) Get(path Path) (Record, error) {
+func (s *badgerSimpleStore) Get(path meta.Path) (meta.Record, error) {
 	var data []byte
 	var stamp time.Time
 	err := s.db.View(func(txn *badger.Txn) error {
@@ -77,7 +79,7 @@ func (s *badgerStore) Get(path Path) (Record, error) {
 			item, err := txn.Get([]byte(p))
 			if err == badger.ErrKeyNotFound {
 				if s.isPrefix(txn, p) {
-					path = NewPath(path.Collection, path.Relative(), "")
+					path = meta.NewPath(path.Collection, path.Relative(), "")
 					return nil
 				}
 				// not even a prefix. return err not exist
@@ -87,7 +89,7 @@ func (s *badgerStore) Get(path Path) (Record, error) {
 			stamp = time.Unix(int64(item.Version()), 0)
 			typ := item.UserMeta()
 			if typ == MetaTypeDirectory {
-				path = NewPath(path.Collection, path.Relative(), "")
+				path = meta.NewPath(path.Collection, path.Relative(), "")
 				return nil
 			} else if typ == MetaTypeLink {
 				// resolve the target and try again
@@ -102,7 +104,7 @@ func (s *badgerStore) Get(path Path) (Record, error) {
 				continue
 			}
 
-			path = FromPath(path.Collection, path.Relative())
+			path = meta.FromPath(path.Collection, path.Relative())
 
 			return item.Value(func(val []byte) error {
 				data = val
@@ -112,10 +114,10 @@ func (s *badgerStore) Get(path Path) (Record, error) {
 
 	})
 
-	return Record{Path: path, Data: data, Time: stamp}, err
+	return meta.Record{Path: path, Data: data, Time: stamp}, err
 }
 
-func (s *badgerStore) Del(path Path) error {
+func (s *badgerSimpleStore) Del(path meta.Path) error {
 	log.WithField("path", path.String()).Debug("deleting path")
 	//TODO: this should be done in patches to avoid allocating a big
 	//arrays
@@ -153,7 +155,7 @@ func (s *badgerStore) Del(path Path) error {
 	return err
 }
 
-func (s *badgerStore) Exists(path Path) (bool, error) {
+func (s *badgerSimpleStore) Exists(path meta.Path) (bool, error) {
 	exists := false
 	err := s.db.View(func(txn *badger.Txn) error {
 		_, err := txn.Get([]byte(path.String()))
@@ -171,7 +173,7 @@ func (s *badgerStore) Exists(path Path) (bool, error) {
 	return exists, err
 }
 
-func (s *badgerStore) Link(link, target Path) error {
+func (s *badgerSimpleStore) Link(link, target meta.Path) error {
 	err := s.db.Update(func(txn *badger.Txn) error {
 		entry := badger.NewEntry([]byte(link.String()), []byte(target.String())).WithMeta(MetaTypeLink)
 		return txn.SetEntry(entry)
@@ -180,25 +182,25 @@ func (s *badgerStore) Link(link, target Path) error {
 	return err
 }
 
-func (s *badgerStore) keyToPath(key string, meta byte) (Path, error) {
+func (s *badgerSimpleStore) keyToPath(key string, m byte) (meta.Path, error) {
 	parts := strings.SplitN(key, "/", 2)
 	if len(parts) != 2 {
-		return Path{}, fmt.Errorf("invalid key format: '%s'", string(key))
+		return meta.Path{}, fmt.Errorf("invalid key format: '%s'", string(key))
 	}
-	collection := Collection(parts[0])
+	collection := meta.Collection(parts[0])
 	prefix := parts[1]
-	if meta == MetaTypeDirectory {
-		return NewPath(collection, prefix, ""), nil
+	if m == MetaTypeDirectory {
+		return meta.NewPath(collection, prefix, ""), nil
 	}
 
-	return FromPath(collection, prefix), nil
+	return meta.FromPath(collection, prefix), nil
 }
 
-func (s *badgerStore) List(path Path) ([]Path, error) {
+func (s *badgerSimpleStore) List(path meta.Path) ([]meta.Path, error) {
 	return s.scanDelimited(path, nil, 10000)
 }
 
-func (s *badgerStore) scanDelimited(path Path, after []byte, limit int) ([]Path, error) {
+func (s *badgerSimpleStore) scanDelimited(path meta.Path, after []byte, limit int) ([]meta.Path, error) {
 	entries := make(map[string]byte)
 	trim := path.String() + "/"
 	prefix := []byte(path.String() + "/")
@@ -242,7 +244,7 @@ func (s *badgerStore) scanDelimited(path Path, after []byte, limit int) ([]Path,
 		return nil, errors.Wrapf(err, "failed to scan '%s'", path.String())
 	}
 
-	var paths []Path
+	var paths []meta.Path
 
 	for entry, meta := range entries {
 		key := filepath.Join(trim, entry)
@@ -256,9 +258,9 @@ func (s *badgerStore) scanDelimited(path Path, after []byte, limit int) ([]Path,
 	return paths, err
 }
 
-func (s *badgerStore) scanRecursive(path Path, after []byte, limit int) ([]Path, error) {
+func (s *badgerSimpleStore) scanRecursive(path meta.Path, after []byte, limit int) ([]meta.Path, error) {
 	prefix := []byte(path.String())
-	var paths []Path
+	var paths []meta.Path
 	err := s.db.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.DefaultIteratorOptions)
 		defer it.Close()
@@ -287,11 +289,11 @@ func (s *badgerStore) scanRecursive(path Path, after []byte, limit int) ([]Path,
 	return paths, err
 }
 
-func (s *badgerStore) Scan(path Path, after string, limit int, mode ScanMode) ([]Path, error) {
+func (s *badgerSimpleStore) Scan(path meta.Path, after string, limit int, mode meta.ScanMode) ([]meta.Path, error) {
 	switch mode {
-	case ScanModeDelimited:
+	case meta.ScanModeDelimited:
 		return s.scanDelimited(path, []byte(after), limit)
-	case ScanModeRecursive:
+	case meta.ScanModeRecursive:
 		return s.scanRecursive(path, []byte(after), limit)
 	}
 
