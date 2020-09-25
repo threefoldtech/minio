@@ -1,6 +1,7 @@
 package badger
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -60,6 +61,10 @@ func (s *badgerInodeStore) getKey(parent inode, name string) []byte {
 	return []byte(filepath.Join(string(parent), name))
 }
 
+func (s *badgerInodeStore) getPrefix(parent inode) []byte {
+	return []byte(fmt.Sprintf("%s%s", parent, string(filepath.Separator)))
+}
+
 // path is always absolute
 func (s *badgerInodeStore) MkdirAll(txn *badger.Txn, path string) (inode, error) {
 	parts := s.splitPath(path)
@@ -96,15 +101,31 @@ func (s *badgerInodeStore) MkdirAll(txn *badger.Txn, path string) (inode, error)
 func (s *badgerInodeStore) Set(path meta.Path, data []byte) error {
 	return s.db.Update(func(txn *badger.Txn) error {
 		//TODO: check inode cache for base
+		// prepare base directory
+
+		if path.IsDir() {
+			if len(data) > 0 {
+				return fmt.Errorf("invalid set path expected an object, got a directory: '%s'", path)
+			}
+			_, err := s.MkdirAll(txn, path.Relative())
+			return err
+		}
+
 		ind, err := s.MkdirAll(txn, path.Prefix)
 		if err != nil {
 			return err
 		}
 
-		if path.IsDir() {
-			return nil
-		}
 		key := s.getKey(ind, path.Base())
+
+		if item, err := txn.Get(key); err == nil {
+			current := item.UserMeta()
+
+			if current != MetaTypeFile {
+				return fmt.Errorf("object already exists as a directory: '%s'", path.Relative())
+			}
+		}
+
 		entry := badger.NewEntry(key, data).WithMeta(MetaTypeFile)
 		return txn.SetEntry(entry)
 	})
@@ -174,7 +195,7 @@ func (s *badgerInodeStore) Get(path meta.Path) (meta.Record, error) {
 			link = true
 		}
 
-		path = meta.FromPath(path.Collection, path.Relative())
+		path = meta.FilePath(path.Collection, path.Relative())
 
 		return item.Value(func(val []byte) error {
 			data = val
@@ -263,29 +284,21 @@ func (s *badgerInodeStore) Link(link, target meta.Path) error {
 	return err
 }
 
-func (s *badgerInodeStore) keyToPath(key string, m byte) (meta.Path, error) {
-	parts := strings.SplitN(key, "/", 2)
-	if len(parts) != 2 {
-		return meta.Path{}, fmt.Errorf("invalid key format: '%s'", string(key))
-	}
-	collection := meta.Collection(parts[0])
-	prefix := parts[1]
-	if m == MetaTypeDirectory {
-		return meta.NewPath(collection, prefix, ""), nil
-	}
-
-	return meta.FromPath(collection, prefix), nil
-}
-
 func (s *badgerInodeStore) List(path meta.Path) ([]meta.Path, error) {
 	return s.scanDelimited(path, nil, 10000)
 }
 
 func (s *badgerInodeStore) scanDelimited(path meta.Path, after []byte, limit int) ([]meta.Path, error) {
-	entries := make(map[string]byte)
-	trim := path.String() + "/"
-	prefix := []byte(path.String() + "/")
+	// path is a directory, always
+
+	var paths []meta.Path
 	err := s.db.View(func(txn *badger.Txn) error {
+		dir, err := s.getDir(txn, path.Relative())
+		if err != nil {
+			return err
+		}
+
+		prefix := s.getPrefix(dir)
 		it := txn.NewIterator(badger.DefaultIteratorOptions)
 		defer it.Close()
 		// should be one level under this prefix
@@ -297,23 +310,28 @@ func (s *badgerInodeStore) scanDelimited(path meta.Path, after []byte, limit int
 			item := it.Item()
 
 			key := item.Key()
-			strKey := string(key)
-			//s.splitPath(path string)
-			strKey = strings.TrimPrefix(strKey, trim)
-			parts := strings.Split(strKey, "/")
-			if len(parts) == 0 {
-				//how ?
-				continue
-			} else if len(parts) == 1 {
-				// direct object
-				entries[parts[0]] = item.UserMeta()
+			name := string(bytes.TrimPrefix(key, prefix))
+			m := item.UserMeta()
+			if m == MetaTypeDirectory {
+				paths = append(paths,
+					meta.NewPath(
+						path.Collection,
+						filepath.Join(path.Relative(), name),
+						"",
+					),
+				)
+
 			} else {
-				// more than one, that a sub dir entry
-				// with no directory entry
-				entries[parts[0]] = MetaTypeDirectory
+				paths = append(paths,
+					meta.NewPath(
+						path.Collection,
+						path.Relative(),
+						name,
+					),
+				)
 			}
 
-			if len(entries) >= limit {
+			if len(paths) >= limit {
 				return nil
 			}
 		}
@@ -325,49 +343,39 @@ func (s *badgerInodeStore) scanDelimited(path meta.Path, after []byte, limit int
 		return nil, errors.Wrapf(err, "failed to scan '%s'", path.String())
 	}
 
-	var paths []meta.Path
-
-	for entry, meta := range entries {
-		key := filepath.Join(trim, entry)
-		path, err := s.keyToPath(key, meta)
-		if err != nil {
-			return paths, err
-		}
-		paths = append(paths, path)
-	}
-
 	return paths, err
 }
 
 func (s *badgerInodeStore) scanRecursive(path meta.Path, after []byte, limit int) ([]meta.Path, error) {
-	prefix := []byte(path.String())
-	var paths []meta.Path
-	err := s.db.View(func(txn *badger.Txn) error {
-		it := txn.NewIterator(badger.DefaultIteratorOptions)
-		defer it.Close()
-		// should be one level under this prefix
-		if len(after) == 0 {
-			after = prefix
-		}
-		for it.Seek(after); it.ValidForPrefix(prefix); it.Next() {
-			item := it.Item()
-			key := item.Key()
+	return nil, fmt.Errorf("recursive scan is not implemented")
+	// prefix := []byte(path.String())
+	// var paths []meta.Path
+	// err := s.db.View(func(txn *badger.Txn) error {
+	// 	it := txn.NewIterator(badger.DefaultIteratorOptions)
+	// 	defer it.Close()
+	// 	// should be one level under this prefix
+	// 	if len(after) == 0 {
+	// 		after = prefix
+	// 	}
+	// 	for it.Seek(after); it.ValidForPrefix(prefix); it.Next() {
+	// 		item := it.Item()
+	// 		key := item.Key()
 
-			path, err := s.keyToPath(string(key), item.UserMeta())
-			if err != nil {
-				return err
-			}
-			paths = append(paths, path)
+	// 		path, err := s.keyToPath(string(key), item.UserMeta())
+	// 		if err != nil {
+	// 			return err
+	// 		}
+	// 		paths = append(paths, path)
 
-			if len(paths) >= limit {
-				return nil
-			}
-		}
+	// 		if len(paths) >= limit {
+	// 			return nil
+	// 		}
+	// 	}
 
-		return nil
-	})
+	// 	return nil
+	// })
 
-	return paths, err
+	// return paths, err
 }
 
 func (s *badgerInodeStore) Scan(path meta.Path, after string, limit int, mode meta.ScanMode) ([]meta.Path, error) {

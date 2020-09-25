@@ -73,11 +73,17 @@ func NewPath(collection Collection, prefix string, name string) Path {
 	return Path{Collection: collection, Prefix: prefix, Name: name}
 }
 
-// FromPath always create a Path to an object (Name will be set to last part)
+// FilePath always create a Path to an object (Name will be set to last part)
 // to create a path to a directory use NewPath
-func FromPath(collection Collection, parts ...string) Path {
+func FilePath(collection Collection, parts ...string) Path {
 	prefix, name := filepath.Split(filepath.Join(parts...))
 	return NewPath(collection, prefix, name)
+}
+
+// DirPath always create a Path to a directory
+// to create a path to a file use FilePath
+func DirPath(collection Collection, parts ...string) Path {
+	return NewPath(collection, filepath.Join(parts...), "")
 }
 
 // Base return the name
@@ -99,7 +105,7 @@ func (p *Path) IsDir() bool {
 
 // Join creates a new path from this path plus the new parts
 func (p *Path) Join(parts ...string) Path {
-	return FromPath(p.Collection, filepath.Join(p.Prefix, p.Name, filepath.Join(parts...)))
+	return FilePath(p.Collection, filepath.Join(p.Prefix, p.Name, filepath.Join(parts...)))
 }
 
 func (p *Path) String() string {

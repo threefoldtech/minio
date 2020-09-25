@@ -49,7 +49,7 @@ func (s *badgerSimpleStore) Set(path meta.Path, data []byte) error {
 	return s.db.Update(func(txn *badger.Txn) error {
 		m := MetaTypeFile
 		if path.IsDir() {
-			if len(data) < 0 {
+			if len(data) > 0 {
 				return fmt.Errorf("invalid set path expected an object, got a directory: '%s'", path)
 			}
 
@@ -104,7 +104,7 @@ func (s *badgerSimpleStore) Get(path meta.Path) (meta.Record, error) {
 				continue
 			}
 
-			path = meta.FromPath(path.Collection, path.Relative())
+			path = meta.FilePath(path.Collection, path.Relative())
 
 			return item.Value(func(val []byte) error {
 				data = val
@@ -193,7 +193,7 @@ func (s *badgerSimpleStore) keyToPath(key string, m byte) (meta.Path, error) {
 		return meta.NewPath(collection, prefix, ""), nil
 	}
 
-	return meta.FromPath(collection, prefix), nil
+	return meta.FilePath(collection, prefix), nil
 }
 
 func (s *badgerSimpleStore) List(path meta.Path) ([]meta.Path, error) {

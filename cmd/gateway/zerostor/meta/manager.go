@@ -191,19 +191,19 @@ func (m *metaManager) DeleteBlob(blob string) error {
 
 // DeleteUpload deletes the temporary multipart upload dir
 func (m *metaManager) DeleteUpload(bucket, uploadID string) error {
-	return m.store.Del(FromPath(UploadCollection, bucket, uploadID))
+	return m.store.Del(FilePath(UploadCollection, bucket, uploadID))
 }
 
 // DeleteObject deletes an object file from a bucket
 func (m *metaManager) DeleteObject(bucket, object string) error {
 	//TODO: if last file is deleted from a directory the directory
 	// need to be delted as well.
-	return m.store.Del(FromPath(ObjectCollection, bucket, object))
+	return m.store.Del(FilePath(ObjectCollection, bucket, object))
 }
 
 // LinkObject creates a symlink from the object file under /objects to the first metadata blob file
 func (m *metaManager) LinkObject(bucket, object, fileID string) error {
-	link := FromPath(ObjectCollection, bucket, object)
+	link := FilePath(ObjectCollection, bucket, object)
 
 	record, err := m.store.Get(link)
 	if os.IsNotExist(err) {
@@ -409,7 +409,7 @@ func (m *metaManager) CompleteMultipartUpload(bucket, object, uploadID string, p
 
 // GetObjectInfo returns info about a bucket object
 func (m *metaManager) GetObjectInfo(bucket, object string) (minio.ObjectInfo, error) {
-	md, err := m.getObjectMeta(FromPath(ObjectCollection, bucket, object))
+	md, err := m.getObjectMeta(FilePath(ObjectCollection, bucket, object))
 	if os.IsNotExist(err) {
 		return minio.ObjectInfo{}, minio.ObjectNotFound{Bucket: bucket, Object: object}
 	} else if err != nil {
@@ -420,7 +420,7 @@ func (m *metaManager) GetObjectInfo(bucket, object string) (minio.ObjectInfo, er
 
 // GetObjectInfo returns info about a bucket object
 func (m *metaManager) GetObjectMeta(bucket, object string) (ObjectMeta, error) {
-	return m.getObjectMeta(FromPath(ObjectCollection, bucket, object))
+	return m.getObjectMeta(FilePath(ObjectCollection, bucket, object))
 }
 
 func (m *metaManager) getObjectMeta(path Path) (ObjectMeta, error) {
@@ -452,7 +452,7 @@ func (m *metaManager) StreamObjectMeta(ctx context.Context, bucket, object strin
 	c := make(chan Stream)
 	go func() {
 		defer close(c)
-		metaFile := FromPath(ObjectCollection, bucket, object)
+		metaFile := FilePath(ObjectCollection, bucket, object)
 		for {
 			objMeta, err := m.getObjectMeta(metaFile)
 			if os.IsNotExist(err) {
@@ -545,7 +545,7 @@ func (m *metaManager) StreamBlobs(ctx context.Context) <-chan Stream {
 	go func() {
 		defer close(c)
 
-		dirs, err := m.store.List(FromPath(BlobCollection))
+		dirs, err := m.store.List(FilePath(BlobCollection))
 		if err != nil {
 			log.Fatal(err)
 			return
@@ -583,7 +583,7 @@ func (m *metaManager) StreamBlobs(ctx context.Context) <-chan Stream {
 
 // ValidUpload checks if an upload id is valid
 func (m *metaManager) ValidUpload(bucket, uploadID string) (bool, error) {
-	exists, err := m.store.Exists(FromPath(UploadCollection, bucket, uploadID))
+	exists, err := m.store.Exists(FilePath(UploadCollection, bucket, uploadID))
 	if err != nil {
 		return false, err
 	}
@@ -593,7 +593,7 @@ func (m *metaManager) ValidUpload(bucket, uploadID string) (bool, error) {
 
 // ListMultipartUploads lists multipart uploads that are in progress
 func (m *metaManager) ListMultipartUploads(bucket string) (minio.ListMultipartsInfo, error) {
-	paths, err := m.store.List(FromPath(UploadCollection, bucket))
+	paths, err := m.store.List(FilePath(UploadCollection, bucket))
 	if os.IsNotExist(err) {
 		return minio.ListMultipartsInfo{}, nil
 	} else if err != nil {
@@ -632,7 +632,7 @@ func (m *metaManager) StreamMultiPartsMeta(ctx context.Context, bucket, uploadID
 	go func() {
 		defer close(c)
 
-		files, err := m.store.List(FromPath(UploadCollection, bucket, uploadID))
+		files, err := m.store.List(FilePath(UploadCollection, bucket, uploadID))
 		if err != nil {
 			log.WithError(err).WithFields(log.Fields{
 				"bucket":    bucket,
@@ -675,7 +675,7 @@ func (m *metaManager) NewMultipartUpload(bucket, object, uploadID string, meta m
 		Metadata: meta,
 	}
 
-	path := FromPath(UploadCollection, bucket, uploadID, uploadMetaFile)
+	path := FilePath(UploadCollection, bucket, uploadID, uploadMetaFile)
 	data, err := m.encode(info)
 	if err != nil {
 		return err
@@ -686,7 +686,7 @@ func (m *metaManager) NewMultipartUpload(bucket, object, uploadID string, meta m
 
 // ListUploadParts lists multipart upload parts
 func (m *metaManager) ListUploadParts(bucket, uploadID string) ([]minio.PartInfo, error) {
-	files, err := m.store.List(FromPath(UploadCollection, bucket, uploadID))
+	files, err := m.store.List(FilePath(UploadCollection, bucket, uploadID))
 	if err != nil {
 		log.WithError(err).WithFields(log.Fields{
 			"bucket":    bucket,
@@ -920,7 +920,7 @@ func (m *metaManager) scanDelimited(ctx context.Context, bucket, prefix, after s
 
 	var paths []Path
 	var err error
-	scan := FromPath(ObjectCollection, bucket, prefix)
+	scan := FilePath(ObjectCollection, bucket, prefix)
 	if prefix == "" || strings.HasSuffix(prefix, "/") {
 		// this is a bucket scan or a folder scan
 		paths, err = m.store.Scan(scan, after, maxKeys, ScanModeDelimited)
@@ -971,7 +971,7 @@ func (m *metaManager) scanFlat(ctx context.Context, bucket, prefix, after string
 		"maxKeys":   maxKeys,
 	}).Debug("scan flat bucket")
 
-	scan := FromPath(ObjectCollection, bucket, prefix)
+	scan := FilePath(ObjectCollection, bucket, prefix)
 	paths, err := m.store.Scan(scan, after, maxKeys, ScanModeRecursive)
 	if err != nil {
 		return after, err
