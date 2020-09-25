@@ -88,4 +88,15 @@ func TestInodStoreCreateMany(t *testing.T) {
 
 	// get
 
+	record, err = store.Get(meta.FilePath(testCollection, "documents/test.txt"))
+	require.NoError(t, err)
+
+	require.False(t, record.Path.IsDir())
+	require.Equal(t, "documents/test.txt", record.Path.Relative())
+
+	record, err = store.Get(meta.FilePath(testCollection, "documents/important"))
+	require.NoError(t, err)
+
+	require.True(t, record.Path.IsDir())
+	require.Equal(t, "documents/important", record.Path.Relative())
 }

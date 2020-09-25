@@ -131,14 +131,6 @@ func (s *badgerInodeStore) Set(path meta.Path, data []byte) error {
 	})
 }
 
-func (s *badgerInodeStore) isPrefix(txn *badger.Txn, key string) bool {
-	it := txn.NewIterator(isPrefixOptions)
-	defer it.Close()
-	k := []byte(key + "/")
-	it.Seek(k)
-	return it.ValidForPrefix(k)
-}
-
 func (s *badgerInodeStore) getDir(txn *badger.Txn, path string) (inode, error) {
 	//todo: cache lookup in a LRU cache
 	parts := s.splitPath(path)
@@ -188,7 +180,7 @@ func (s *badgerInodeStore) Get(path meta.Path) (meta.Record, error) {
 		stamp = time.Unix(int64(item.Version()), 0)
 		typ := item.UserMeta()
 		if typ == MetaTypeDirectory {
-			path = meta.NewPath(path.Collection, path.Relative(), "")
+			path = meta.DirPath(path.Collection, path.Relative())
 			// no associated value
 			return nil
 		} else if typ == MetaTypeLink {
