@@ -384,7 +384,7 @@ func NewMetaManager(ctx context.Context, cfg config.Config, metaDir, metaPrivKey
 		return nil, errors.Wrapf(err, "failed to create meta directory")
 	}
 
-	store, err := badger.NewBadgerSimpleStore(metaDir)
+	store, err := badger.NewBadgerStore(metaDir)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create badger meta store")
 	}

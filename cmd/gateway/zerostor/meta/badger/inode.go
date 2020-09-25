@@ -193,7 +193,6 @@ func (s *badgerInodeStore) Get(path meta.Path) (meta.Record, error) {
 			data = val
 			return nil
 		})
-
 	})
 
 	return meta.Record{
@@ -286,7 +285,9 @@ func (s *badgerInodeStore) scanDelimited(path meta.Path, after []byte, limit int
 	var paths []meta.Path
 	err := s.db.View(func(txn *badger.Txn) error {
 		dir, err := s.getDir(txn, path.Relative())
-		if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		} else if err != nil {
 			return err
 		}
 

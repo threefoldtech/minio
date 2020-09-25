@@ -111,7 +111,7 @@ func (m *metaManager) IsBucketEmpty(name string) (bool, error) {
 // ListBuckets lists all buckets
 func (m *metaManager) ListBuckets() (map[string]*Bucket, error) {
 
-	paths, err := m.store.List(NewPath(BucketCollection, "", ""))
+	paths, err := m.store.List(DirPath(BucketCollection))
 	if err != nil {
 		return nil, err
 	}

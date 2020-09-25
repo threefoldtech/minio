@@ -791,7 +791,7 @@ func (c *testConfigMgr) Close() error {
 func newTestConfigMgr(dir string, pipe pipeline.Pipeline) (ConfigManager, error) {
 
 	// store, err := meta.NewFilesystemStore(dir)
-	store, err := badger.NewBadgerSimpleStore(dir)
+	store, err := badger.NewBadgerStore(dir)
 	if err != nil {
 		return nil, err
 	}
