@@ -683,20 +683,22 @@ func (zo *zerostorObjects) PutObject(ctx context.Context, bucket, object string,
 		}, metaMgr.Mkdir(bucket, object)
 	}
 
-	info, err := metaMgr.GetObjectMeta(bucket, object)
-	if err != nil && !os.IsNotExist(err) {
-		return objInfo, err
-	}
-
-	if info.IsDir {
-		return objInfo, minio.ObjectExistsAsDirectory{Bucket: bucket, Object: object}
-	}
+	obj, err := metaMgr.EnsureObject(bucket, object)
 
 	objMeta, err := zo.writeStream(ctx, data.Size(), data.Reader, opts)
 	if err != nil {
 		return objInfo, err
 	}
-	if err := metaMgr.LinkObject(bucket, object, objMeta.Filename); err != nil {
+
+	// create the new version
+	version, err := metaMgr.CreateVersion(obj.ID, objMeta.Filename)
+	if err != nil {
+		return objInfo, err
+	}
+
+	// now set object version
+	obj.Version = version
+	if err := metaMgr.SetObject(bucket, object, obj); err != nil {
 		return objInfo, err
 	}
 

@@ -41,8 +41,8 @@ const (
 	UploadCollection Collection = "upload"
 	//BucketCollection defines bucket collection
 	BucketCollection Collection = "bucket"
-	//VersionsCollection defines version collection
-	VersionsCollection Collection = "version"
+	//VersionCollection defines version collection
+	VersionCollection Collection = "version"
 )
 
 //ScanMode scan mode type
@@ -143,8 +143,18 @@ type Manager interface {
 	ListBuckets() (map[string]*Bucket, error)
 	SetBucketPolicy(name string, policy *policy.Policy) error
 
+	// EnsureObject returns or create a new initialized object
 	EnsureObject(bucket, object string) (Object, error)
+	// SetObject update the object with given Object
+	SetObject(bucket, object string, obj Object) error
+
+	// WriteMetaStream calls cb until receive an EOF error. Creates a new blob
+	// for each meta object returned by cb. Links blobs together and return
+	// the head. Blobs can be streamed again later using the StreamObjectMeta method
 	WriteMetaStream(cb func() (*metatypes.Metadata, error)) (Metadata, error)
+	// Create version, creates a new version for object with objectId and
+	// link to the given meta file head. returns the version string
+	CreateVersion(objectID string, meta string) (string, error)
 
 	WriteObjMeta(obj *Metadata) error
 	LinkObject(bucket, object, blob string) error

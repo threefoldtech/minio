@@ -325,11 +325,11 @@ func (m *metaManager) ListObjectsV2(ctx context.Context, bucket, prefix,
 }
 
 func (m *metaManager) WriteObjMeta(obj *Metadata) error {
-	if len(obj.Filename) < 2 {
+	if len(obj.Filename) == 0 {
 		return fmt.Errorf("invalid metadata object filename")
 	}
 
-	path := m.blobPath(obj.Filename)
+	path := FilePath(BlobCollection, obj.Filename)
 	data, err := m.encode(obj)
 	if err != nil {
 		return err
@@ -450,6 +450,21 @@ func (m *metaManager) GetObjectMeta(bucket, object string) (Metadata, error) {
 	return m.getObjectMeta(FilePath(ObjectCollection, bucket, object))
 }
 
+func (m *metaManager) getObjectVersion(objectID, version string) (Metadata, error) {
+	path := FilePath(VersionCollection, objectID, version)
+	record, err := m.store.Get(path)
+	if err != nil {
+		return Metadata{}, err
+	}
+
+	var meta Metadata
+	if err := m.decode(record.Data, &meta); err != nil {
+		return meta, err
+	}
+
+	return meta, nil
+}
+
 func (m *metaManager) getObjectMeta(path Path) (Metadata, error) {
 	record, err := m.store.Get(path)
 	if err != nil {
@@ -466,12 +481,12 @@ func (m *metaManager) getObjectMeta(path Path) (Metadata, error) {
 		}, nil
 	}
 
-	var meta Metadata
-	if err := m.decode(record.Data, &meta); err != nil {
-		return meta, err
+	var obj Object
+	if err := m.decode(record.Data, &obj); err != nil {
+		return Metadata{}, err
 	}
 
-	return meta, nil
+	return m.getObjectVersion(obj.ID, obj.Version)
 }
 
 // StreamObjectMeta streams an object metadata blobs through a channel
@@ -564,6 +579,24 @@ func (m *metaManager) WriteMetaStream(cb func() (*metatypes.Metadata, error)) (M
 	}
 
 	return firstPart, nil
+}
+
+func (m *metaManager) CreateVersion(objectID string, meta string) (string, error) {
+	// this will store a new version under the object ID
+	version := fmt.Sprintf("%x", time.Now().UnixNano())
+	link := FilePath(VersionCollection, objectID, version)
+
+	return version, m.store.Link(link, FilePath(BlobCollection, meta))
+}
+
+func (m *metaManager) SetObject(bucket, object string, obj Object) error {
+	path := FilePath(ObjectCollection, bucket, object)
+	data, err := m.encode(obj)
+	if err != nil {
+		return err
+	}
+
+	return m.store.Set(path, data)
 }
 
 // StreamObjectMeta streams all blobs through a channel

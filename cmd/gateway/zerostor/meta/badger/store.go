@@ -11,10 +11,11 @@ import (
 )
 
 type badgerStore struct {
-	objects meta.Store
-	uploads meta.Store
-	blobs   meta.Store
-	buckets meta.Store
+	objects  meta.Store
+	uploads  meta.Store
+	blobs    meta.Store
+	buckets  meta.Store
+	versions meta.Store
 }
 
 // NewBadgerStore create a new badger store
@@ -48,6 +49,12 @@ func NewBadgerStore(root string) (meta.Store, error) {
 		return nil, err
 	}
 
+	store.versions, err = newBadgerSimpleStore(filepath.Join(root, string(meta.VersionCollection)))
+	if err != nil {
+		cleanup()
+		return nil, err
+	}
+
 	store.objects, err = newBadgerInodeStore(filepath.Join(root, string(meta.ObjectCollection)))
 	if err != nil {
 		cleanup()
@@ -68,6 +75,8 @@ func (s *badgerStore) storeFor(collection meta.Collection) (meta.Store, error) {
 		store = s.uploads
 	case meta.BucketCollection:
 		store = s.buckets
+	case meta.VersionCollection:
+		store = s.versions
 	}
 
 	if store == nil {

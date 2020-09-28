@@ -917,7 +917,7 @@ func TestBigStreamZDB(t *testing.T) {
 	var bs int64 = 512 * 1024
 	count := size / bs
 	for i := int64(0); i < count; i++ {
-		_, err = obj.putObject(
+		_, err = obj.writeStream(
 			ctx,
 			bs,
 			io.LimitReader(reader, bs),
