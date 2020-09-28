@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/threefoldtech/0-stor/client/datastor"
 	"github.com/threefoldtech/0-stor/client/metastor/db"
 	"github.com/threefoldtech/0-stor/client/metastor/metatypes"
@@ -35,21 +36,22 @@ func TestZerostorRoundTrip(t *testing.T) {
 	shardID := func(shard datastor.ShardConfig) string {
 		return fmt.Sprint(shard.Namespace, "@", shard.Address)
 	}
+	id := []byte(uuid.New().String())
 	// make sure the object does not exist yet
 	buf := bytes.NewBuffer(nil)
-	err := cli.Read(&metatypes.Metadata{Namespace: []byte(namespace), Key: cli.getKey(bkt, object), Chunks: []metatypes.Chunk{{Objects: []metatypes.Object{{ShardID: shardID(cfg.DataStor.Shards[0])}}}}}, buf, 0, dataLen)
+	err := cli.Read(&metatypes.Metadata{Namespace: []byte(namespace), Key: id, Chunks: []metatypes.Chunk{{Objects: []metatypes.Object{{ShardID: shardID(cfg.DataStor.Shards[0])}}}}}, buf, 0, dataLen)
 	if err != datastor.ErrKeyNotFound {
 		t.Fatalf("expect error: %v, got: %v", db.ErrNotFound, err)
 	}
 	buf.Reset()
 
 	// set
-	metaData, err := cli.Write(bkt, object, bytes.NewReader(data), nil)
+	metaData, err := cli.Write(bytes.NewReader(data), nil)
 	if err != nil {
 		t.Fatalf("write error: %v", err)
 	}
 
-	if !bytes.Equal(metaData.Key, cli.getKey(bkt, object)) {
+	if !bytes.Equal(metaData.Key, id) {
 		t.Fatalf("metadata key is not valid")
 	}
 

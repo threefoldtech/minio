@@ -919,12 +919,9 @@ func TestBigStreamZDB(t *testing.T) {
 	for i := int64(0); i < count; i++ {
 		_, err = obj.putObject(
 			ctx,
-			bkt,
-			fmt.Sprintf("random-%d", i),
 			bs,
 			io.LimitReader(reader, bs),
 			minio.ObjectOptions{},
-			fmt.Sprintf("part-%d", i),
 		)
 
 		if err != nil {

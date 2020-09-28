@@ -110,7 +110,7 @@ func (t *fsTLogger) Mkdir(bucket, object string) error {
 }
 
 // PutObjectPart creates metadata for an object upload part
-func (t *fsTLogger) PutObjectPart(objMeta meta.ObjectMeta, bucket, uploadID string, partID int) (minio.PartInfo, error) {
+func (t *fsTLogger) PutObjectPart(objMeta meta.Metadata, bucket, uploadID string, partID int) (minio.PartInfo, error) {
 	t.recorder.Begin()
 	defer t.recorder.End()
 
@@ -243,7 +243,7 @@ func (t *fsTLogger) NewMultipartUpload(bucket, object, uploadID string, meta map
 }
 
 // WriteObjMeta write meta.ObjectMeta
-func (t *fsTLogger) WriteObjMeta(obj *meta.ObjectMeta) error {
+func (t *fsTLogger) WriteObjMeta(obj *meta.Metadata) error {
 	t.recorder.Begin()
 	defer t.recorder.End()
 
@@ -289,12 +289,12 @@ func (t *fsTLogger) CompleteMultipartUpload(bucket, object, uploadID string, par
 }
 
 // WriteMetaStream writes a stream of metadata to disk, links them, and returns the first blob
-func (t *fsTLogger) WriteMetaStream(cb func() (*metatypes.Metadata, error), bucket, object string) (meta.ObjectMeta, error) {
+func (t *fsTLogger) WriteMetaStream(cb func() (*metatypes.Metadata, error)) (meta.Metadata, error) {
 	var totalSize int64
 	var modTime int64
-	var previousPart meta.ObjectMeta
-	var firstPart meta.ObjectMeta
-	var objMeta meta.ObjectMeta
+	var previousPart meta.Metadata
+	var firstPart meta.Metadata
+	var objMeta meta.Metadata
 	counter := 0
 
 	for {
@@ -302,12 +302,12 @@ func (t *fsTLogger) WriteMetaStream(cb func() (*metatypes.Metadata, error), buck
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			return meta.ObjectMeta{}, err
+			return meta.Metadata{}, err
 		}
 
 		totalSize += metaData.Size
 		modTime = metaData.LastWriteEpoch
-		objMeta = meta.ObjectMeta{
+		objMeta = meta.Metadata{
 			Metadata: *metaData,
 			Filename: uuid.NewV4().String(),
 		}
@@ -320,7 +320,7 @@ func (t *fsTLogger) WriteMetaStream(cb func() (*metatypes.Metadata, error), buck
 				firstPart = previousPart
 			} else {
 				if err := t.WriteObjMeta(&previousPart); err != nil {
-					return meta.ObjectMeta{}, err
+					return meta.Metadata{}, err
 				}
 			}
 		} else { // if this is the first iteration, mark the first blob
@@ -332,7 +332,7 @@ func (t *fsTLogger) WriteMetaStream(cb func() (*metatypes.Metadata, error), buck
 
 	// write the meta of the last received metadata
 	if err := t.WriteObjMeta(&objMeta); err != nil {
-		return meta.ObjectMeta{}, err
+		return meta.Metadata{}, err
 	}
 
 	firstPart.ObjectSize = totalSize
@@ -341,7 +341,7 @@ func (t *fsTLogger) WriteMetaStream(cb func() (*metatypes.Metadata, error), buck
 
 	// update the the first meta part with the size and mod time
 	if err := t.WriteObjMeta(&firstPart); err != nil {
-		return meta.ObjectMeta{}, err
+		return meta.Metadata{}, err
 	}
 
 	return firstPart, nil

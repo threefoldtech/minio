@@ -57,7 +57,7 @@ func (s *BlobStatus) WithRepaired(repaired bool) *BlobStatus {
 	return s
 }
 
-func statusForMeta(meta meta.ObjectMeta) *BlobStatus {
+func statusForMeta(meta meta.Metadata) *BlobStatus {
 	blob := meta.Filename
 	if len(blob) == 0 {
 		blob = "<empty>"
@@ -146,7 +146,7 @@ func NewHealer(manager meta.Manager, client *client.Client) *Healer {
 	return &Healer{manager: manager, client: client}
 }
 
-func (h *Healer) checkBlob(ctx context.Context, cb Callback, meta meta.ObjectMeta) *BlobStatus {
+func (h *Healer) checkBlob(ctx context.Context, cb Callback, meta meta.Metadata) *BlobStatus {
 	result := statusForMeta(meta)
 	if len(meta.Chunks) == 0 {
 		// not a real object and is just a directory

@@ -41,6 +41,8 @@ const (
 	UploadCollection Collection = "upload"
 	//BucketCollection defines bucket collection
 	BucketCollection Collection = "bucket"
+	//VersionsCollection defines version collection
+	VersionsCollection Collection = "version"
 )
 
 //ScanMode scan mode type
@@ -134,13 +136,17 @@ type Store interface {
 
 // Manager interface for metadata managers
 type Manager interface {
-	WriteObjMeta(obj *ObjectMeta) error
 	CreateBucket(string) error
 	GetBucket(name string) (*Bucket, error)
 	DeleteBucket(string) error
 	IsBucketEmpty(string) (bool, error)
 	ListBuckets() (map[string]*Bucket, error)
 	SetBucketPolicy(name string, policy *policy.Policy) error
+
+	EnsureObject(bucket, object string) (Object, error)
+	WriteMetaStream(cb func() (*metatypes.Metadata, error)) (Metadata, error)
+
+	WriteObjMeta(obj *Metadata) error
 	LinkObject(bucket, object, blob string) error
 	LinkPart(bucket, uploadID, partID, blob string) error
 	ListObjects(ctx context.Context, bucket, prefix, marker, delimiter string, maxKeys int) (minio.ListObjectsInfo, error)
@@ -152,16 +158,16 @@ type Manager interface {
 	CompleteMultipartUpload(bucket, object, uploadID string, parts []minio.CompletePart) (minio.ObjectInfo, error)
 	DeleteBlob(blob string) error
 	DeleteObject(bucket, object string) error
-	PutObjectPart(objMeta ObjectMeta, bucket, uploadID string, partID int) (minio.PartInfo, error)
+	PutObjectPart(objMeta Metadata, bucket, uploadID string, partID int) (minio.PartInfo, error)
 	PutObject(metaData *metatypes.Metadata, bucket, object string) (minio.ObjectInfo, error)
 	Mkdir(bucket, object string) error
 	GetObjectInfo(bucket, object string) (minio.ObjectInfo, error)
-	GetObjectMeta(bucket, object string) (ObjectMeta, error)
+	GetObjectMeta(bucket, object string) (Metadata, error)
 	StreamObjectMeta(ctx context.Context, bucket, object string) <-chan Stream
 	StreamMultiPartsMeta(ctx context.Context, bucket, uploadID string) <-chan Stream
 	StreamBlobs(ctx context.Context) <-chan Stream
 	ValidUpload(bucket, uploadID string) (bool, error)
-	WriteMetaStream(cb func() (*metatypes.Metadata, error), bucket, object string) (ObjectMeta, error)
+
 	Close() error
 }
 
@@ -172,8 +178,17 @@ type Bucket struct {
 	Policy  policy.Policy `json:"policy"`
 }
 
-// ObjectMeta defines meta for an object
-type ObjectMeta struct {
+// Object is main object entrypoint
+type Object struct {
+	ID      string
+	Version string
+
+	//TODO: add flags here like
+	//deleted marker and others
+}
+
+// Metadata defines meta for an object
+type Metadata struct {
 	metatypes.Metadata
 	NextBlob       string
 	ObjectSize     int64
@@ -185,7 +200,7 @@ type ObjectMeta struct {
 
 // Stream is used to stream ObjMeta through a chan
 type Stream struct {
-	Obj   ObjectMeta
+	Obj   Metadata
 	Error error
 }
 

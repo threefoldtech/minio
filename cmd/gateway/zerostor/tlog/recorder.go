@@ -113,7 +113,7 @@ func (r Record) Play(metaManager meta.Manager) error {
 		}
 		err = metaManager.SetBucketPolicy(r.String(1), &pol)
 	case OperationPartPut:
-		var metaData meta.ObjectMeta
+		var metaData meta.Metadata
 		if err = r.JSON(1, &metaData); err != nil {
 			return err
 		}
@@ -135,7 +135,7 @@ func (r Record) Play(metaManager meta.Manager) error {
 	case OperationObjectMkdir:
 		err = metaManager.Mkdir(r.String(1), r.String(2))
 	case OperationObjectWriteMeta:
-		var metaData meta.ObjectMeta
+		var metaData meta.Metadata
 		if err = r.JSON(1, &metaData); err != nil {
 			return err
 		}

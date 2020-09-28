@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/minio/minio/cmd/gateway/zerostor/meta"
 	"github.com/minio/minio/cmd/gateway/zerostor/meta/badger"
 	"github.com/minio/minio/cmd/gateway/zerostor/tlog"
@@ -189,9 +190,8 @@ func (zc *storClientWrapper) Close() {
 	zc.release()
 }
 
-func (zc *storClientWrapper) Write(bucket, object string, rd io.Reader, userDefMeta map[string]string) (*metatypes.Metadata, error) {
-	key := zc.getKey(bucket, object)
-
+func (zc *storClientWrapper) Write(rd io.Reader, userDefMeta map[string]string) (*metatypes.Metadata, error) {
+	key := []byte(uuid.New().String())
 	// convert the header key to canonical header key format
 	// so we can use it easily when getting the object info
 	userDef := make(map[string]string, len(userDefMeta))
@@ -327,10 +327,9 @@ type ConfigManager interface {
 // Client implements a zerotstor client
 type Client interface {
 	Close()
-	Write(bucket, object string, rd io.Reader, userDefMeta map[string]string) (*metatypes.Metadata, error)
+	Write(rd io.Reader, userDefMeta map[string]string) (*metatypes.Metadata, error)
 	Read(metadata *metatypes.Metadata, writer io.Writer, offset, length int64) error
 	Delete(meta metatypes.Metadata) error
-	getKey(bucket, object string) []byte
 	Inner() *client.Client
 }
 

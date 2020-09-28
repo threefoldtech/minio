@@ -475,7 +475,7 @@ func (zo *zerostorObjects) CopyObject(ctx context.Context, srcBucket, srcObject,
 
 	reader := minio.NewPutObjReader(hashReader, nil, nil)
 
-	objMeta, err := zo.putObject(ctx, destBucket, destObject, reader.Size(), reader.Reader, minio.ObjectOptions{UserDefined: newMeta}, "")
+	objMeta, err := zo.writeStream(ctx, reader.Size(), reader.Reader, minio.ObjectOptions{UserDefined: newMeta})
 	if err != nil {
 		err = zstorToObjectErr(errors.WithStack(err), Operation("CopyObject"), destBucket, destObject)
 		return objInfo, err
@@ -545,6 +545,7 @@ func (zo *zerostorObjects) GetObject(ctx context.Context, bucket, object string,
 	if err != nil {
 		return err
 	}
+
 	if length == -1 {
 		length = objMeta.Size
 	}
@@ -691,7 +692,7 @@ func (zo *zerostorObjects) PutObject(ctx context.Context, bucket, object string,
 		return objInfo, minio.ObjectExistsAsDirectory{Bucket: bucket, Object: object}
 	}
 
-	objMeta, err := zo.putObject(ctx, bucket, object, data.Size(), data.Reader, opts, "")
+	objMeta, err := zo.writeStream(ctx, data.Size(), data.Reader, opts)
 	if err != nil {
 		return objInfo, err
 	}
@@ -702,7 +703,8 @@ func (zo *zerostorObjects) PutObject(ctx context.Context, bucket, object string,
 	return meta.CreateObjectInfo(bucket, object, &objMeta), nil
 }
 
-func (zo *zerostorObjects) putObject(ctx context.Context, bucket, object string, size int64, reader io.Reader, opts minio.ObjectOptions, partID string) (objMeta meta.ObjectMeta, err error) {
+// writeStream writes the given stream to blobs, and return the metadata head
+func (zo *zerostorObjects) writeStream(ctx context.Context, size int64, reader io.Reader, opts minio.ObjectOptions) (head meta.Metadata, err error) {
 	if opts.UserDefined == nil {
 		opts.UserDefined = make(map[string]string)
 	}
@@ -717,32 +719,31 @@ func (zo *zerostorObjects) putObject(ctx context.Context, bucket, object string,
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
 
-	part := 0
 	var readSize int64
 	finished := false
 	objectSize := size
 
-	objMeta, err = metaMgr.WriteMetaStream(
+	head, err = metaMgr.WriteMetaStream(
 		func() (*metatypes.Metadata, error) {
 			if finished {
 				return &metatypes.Metadata{}, io.EOF
 			}
 
-			metaData, err := zstor.Write(bucket, object+partID+strconv.Itoa(part), &io.LimitedReader{R: reader, N: zo.maxFileSize}, opts.UserDefined)
+			metaData, err := zstor.Write(&io.LimitedReader{R: reader, N: zo.maxFileSize}, opts.UserDefined)
 			if err != nil {
-				err = zstorToObjectErr(errors.WithStack(err), Operation("PutObject"), bucket, object)
+				//err = zstorToObjectErr(errors.WithStack(err), Operation("PutObject"), bucket, object)
 				return metaData, err
 			}
-			part++
+
 			readSize += metaData.Size
 
 			if readSize >= objectSize {
 				finished = true
 			}
 			return metaData, nil
-		}, bucket, object)
+		})
 
-	return objMeta, err
+	return head, err
 }
 
 // NewMultipartUpload implements minio.ObjectLayer.NewMultipartUpload
@@ -813,7 +814,7 @@ func (zo *zerostorObjects) putObjectPart(ctx context.Context, bucket, object, up
 		return info, minio.InvalidUploadID{UploadID: uploadID}
 	}
 
-	objMeta, err := zo.putObject(ctx, bucket, object, data.Size(), data, opts, strconv.Itoa(partID))
+	objMeta, err := zo.writeStream(ctx, data.Size(), data, opts)
 	if err != nil {
 		return info, err
 	}
