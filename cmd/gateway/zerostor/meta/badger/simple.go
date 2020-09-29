@@ -162,7 +162,6 @@ func (s *badgerSimpleStore) Link(link, target meta.Path) error {
 }
 
 func (s *badgerSimpleStore) List(path meta.Path) ([]meta.Path, error) {
-	log.Debug("listing", path.String())
 	return s.scanFlat(path, nil, 10000)
 }
 

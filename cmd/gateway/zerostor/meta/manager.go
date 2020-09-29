@@ -696,22 +696,33 @@ func (m *metaManager) ValidUpload(bucket, uploadID string) (bool, error) {
 
 // ListMultipartUploads lists multipart uploads that are in progress
 func (m *metaManager) UploadList(bucket string) (minio.ListMultipartsInfo, error) {
-	paths, err := m.store.List(FilePath(UploadCollection, bucket))
+	paths, err := m.store.List(DirPath(UploadCollection, bucket))
 	if os.IsNotExist(err) {
 		return minio.ListMultipartsInfo{}, nil
 	} else if err != nil {
 		return minio.ListMultipartsInfo{}, err
 	}
 
+	log.WithFields(log.Fields{
+		"paths":  paths,
+		"bucket": bucket,
+	}).Debug("all upload paths")
+
 	var info minio.ListMultipartsInfo
 
 	for _, path := range paths {
-		if !path.IsDir() {
+		if path.IsDir() {
 			continue
 		}
-		record, err := m.store.Get(path.Join(uploadMetaFile))
+
+		if path.Base() != uploadMetaFile {
+			continue
+		}
+
+		uploadID := filepath.Base(path.Prefix)
+		record, err := m.store.Get(path)
 		if os.IsNotExist(err) {
-			return info, minio.InvalidUploadID{UploadID: path.Prefix}
+			return info, minio.InvalidUploadID{UploadID: uploadID}
 		} else if err != nil {
 			return info, err
 		}
