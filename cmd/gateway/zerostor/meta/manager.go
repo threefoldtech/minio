@@ -147,7 +147,7 @@ func (m *metaManager) SetBucketPolicy(name string, policy *policy.Policy) error 
 
 // EnsureObject makes sure that this object exists in the metastore
 // otherwise creates a new one
-func (m *metaManager) EnsureObject(bucket, object string) (Object, error) {
+func (m *metaManager) ObjectEnsure(bucket, object string) (Object, error) {
 	path := FilePath(ObjectCollection, bucket, object)
 	record, err := m.store.Get(path)
 	if os.IsNotExist(err) {
@@ -480,7 +480,7 @@ func (m *metaManager) getMeta(path Path) (Metadata, error) {
 	return m.getObjectVersion(obj.ID, obj.Version)
 }
 
-func (m *metaManager) getObject(bucket, object string) (Object, error) {
+func (m *metaManager) ObjectGet(bucket, object string) (Object, error) {
 	path := FilePath(ObjectCollection, bucket, object)
 	record, err := m.store.Get(path)
 	if err != nil {
@@ -524,7 +524,7 @@ func (m *metaManager) GetMetaStream(ctx context.Context, bucket, object string) 
 	c := make(chan Stream)
 	go func() {
 		defer close(c)
-		obj, err := m.getObject(bucket, object)
+		obj, err := m.ObjectGet(bucket, object)
 		if err != nil {
 
 			c <- Stream{Error: err}
@@ -632,7 +632,7 @@ func (m *metaManager) CreateVersion(objectID string, meta string) (string, error
 	return version, m.store.Link(link, FilePath(BlobCollection, meta))
 }
 
-func (m *metaManager) SetObject(bucket, object string, obj Object) error {
+func (m *metaManager) ObjectSet(bucket, object string, obj Object) error {
 	path := FilePath(ObjectCollection, bucket, object)
 	data, err := m.encode(obj)
 	if err != nil {
@@ -684,8 +684,8 @@ func (m *metaManager) StreamBlobs(ctx context.Context) <-chan Stream {
 	return c
 }
 
-// ValidUpload checks if an upload id is valid
-func (m *metaManager) ValidUpload(bucket, uploadID string) (bool, error) {
+// UploadExists checks if an upload id is valid
+func (m *metaManager) UploadExists(bucket, uploadID string) (bool, error) {
 	exists, err := m.store.Exists(FilePath(UploadCollection, bucket, uploadID))
 	if err != nil {
 		return false, err

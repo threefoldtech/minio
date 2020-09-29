@@ -387,44 +387,46 @@ func (zo *zerostorObjects) DeleteObject(ctx context.Context, bucket, object stri
 		return info, ErrReadOnlyZeroStor
 	}
 
-	zstor := zo.manager.GetClient()
-	defer zstor.Close()
+	return info, minio.NotImplemented{}
 
-	metaMgr := zo.manager.GetMeta()
-	defer metaMgr.Close()
+	// zstor := zo.manager.GetClient()
+	// defer zstor.Close()
 
-	md, err := metaMgr.GetObjectMeta(bucket, object)
-	if os.IsNotExist(err) {
-		return info, nil
-	}
+	// metaMgr := zo.manager.GetMeta()
+	// defer metaMgr.Close()
 
-	info = meta.CreateObjectInfo(bucket, object, &md)
+	// md, err := metaMgr.GetObjectMeta(bucket, object)
+	// if os.IsNotExist(err) {
+	// 	return info, nil
+	// }
 
-	if err != nil {
-		return info, zstorToObjectErr(errors.WithStack(err), Operation("DeleteObject"), bucket, object)
-	}
+	// info = meta.CreateObjectInfo(bucket, object, &md)
 
-	c := metaMgr.GetMetaStream(ctx, bucket, object)
+	// if err != nil {
+	// 	return info, zstorToObjectErr(errors.WithStack(err), Operation("DeleteObject"), bucket, object)
+	// }
 
-	for r := range c {
-		if r.Error != nil {
-			return info, zstorToObjectErr(errors.WithStack(r.Error), Operation("DeleteObject"), bucket, object)
-		}
-		if err := zstor.Delete(r.Obj.Metadata); err != nil && err.Error() != "no chunks given to delete" {
-			return info, zstorToObjectErr(errors.WithStack(err), Operation("DeleteObject"), bucket, object)
-		}
-		if err := metaMgr.DeleteBlob(r.Obj.Filename); err != nil {
-			return info, zstorToObjectErr(errors.WithStack(err), Operation("DeleteObject"), bucket, object)
-		}
-		if r.Obj.NextBlob != "" {
-			if err := metaMgr.LinkObject(bucket, object, r.Obj.NextBlob); err != nil {
-				return info, zstorToObjectErr(errors.WithStack(err), Operation("DeleteObject"), bucket, object)
-			}
-		}
-	}
+	// c := metaMgr.GetMetaStream(ctx, bucket, object)
 
-	err = metaMgr.DeleteObject(bucket, object)
-	return info, zstorToObjectErr(errors.WithStack(err), Operation("DeleteObject"), bucket, object)
+	// for r := range c {
+	// 	if r.Error != nil {
+	// 		return info, zstorToObjectErr(errors.WithStack(r.Error), Operation("DeleteObject"), bucket, object)
+	// 	}
+	// 	if err := zstor.Delete(r.Obj.Metadata); err != nil && err.Error() != "no chunks given to delete" {
+	// 		return info, zstorToObjectErr(errors.WithStack(err), Operation("DeleteObject"), bucket, object)
+	// 	}
+	// 	if err := metaMgr.DeleteBlob(r.Obj.Filename); err != nil {
+	// 		return info, zstorToObjectErr(errors.WithStack(err), Operation("DeleteObject"), bucket, object)
+	// 	}
+	// 	if r.Obj.NextBlob != "" {
+	// 		if err := metaMgr.LinkObject(bucket, object, r.Obj.NextBlob); err != nil {
+	// 			return info, zstorToObjectErr(errors.WithStack(err), Operation("DeleteObject"), bucket, object)
+	// 		}
+	// 	}
+	// }
+
+	// err = metaMgr.DeleteObject(bucket, object)
+	// return info, zstorToObjectErr(errors.WithStack(err), Operation("DeleteObject"), bucket, object)
 }
 
 func (zo *zerostorObjects) CopyObject(ctx context.Context, srcBucket, srcObject, destBucket, destObject string, srcInfo minio.ObjectInfo, srcOpts, dstOpts minio.ObjectOptions) (objInfo minio.ObjectInfo, err error) {
@@ -442,49 +444,51 @@ func (zo *zerostorObjects) CopyObject(ctx context.Context, srcBucket, srcObject,
 		return objInfo, ErrReadOnlyZeroStor
 	}
 
-	metaMgr := zo.manager.GetMeta()
-	defer metaMgr.Close()
+	return objInfo, minio.NotImplemented{}
 
-	srcObjMeta, err := metaMgr.GetObjectMeta(srcBucket, srcObject)
-	newMeta := make(map[string]string)
-	for k, v := range srcObjMeta.UserDefined {
-		if strings.HasPrefix(strings.ToLower(k), "x-amz-meta-") {
-			continue
-		}
-		newMeta[k] = v
-	}
+	// metaMgr := zo.manager.GetMeta()
+	// defer metaMgr.Close()
 
-	for k, v := range srcInfo.UserDefined {
-		newMeta[strings.ToLower(k)] = v
-	}
+	// srcObjMeta, err := metaMgr.GetObjectMeta(srcBucket, srcObject)
+	// newMeta := make(map[string]string)
+	// for k, v := range srcObjMeta.UserDefined {
+	// 	if strings.HasPrefix(strings.ToLower(k), "x-amz-meta-") {
+	// 		continue
+	// 	}
+	// 	newMeta[k] = v
+	// }
 
-	storRd, storWr := io.Pipe()
-	defer storRd.Close()
-	getCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	// for k, v := range srcInfo.UserDefined {
+	// 	newMeta[strings.ToLower(k)] = v
+	// }
 
-	go func() {
-		storWr.CloseWithError(zo.GetObject(getCtx, srcBucket, srcObject, 0, srcInfo.Size, storWr, "", srcOpts))
-	}()
+	// storRd, storWr := io.Pipe()
+	// defer storRd.Close()
+	// getCtx, cancel := context.WithCancel(context.Background())
+	// defer cancel()
 
-	hashReader, err := hash.NewReader(storRd, srcInfo.Size, "", "", srcInfo.Size, true)
-	if err != nil {
-		return objInfo, zstorToObjectErr(errors.WithStack(err), Operation("CopyObject"), destBucket, destObject)
-	}
+	// go func() {
+	// 	storWr.CloseWithError(zo.GetObject(getCtx, srcBucket, srcObject, 0, srcInfo.Size, storWr, "", srcOpts))
+	// }()
 
-	reader := minio.NewPutObjReader(hashReader, nil, nil)
+	// hashReader, err := hash.NewReader(storRd, srcInfo.Size, "", "", srcInfo.Size, true)
+	// if err != nil {
+	// 	return objInfo, zstorToObjectErr(errors.WithStack(err), Operation("CopyObject"), destBucket, destObject)
+	// }
 
-	objMeta, err := zo.writeStream(ctx, reader.Size(), reader.Reader, minio.ObjectOptions{UserDefined: newMeta})
-	if err != nil {
-		err = zstorToObjectErr(errors.WithStack(err), Operation("CopyObject"), destBucket, destObject)
-		return objInfo, err
-	}
+	// reader := minio.NewPutObjReader(hashReader, nil, nil)
 
-	if err := metaMgr.LinkObject(destBucket, destObject, objMeta.Filename); err != nil {
-		return objInfo, err
-	}
+	// objMeta, err := zo.writeStream(ctx, reader.Size(), reader.Reader, minio.ObjectOptions{UserDefined: newMeta})
+	// if err != nil {
+	// 	err = zstorToObjectErr(errors.WithStack(err), Operation("CopyObject"), destBucket, destObject)
+	// 	return objInfo, err
+	// }
 
-	return zo.GetObjectInfo(ctx, destBucket, destObject, dstOpts)
+	// if err := metaMgr.LinkObject(destBucket, destObject, objMeta.Filename); err != nil {
+	// 	return objInfo, err
+	// }
+
+	// return zo.GetObjectInfo(ctx, destBucket, destObject, dstOpts)
 }
 
 func (zo *zerostorObjects) GetObjectNInfo(ctx context.Context, bucket, object string, rs *minio.HTTPRangeSpec, h http.Header, lockType minio.LockType, opts minio.ObjectOptions) (reader *minio.GetObjectReader, err error) {
@@ -687,7 +691,7 @@ func (zo *zerostorObjects) PutObject(ctx context.Context, bucket, object string,
 		}, metaMgr.Mkdir(bucket, object)
 	}
 
-	obj, err := metaMgr.EnsureObject(bucket, object)
+	obj, err := metaMgr.ObjectEnsure(bucket, object)
 	if err != nil {
 		return objInfo, err
 	}
@@ -705,7 +709,7 @@ func (zo *zerostorObjects) PutObject(ctx context.Context, bucket, object string,
 
 	// now set object version
 	obj.Version = version
-	if err := metaMgr.SetObject(bucket, object, obj); err != nil {
+	if err := metaMgr.ObjectSet(bucket, object, obj); err != nil {
 		return objInfo, err
 	}
 
@@ -822,7 +826,7 @@ func (zo *zerostorObjects) putObjectPart(ctx context.Context, bucket, object, up
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
 
-	if exists, err := metaMgr.ValidUpload(bucket, uploadID); err != nil {
+	if exists, err := metaMgr.UploadExists(bucket, uploadID); err != nil {
 		return info, err
 	} else if !exists {
 		return info, minio.InvalidUploadID{UploadID: uploadID}
@@ -937,13 +941,13 @@ func (zo *zerostorObjects) CompleteMultipartUpload(ctx context.Context, bucket, 
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
 
-	if exists, err := metaMgr.ValidUpload(bucket, uploadID); err != nil {
+	if exists, err := metaMgr.UploadExists(bucket, uploadID); err != nil {
 		return info, err
 	} else if !exists {
 		return info, minio.InvalidUploadID{UploadID: uploadID}
 	}
 
-	obj, err := metaMgr.EnsureObject(bucket, object)
+	obj, err := metaMgr.ObjectEnsure(bucket, object)
 	if err != nil {
 		return info, err
 	}
@@ -961,7 +965,7 @@ func (zo *zerostorObjects) CompleteMultipartUpload(ctx context.Context, bucket, 
 
 	// now set object version
 	obj.Version = version
-	if err := metaMgr.SetObject(bucket, object, obj); err != nil {
+	if err := metaMgr.ObjectSet(bucket, object, obj); err != nil {
 		return info, err
 	}
 
@@ -983,7 +987,7 @@ func (zo *zerostorObjects) AbortMultipartUpload(ctx context.Context, bucket, obj
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
 
-	if exists, err := metaMgr.ValidUpload(bucket, uploadID); err != nil {
+	if exists, err := metaMgr.UploadExists(bucket, uploadID); err != nil {
 		return zstorToObjectErr(errors.WithStack(err), Operation("AbortMultipartUpload"), bucket, object)
 	} else if !exists {
 		return minio.InvalidUploadID{UploadID: uploadID}
@@ -1039,7 +1043,7 @@ func (zo *zerostorObjects) ListObjectParts(ctx context.Context, bucket, object, 
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
 
-	if exists, err := metaMgr.ValidUpload(bucket, uploadID); err != nil {
+	if exists, err := metaMgr.UploadExists(bucket, uploadID); err != nil {
 		return result, zstorToObjectErr(err, Operation("ListObjectParts"), bucket, object)
 	} else if !exists {
 		return result, minio.InvalidUploadID{UploadID: uploadID}

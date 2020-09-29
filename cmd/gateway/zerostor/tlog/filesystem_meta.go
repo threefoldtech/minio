@@ -140,18 +140,19 @@ func (t *fsTLogger) PutObjectPart(objMeta meta.Metadata, bucket, uploadID string
 
 // DeleteBlob deletes a metadata blob file
 func (t *fsTLogger) DeleteBlob(blob string) error {
-	t.recorder.Begin()
-	defer t.recorder.End()
+	return fmt.Errorf("not implemented")
+	// t.recorder.Begin()
+	// defer t.recorder.End()
 
-	if err := t.Manager.DeleteBlob(blob); err != nil {
-		return err
-	}
+	// if err := t.Manager.DeleteBlob(blob); err != nil {
+	// 	return err
+	// }
 
-	_, err := t.recorder.Record(Record{
-		OperationBlobDelete,
-		blob,
-	}, true)
-	return err
+	// _, err := t.recorder.Record(Record{
+	// 	OperationBlobDelete,
+	// 	blob,
+	// }, true)
+	// return err
 }
 
 // DeleteUpload deletes the temporary multipart upload dir
@@ -173,35 +174,37 @@ func (t *fsTLogger) DeleteUpload(bucket, uploadID string) error {
 
 // DeleteObject deletes an object file from a bucket
 func (t *fsTLogger) DeleteObject(bucket, object string) error {
-	t.recorder.Begin()
-	defer t.recorder.End()
+	return fmt.Errorf("not implemeneted")
+	// t.recorder.Begin()
+	// defer t.recorder.End()
 
-	if err := t.Manager.DeleteObject(bucket, object); err != nil {
-		return err
-	}
-	_, err := t.recorder.Record(Record{
-		OperationObjectDelete,
-		bucket,
-		object,
-	}, true)
-	return err
+	// if err := t.Manager.DeleteObject(bucket, object); err != nil {
+	// 	return err
+	// }
+	// _, err := t.recorder.Record(Record{
+	// 	OperationObjectDelete,
+	// 	bucket,
+	// 	object,
+	// }, true)
+	// return err
 }
 
 // LinkObject creates a symlink from the object file under /objects to the first metadata blob file
 func (t *fsTLogger) LinkObject(bucket, object, blob string) error {
-	t.recorder.Begin()
-	defer t.recorder.End()
+	return fmt.Errorf("not implemented")
+	// t.recorder.Begin()
+	// defer t.recorder.End()
 
-	if err := t.Manager.LinkObject(bucket, object, blob); err != nil {
-		return err
-	}
-	_, err := t.recorder.Record(Record{
-		OperationObjectLink,
-		bucket,
-		object,
-		blob,
-	}, true)
-	return err
+	// if err := t.Manager.LinkObject(bucket, object, blob); err != nil {
+	// 	return err
+	// }
+	// _, err := t.recorder.Record(Record{
+	// 	OperationObjectLink,
+	// 	bucket,
+	// 	object,
+	// 	blob,
+	// }, true)
+	// return err
 }
 
 // LinkPart links a multipart upload part to a metadata blob file
@@ -252,23 +255,24 @@ func (t *fsTLogger) NewMultipartUpload(bucket, object, uploadID string, meta map
 
 // WriteObjMeta write meta.ObjectMeta
 func (t *fsTLogger) WriteObjMeta(obj *meta.Metadata) error {
-	t.recorder.Begin()
-	defer t.recorder.End()
+	return fmt.Errorf("not implemented")
+	// t.recorder.Begin()
+	// defer t.recorder.End()
 
-	if err := t.Manager.SetBlob(obj); err != nil {
-		return err
-	}
+	// if err := t.Manager.SetBlob(obj); err != nil {
+	// 	return err
+	// }
 
-	metaBytes, err := json.Marshal(obj)
-	if err != nil {
-		return err
-	}
+	// metaBytes, err := json.Marshal(obj)
+	// if err != nil {
+	// 	return err
+	// }
 
-	_, err = t.recorder.Record(Record{
-		OperationObjectWriteMeta,
-		metaBytes,
-	}, true)
-	return err
+	// _, err = t.recorder.Record(Record{
+	// 	OperationObjectWriteMeta,
+	// 	metaBytes,
+	// }, true)
+	// return err
 }
 
 // CompleteMultipartUpload completes a multipart upload by linking all metadata blobs

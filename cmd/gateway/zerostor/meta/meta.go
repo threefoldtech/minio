@@ -143,21 +143,17 @@ type Manager interface {
 	ListBuckets() (map[string]*Bucket, error)
 	SetBucketPolicy(name string, policy *policy.Policy) error
 
-	// EnsureObject returns or create a new initialized object
-	EnsureObject(bucket, object string) (Object, error)
-	// SetObject update the object with given Object
-	SetObject(bucket, object string, obj Object) error
-
-	// WriteMetaStream calls cb until receive an EOF error. Creates a new blob
-	// for each meta object returned by cb. Links blobs together and return
-	// the head. Blobs can be streamed again later using the StreamObjectMeta method
-	WriteMetaStream(cb func() (*metatypes.Metadata, error)) (Metadata, error)
+	// ObjectEnsure returns or create a new initialized object
+	ObjectEnsure(bucket, object string) (Object, error)
+	// ObjectSet update the object with given Object
+	ObjectSet(bucket, object string, obj Object) error
+	// ObjectSet update the object with given Object
+	ObjectGet(bucket, object string) (Object, error)
 	// Create version, creates a new version for object with objectId and
 	// link to the given meta file head. returns the version string
 	CreateVersion(objectID string, meta string) (string, error)
 
-	GetMetaStream(ctx context.Context, bucket, object string) <-chan Stream
-
+	// Upload operations
 	UploadCreate(bucket, object string, meta map[string]string) (string, error)
 	UploadGet(bucket, uploadID string) (info minio.MultipartInfo, err error)
 	UploadPutPart(bucket, uploadID string, partID int, meta string) error
@@ -168,24 +164,28 @@ type Manager interface {
 	UploadDelete(bucket, uploadID string) error
 	UploadList(bucket string) (minio.ListMultipartsInfo, error)
 	UploadDeletePart(bucket, uploadID string, partID int) error
+	UploadExists(bucket, uploadID string) (bool, error)
+
+	// WriteMetaStream calls cb until receive an EOF error. Creates a new blob
+	// for each meta object returned by cb. Links blobs together and return
+	// the head. Blobs can be streamed again later using the StreamObjectMeta method
+	WriteMetaStream(cb func() (*metatypes.Metadata, error)) (Metadata, error)
+
+	GetMetaStream(ctx context.Context, bucket, object string) <-chan Stream
 
 	SetBlob(obj *Metadata) error
-	LinkObject(bucket, object, blob string) error
 
 	//LinkPart(bucket, uploadID, partID, blob string) error
 	ListObjects(ctx context.Context, bucket, prefix, marker, delimiter string, maxKeys int) (minio.ListObjectsInfo, error)
 	ListObjectsV2(ctx context.Context, bucket, prefix, continuationToken, delimiter string, maxKeys int, fetchOwner bool, startAfter string) (minio.ListObjectsV2Info, error)
 
-	DeleteBlob(blob string) error
-	DeleteObject(bucket, object string) error
-
+	// DEPRECATED
 	Mkdir(bucket, object string) error
+
 	GetObjectInfo(bucket, object string) (minio.ObjectInfo, error)
 	GetObjectMeta(bucket, object string) (Metadata, error)
 
-	StreamMultiPartsMeta(ctx context.Context, bucket, uploadID string) <-chan Stream
 	StreamBlobs(ctx context.Context) <-chan Stream
-	ValidUpload(bucket, uploadID string) (bool, error)
 
 	Close() error
 }
