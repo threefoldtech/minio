@@ -27,6 +27,7 @@ var (
 	errLifecycleTooManyRules = Errorf("Lifecycle configuration allows a maximum of 1000 rules")
 	errLifecycleNoRule       = Errorf("Lifecycle configuration should have at least one rule")
 	errLifecycleDuplicateID  = Errorf("Lifecycle configuration has rule with the same ID. Rule ID must be unique.")
+	errXMLNotWellFormed      = Errorf("The XML you provided was not well-formed or did not validate against our published schema")
 )
 
 // Action represents a delete action or other transition
@@ -154,7 +155,7 @@ func (lc Lifecycle) FilterActionableRules(obj ObjectOpts) []Rule {
 		// be expired; if set to false the policy takes no action. This
 		// cannot be specified with Days or Date in a Lifecycle
 		// Expiration Policy.
-		if rule.Expiration.DeleteMarker {
+		if rule.Expiration.DeleteMarker.val {
 			rules = append(rules, rule)
 			continue
 		}
@@ -175,13 +176,14 @@ func (lc Lifecycle) FilterActionableRules(obj ObjectOpts) []Rule {
 // ObjectOpts provides information to deduce the lifecycle actions
 // which can be triggered on the resultant object.
 type ObjectOpts struct {
-	Name         string
-	UserTags     string
-	ModTime      time.Time
-	VersionID    string
-	IsLatest     bool
-	DeleteMarker bool
-	NumVersions  int
+	Name             string
+	UserTags         string
+	ModTime          time.Time
+	VersionID        string
+	IsLatest         bool
+	DeleteMarker     bool
+	NumVersions      int
+	SuccessorModTime time.Time
 }
 
 // ComputeAction returns the action to perform by evaluating all lifecycle rules
@@ -193,7 +195,7 @@ func (lc Lifecycle) ComputeAction(obj ObjectOpts) Action {
 	}
 
 	for _, rule := range lc.FilterActionableRules(obj) {
-		if obj.DeleteMarker && obj.NumVersions == 1 && bool(rule.Expiration.DeleteMarker) {
+		if obj.DeleteMarker && obj.NumVersions == 1 && rule.Expiration.DeleteMarker.val {
 			// Indicates whether MinIO will remove a delete marker with no noncurrent versions.
 			// Only latest marker is removed. If set to true, the delete marker will be expired;
 			// if set to false the policy takes no action. This cannot be specified with Days or
@@ -202,9 +204,10 @@ func (lc Lifecycle) ComputeAction(obj ObjectOpts) Action {
 		}
 
 		if !rule.NoncurrentVersionExpiration.IsDaysNull() {
-			if obj.VersionID != "" && !obj.IsLatest {
-				// Non current versions should be deleted.
-				if time.Now().After(expectedExpiryTime(obj.ModTime, rule.NoncurrentVersionExpiration.NoncurrentDays)) {
+			if obj.VersionID != "" && !obj.IsLatest && !obj.SuccessorModTime.IsZero() {
+				// Non current versions should be deleted if their age exceeds non current days configuration
+				// https://docs.aws.amazon.com/AmazonS3/latest/dev/intro-lifecycle-rules.html#intro-lifecycle-rules-actions
+				if time.Now().After(expectedExpiryTime(obj.SuccessorModTime, rule.NoncurrentVersionExpiration.NoncurrentDays)) {
 					return DeleteVersionAction
 				}
 			}

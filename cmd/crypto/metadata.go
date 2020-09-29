@@ -65,6 +65,17 @@ func RemoveInternalEntries(metadata map[string]string) {
 	delete(metadata, S3KMSSealedKey)
 }
 
+// IsSourceEncrypted returns true if the source is encrypted
+func IsSourceEncrypted(metadata map[string]string) bool {
+	if _, ok := metadata[SSECAlgorithm]; ok {
+		return true
+	}
+	if _, ok := metadata[SSEHeader]; ok {
+		return true
+	}
+	return false
+}
+
 // IsEncrypted returns true if the object metadata indicates
 // that it was uploaded using some form of server-side-encryption.
 //
@@ -118,7 +129,7 @@ func (ssec) IsEncrypted(metadata map[string]string) bool {
 // metadata is nil.
 func CreateMultipartMetadata(metadata map[string]string) map[string]string {
 	if metadata == nil {
-		metadata = map[string]string{}
+		return map[string]string{SSEMultipart: ""}
 	}
 	metadata[SSEMultipart] = ""
 	return metadata
@@ -145,7 +156,7 @@ func (s3) CreateMetadata(metadata map[string]string, keyID string, kmsKey []byte
 	}
 
 	if metadata == nil {
-		metadata = map[string]string{}
+		metadata = make(map[string]string, 5)
 	}
 
 	metadata[SSESealAlgorithm] = sealedKey.Algorithm
@@ -225,7 +236,7 @@ func (ssec) CreateMetadata(metadata map[string]string, sealedKey SealedKey) map[
 	}
 
 	if metadata == nil {
-		metadata = map[string]string{}
+		metadata = make(map[string]string, 3)
 	}
 	metadata[SSESealAlgorithm] = SealAlgorithm
 	metadata[SSEIV] = base64.StdEncoding.EncodeToString(sealedKey.IV[:])

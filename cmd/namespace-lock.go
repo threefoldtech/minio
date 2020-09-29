@@ -147,7 +147,9 @@ func (di *distLockInstance) GetLock(timeout *dynamicTimeout) (timedOutErr error)
 	lockSource := getSource(2)
 	start := UTCNow()
 
-	if !di.rwMutex.GetLock(di.ctx, di.opsID, lockSource, timeout.Timeout()) {
+	if !di.rwMutex.GetLock(di.ctx, di.opsID, lockSource, dsync.Options{
+		Timeout: timeout.Timeout(),
+	}) {
 		timeout.LogFailure()
 		return OperationTimedOut{}
 	}
@@ -164,7 +166,10 @@ func (di *distLockInstance) Unlock() {
 func (di *distLockInstance) GetRLock(timeout *dynamicTimeout) (timedOutErr error) {
 	lockSource := getSource(2)
 	start := UTCNow()
-	if !di.rwMutex.GetRLock(di.ctx, di.opsID, lockSource, timeout.Timeout()) {
+
+	if !di.rwMutex.GetRLock(di.ctx, di.opsID, lockSource, dsync.Options{
+		Timeout: timeout.Timeout(),
+	}) {
 		timeout.LogFailure()
 		return OperationTimedOut{}
 	}
@@ -189,11 +194,11 @@ type localLockInstance struct {
 // NewNSLock - returns a lock instance for a given volume and
 // path. The returned lockInstance object encapsulates the nsLockMap,
 // volume, path and operation ID.
-func (n *nsLockMap) NewNSLock(ctx context.Context, lockersFn func() []dsync.NetLocker, volume string, paths ...string) RWLocker {
+func (n *nsLockMap) NewNSLock(ctx context.Context, lockers func() ([]dsync.NetLocker, string), volume string, paths ...string) RWLocker {
 	opsID := mustGetUUID()
 	if n.isDistErasure {
 		drwmutex := dsync.NewDRWMutex(&dsync.Dsync{
-			GetLockersFn: lockersFn,
+			GetLockers: lockers,
 		}, pathsJoinPrefix(volume, paths...)...)
 		return &distLockInstance{drwmutex, opsID, ctx}
 	}

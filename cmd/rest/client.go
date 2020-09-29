@@ -27,10 +27,11 @@ import (
 	"time"
 
 	xhttp "github.com/minio/minio/cmd/http"
+	xnet "github.com/minio/minio/pkg/net"
 )
 
-// DefaultRESTTimeout - default RPC timeout is one minute.
-const DefaultRESTTimeout = 1 * time.Minute
+// DefaultRESTTimeout - default RPC timeout is 15 seconds.
+const DefaultRESTTimeout = 15 * time.Second
 
 const (
 	offline = iota
@@ -95,16 +96,15 @@ func (e restError) Timeout() bool {
 	return true
 }
 
-// CallWithContext - make a REST call with context.
-func (c *Client) CallWithContext(ctx context.Context, method string, values url.Values, body io.Reader, length int64) (reply io.ReadCloser, err error) {
+// Call - make a REST call with context.
+func (c *Client) Call(ctx context.Context, method string, values url.Values, body io.Reader, length int64) (reply io.ReadCloser, err error) {
 	if !c.IsOnline() {
 		return nil, &NetworkError{Err: &url.Error{Op: method, URL: c.url.String(), Err: restError("remote server offline")}}
 	}
-	req, err := http.NewRequest(http.MethodPost, c.url.String()+method+querySep+values.Encode(), body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url.String()+method+querySep+values.Encode(), body)
 	if err != nil {
 		return nil, &NetworkError{err}
 	}
-	req = req.WithContext(ctx)
 	req.Header.Set("Authorization", "Bearer "+c.newAuthToken(req.URL.Query().Encode()))
 	req.Header.Set("X-Minio-Time", time.Now().UTC().Format(time.RFC3339))
 	if length > 0 {
@@ -112,9 +112,7 @@ func (c *Client) CallWithContext(ctx context.Context, method string, values url.
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		// A canceled context doesn't always mean a network problem.
-		if !errors.Is(err, context.Canceled) {
-			// We are safe from recursion
+		if xnet.IsNetworkOrHostDown(err) {
 			c.MarkOffline()
 		}
 		return nil, &NetworkError{err}
@@ -143,6 +141,9 @@ func (c *Client) CallWithContext(ctx context.Context, method string, values url.
 		// Limit the ReadAll(), just in case, because of a bug, the server responds with large data.
 		b, err := ioutil.ReadAll(io.LimitReader(resp.Body, c.MaxErrResponseSize))
 		if err != nil {
+			if xnet.IsNetworkOrHostDown(err) {
+				c.MarkOffline()
+			}
 			return nil, err
 		}
 		if len(b) > 0 {
@@ -151,12 +152,6 @@ func (c *Client) CallWithContext(ctx context.Context, method string, values url.
 		return nil, errors.New(resp.Status)
 	}
 	return resp.Body, nil
-}
-
-// Call - make a REST call.
-func (c *Client) Call(method string, values url.Values, body io.Reader, length int64) (reply io.ReadCloser, err error) {
-	ctx := context.Background()
-	return c.CallWithContext(ctx, method, values, body, length)
 }
 
 // Close closes all idle connections of the underlying http client
@@ -178,7 +173,6 @@ func NewClient(url *url.URL, newCustomTransport func() *http.Transport, newAuthT
 		url:                 url,
 		newAuthToken:        newAuthToken,
 		connected:           online,
-
 		MaxErrResponseSize:  4096,
 		HealthCheckInterval: 200 * time.Millisecond,
 		HealthCheckTimeout:  time.Second,
@@ -196,21 +190,18 @@ func (c *Client) MarkOffline() {
 	// Start goroutine that will attempt to reconnect.
 	// If server is already trying to reconnect this will have no effect.
 	if c.HealthCheckFn != nil && atomic.CompareAndSwapInt32(&c.connected, online, offline) {
-		if c.httpIdleConnsCloser != nil {
-			c.httpIdleConnsCloser()
-		}
-		go func() {
+		go func(healthFunc func() bool) {
 			ticker := time.NewTicker(c.HealthCheckInterval)
 			defer ticker.Stop()
 			for range ticker.C {
-				if status := atomic.LoadInt32(&c.connected); status == closed {
+				if atomic.LoadInt32(&c.connected) == closed {
 					return
 				}
-				if c.HealthCheckFn() {
+				if healthFunc() {
 					atomic.CompareAndSwapInt32(&c.connected, offline, online)
 					return
 				}
 			}
-		}()
+		}(c.HealthCheckFn)
 	}
 }

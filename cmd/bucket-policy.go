@@ -68,6 +68,12 @@ func getConditionValues(r *http.Request, lc string, username string, claims map[
 	principalType := "Anonymous"
 	if username != "" {
 		principalType = "User"
+		if len(claims) > 0 {
+			principalType = "AssumedRole"
+		}
+		if username == globalActiveCred.AccessKey {
+			principalType = "Account"
+		}
 	}
 
 	vid := r.URL.Query().Get("versionId")
@@ -143,7 +149,12 @@ func getConditionValues(r *http.Request, lc string, username string, claims map[
 	for k, v := range claims {
 		vStr, ok := v.(string)
 		if ok {
-			args[k] = []string{vStr}
+			// Special case for AD/LDAP STS users
+			if k == ldapUser {
+				args["user"] = []string{vStr}
+			} else {
+				args[k] = []string{vStr}
+			}
 		}
 	}
 

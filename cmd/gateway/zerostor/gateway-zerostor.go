@@ -911,7 +911,7 @@ func (zo *zerostorObjects) CompleteMultipartUpload(ctx context.Context, bucket, 
 }
 
 // AbortMultipartUpload implements minio.ObjectLayer.AbortMultipartUpload
-func (zo *zerostorObjects) AbortMultipartUpload(ctx context.Context, bucket, object, uploadID string) (err error) {
+func (zo *zerostorObjects) AbortMultipartUpload(ctx context.Context, bucket, object, uploadID string, opts minio.ObjectOptions) (err error) {
 	log.WithFields(log.Fields{
 		"bucket":   bucket,
 		"object":   object,

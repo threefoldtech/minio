@@ -19,6 +19,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -403,6 +404,9 @@ func getResource(path string, host string, domains []string) (string, error) {
 		}
 	}
 	for _, domain := range domains {
+		if host == minioReservedBucket+"."+domain {
+			continue
+		}
 		if !strings.HasSuffix(host, "."+domain) {
 			continue
 		}
@@ -498,10 +502,9 @@ func proxyRequest(ctx context.Context, w http.ResponseWriter, r *http.Request, e
 		RoundTripper: ep.Transport,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			success = false
-			w.WriteHeader(http.StatusBadGateway)
-		},
-		Logger: func(err error) {
-			logger.LogIf(GlobalContext, err)
+			if err != nil && !errors.Is(err, context.Canceled) {
+				logger.LogIf(GlobalContext, err)
+			}
 		},
 	})
 

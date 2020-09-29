@@ -105,7 +105,21 @@ func getReadQuorum(drive int) int {
 }
 
 func getWriteQuorum(drive int) int {
-	return getDefaultDataBlocks(drive) + 1
+	quorum := getDefaultDataBlocks(drive)
+	if getDefaultParityBlocks(drive) == quorum {
+		quorum++
+	}
+	return quorum
+}
+
+// cloneMSS will clone a map[string]string.
+// If input is nil an empty map is returned, not nil.
+func cloneMSS(v map[string]string) map[string]string {
+	r := make(map[string]string, len(v))
+	for k, v := range v {
+		r[k] = v
+	}
+	return r
 }
 
 // URI scheme constants.
@@ -456,11 +470,10 @@ func newInternodeHTTPTransport(tlsConfig *tls.Config, dialTimeout time.Duration)
 		Proxy:                 http.ProxyFromEnvironment,
 		DialContext:           xhttp.NewInternodeDialContext(dialTimeout),
 		MaxIdleConnsPerHost:   16,
-		MaxIdleConns:          16,
-		IdleConnTimeout:       1 * time.Minute,
+		IdleConnTimeout:       30 * time.Second,
 		ResponseHeaderTimeout: 3 * time.Minute, // Set conservative timeouts for MinIO internode.
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 10 * time.Second,
+		TLSHandshakeTimeout:   15 * time.Second,
+		ExpectContinueTimeout: 15 * time.Second,
 		TLSClientConfig:       tlsConfig,
 		// Go net/http automatically unzip if content-type is
 		// gzip disable this feature, as we are always interested
@@ -520,9 +533,8 @@ func newGatewayHTTPTransport(timeout time.Duration) *http.Transport {
 
 	// Allow more requests to be in flight.
 	tr.ResponseHeaderTimeout = timeout
-	tr.MaxConnsPerHost = 256
-	tr.MaxIdleConnsPerHost = 16
 	tr.MaxIdleConns = 256
+	tr.MaxIdleConnsPerHost = 16
 	return tr
 }
 
@@ -723,4 +735,21 @@ func (t *timedValue) Invalidate() {
 	t.mu.Lock()
 	t.value = nil
 	t.mu.Unlock()
+}
+
+// On MinIO a directory object is stored as a regular object with "__XLDIR__" suffix.
+// For ex. "prefix/" is stored as "prefix__XLDIR__"
+func encodeDirObject(object string) string {
+	if HasSuffix(object, slashSeparator) {
+		return strings.TrimSuffix(object, slashSeparator) + globalDirSuffix
+	}
+	return object
+}
+
+// Reverse process of encodeDirObject()
+func decodeDirObject(object string) string {
+	if HasSuffix(object, globalDirSuffix) {
+		return strings.TrimSuffix(object, globalDirSuffix) + slashSeparator
+	}
+	return object
 }

@@ -17,12 +17,9 @@
 package cmd
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"log"
 	"net"
 	"os"
 	"os/signal"
@@ -122,6 +119,11 @@ func serverHandleCmdArgs(ctx *cli.Context) {
 	globalRootCAs, err = certs.GetRootCAs(globalCertsCADir.Get())
 	logger.FatalIf(err, "Failed to read root CAs (%v)", err)
 
+	// Add the global public crts as part of global root CAs
+	for _, publicCrt := range globalPublicCerts {
+		globalRootCAs.AddCert(publicCrt)
+	}
+
 	// Register root CAs for remote ENVs
 	env.RegisterGlobalCAs(globalRootCAs)
 
@@ -197,8 +199,11 @@ func initSafeMode(ctx context.Context, newObject ObjectLayer) (err error) {
 	// appropriately. This is also true for rotation of encrypted
 	// content.
 	txnLk := newObject.NewNSLock(retryCtx, minioMetaBucket, minioConfigPrefix+"/transaction.lock")
+	var locked bool
 	defer func(txnLk RWLocker) {
-		txnLk.Unlock()
+		if locked {
+			txnLk.Unlock()
+		}
 
 		if err != nil {
 			var cerr config.Err
@@ -208,21 +213,28 @@ func initSafeMode(ctx context.Context, newObject ObjectLayer) (err error) {
 				return
 			}
 
+			// If context was canceled
+			if errors.Is(err, context.Canceled) {
+				return
+			}
+
 			// Prints the formatted startup message in safe mode operation.
 			// Drops-into safe mode where users need to now manually recover
 			// the server.
 			printStartupSafeModeMessage(getAPIEndpoints(), err)
 
-			// Initialization returned error reaching safe mode and
-			// not proceeding waiting for admin action.
-			handleSignals()
+			<-globalOSSignalCh
 		}
 	}(txnLk)
 
-	// Enable healing to heal drives if possible
+	// Enable background operations for erasure coding
 	if globalIsErasure {
 		initAutoHeal(ctx, newObject)
+		initBackgroundReplication(ctx, newObject)
 	}
+
+	// allocate dynamic timeout once before the loop
+	configLockTimeout := newDynamicTimeout(5*time.Second, 3*time.Second)
 
 	// ****  WARNING ****
 	// Migrating to encrypted backend should happen before initialization of any
@@ -236,13 +248,16 @@ func initSafeMode(ctx context.Context, newObject ObjectLayer) (err error) {
 	//    version is needed, migration is needed etc.
 	rquorum := InsufficientReadQuorum{}
 	wquorum := InsufficientWriteQuorum{}
-	for range retry.NewTimer(retryCtx) {
+	for range retry.NewTimerWithJitter(retryCtx, 250*time.Millisecond, 500*time.Millisecond, retry.MaxJitter) {
 		// let one of the server acquire the lock, if not let them timeout.
 		// which shall be retried again by this loop.
-		if err = txnLk.GetLock(newDynamicTimeout(3*time.Second, 3*time.Second)); err != nil {
+		if err = txnLk.GetLock(configLockTimeout); err != nil {
 			logger.Info("Waiting for all MinIO sub-systems to be initialized.. trying to acquire lock")
 			continue
 		}
+
+		// locked successful
+		locked = true
 
 		// These messages only meant primarily for distributed setup, so only log during distributed setup.
 		if globalIsDistErasure {
@@ -268,13 +283,13 @@ func initSafeMode(ctx context.Context, newObject ObjectLayer) (err error) {
 		// One of these retriable errors shall be retried.
 		if errors.Is(err, errDiskNotFound) ||
 			errors.Is(err, errConfigNotFound) ||
-			errors.Is(err, context.Canceled) ||
 			errors.Is(err, context.DeadlineExceeded) ||
 			errors.As(err, &rquorum) ||
 			errors.As(err, &wquorum) ||
 			isErrBucketNotFound(err) {
 			logger.Info("Waiting for all MinIO sub-systems to be initialized.. possible cause (%v)", err)
 			txnLk.Unlock() // Unlock the transaction lock and allow other nodes to acquire the lock if possible.
+			locked = false
 			continue
 		}
 
@@ -297,30 +312,12 @@ func initAllSubsystems(ctx context.Context, newObject ObjectLayer) (err error) {
 	// are modifying this code that you do so, if and when
 	// you want to add extra context to your error. This
 	// ensures top level retry works accordingly.
+	// List buckets to heal, and be re-used for loading configs.
 	var buckets []BucketInfo
-	if globalIsDistErasure || globalIsErasure {
-		// List buckets to heal, and be re-used for loading configs.
+	if globalIsErasure {
 		buckets, err = newObject.ListBucketsHeal(ctx)
 		if err != nil {
 			return fmt.Errorf("Unable to list buckets to heal: %w", err)
-		}
-		// Attempt a heal if possible and re-use the bucket names
-		// to reload their config.
-		wquorum := &InsufficientWriteQuorum{}
-		rquorum := &InsufficientReadQuorum{}
-		for _, bucket := range buckets {
-			if err = newObject.MakeBucketWithLocation(ctx, bucket.Name, BucketOptions{}); err != nil {
-				if errors.As(err, &wquorum) || errors.As(err, &rquorum) {
-					// Return the error upwards for the caller to retry.
-					return fmt.Errorf("Unable to heal bucket: %w", err)
-				}
-				if _, ok := err.(BucketExists); !ok {
-					// ignore any other error and log for investigation.
-					logger.LogIf(ctx, err)
-					continue
-				}
-				// Bucket already exists, nothing that needs to be done.
-			}
 		}
 	} else {
 		buckets, err = newObject.ListBuckets(ctx)
@@ -341,51 +338,34 @@ func initAllSubsystems(ctx context.Context, newObject ObjectLayer) (err error) {
 	}
 
 	// Initialize bucket metadata sub-system.
-	if err := globalBucketMetadataSys.Init(ctx, buckets, newObject); err != nil {
+	if err = globalBucketMetadataSys.Init(ctx, buckets, newObject); err != nil {
 		return fmt.Errorf("Unable to initialize bucket metadata sub-system: %w", err)
 	}
 
 	// Initialize notification system.
-	if err = globalNotificationSys.Init(buckets, newObject); err != nil {
+	if err = globalNotificationSys.Init(ctx, buckets, newObject); err != nil {
 		return fmt.Errorf("Unable to initialize notification system: %w", err)
 	}
 
 	// Initialize bucket targets sub-system.
-	if err = globalBucketTargetSys.Init(GlobalContext, buckets, newObject); err != nil {
+	if err = globalBucketTargetSys.Init(ctx, buckets, newObject); err != nil {
 		return fmt.Errorf("Unable to initialize bucket target sub-system: %w", err)
 	}
 
 	return nil
 }
 
-func startBackgroundOps(ctx context.Context, objAPI ObjectLayer) {
-	// Make sure only 1 crawler is running on the cluster.
-	locker := objAPI.NewNSLock(ctx, minioMetaBucket, "leader")
-	for {
-		err := locker.GetLock(leaderLockTimeout)
-		if err != nil {
-			time.Sleep(leaderLockTimeoutSleepInterval)
-			continue
-		}
-		break
-		// No unlock for "leader" lock.
-	}
-
-	if globalIsErasure {
-		initGlobalHeal(ctx, objAPI)
-	}
-
-	initDataCrawler(ctx, objAPI)
-}
-
 // serverMain handler called for 'minio server' command.
 func serverMain(ctx *cli.Context) {
+	signal.Notify(globalOSSignalCh, os.Interrupt, syscall.SIGTERM)
+
+	go handleSignals()
+
 	setDefaultProfilerRates()
 
 	// Initialize globalConsoleSys system
 	globalConsoleSys = NewConsoleLogger(GlobalContext)
-
-	signal.Notify(globalOSSignalCh, os.Interrupt, syscall.SIGTERM)
+	logger.AddTarget(globalConsoleSys)
 
 	// Handle all server command args.
 	serverHandleCmdArgs(ctx)
@@ -438,7 +418,11 @@ func serverMain(ctx *cli.Context) {
 		// New global heal state
 		globalAllHealState = newHealState()
 		globalBackgroundHealState = newHealState()
+		globalReplicationState = newReplicationState()
 	}
+
+	// Initialize all sub-systems
+	newAllSubsystems()
 
 	// Configure server.
 	handler, err := configureServerHandler(globalEndpoints)
@@ -451,27 +435,7 @@ func serverMain(ctx *cli.Context) {
 		getCert = globalTLSCerts.GetCertificate
 	}
 
-	// Annonying hack to ensure that Go doesn't write its own logging,
-	// interleaved with our formatted logging, this allows us to
-	// honor --json and --quiet flag properly.
-	//
-	// Unfortunately we have to resort to this sort of hacky approach
-	// because, Go automatically initializes ErrorLog on its own
-	// and can log without application control.
-	//
-	// This is an implementation issue in Go and should be fixed, but
-	// until then this hack is okay and works for our needs.
-	pr, pw := io.Pipe()
-	go func() {
-		defer pr.Close()
-		scanner := bufio.NewScanner(&contextReader{pr, GlobalContext})
-		for scanner.Scan() {
-			logger.LogIf(GlobalContext, errors.New(scanner.Text()))
-		}
-	}()
-
 	httpServer := xhttp.NewServer([]string{globalMinioAddr}, criticalErrorHandler{corsHandler(handler)}, getCert)
-	httpServer.ErrorLog = log.New(pw, "", 0)
 	httpServer.BaseContext = func(listener net.Listener) context.Context {
 		return GlobalContext
 	}
@@ -487,27 +451,24 @@ func serverMain(ctx *cli.Context) {
 		for {
 			// Additionally in distributed setup, validate the setup and configuration.
 			err := verifyServerSystemConfig(GlobalContext, globalEndpoints)
-			if err == nil {
+			if err == nil || errors.Is(err, context.Canceled) {
 				break
 			}
 			logger.LogIf(GlobalContext, err, "Unable to initialize distributed setup, retrying.. after 5 seconds")
 			select {
 			case <-GlobalContext.Done():
 				return
-			case <-time.After(5 * time.Second):
+			case <-time.After(500 * time.Millisecond):
 			}
 		}
 	}
 
 	newObject, err := newObjectLayer(GlobalContext, globalEndpoints)
-	logger.SetDeploymentID(globalDeploymentID)
 	if err != nil {
-		// Stop watching for any certificate changes.
-		globalTLSCerts.Stop()
-
-		globalHTTPServer.Shutdown()
-		logger.Fatal(err, "Unable to initialize backend")
+		logFatalErrs(err, Endpoint{}, true)
 	}
+
+	logger.SetDeploymentID(globalDeploymentID)
 
 	// Once endpoints are finalized, initialize the new object api in safe mode.
 	globalObjLayerMutex.Lock()
@@ -515,9 +476,7 @@ func serverMain(ctx *cli.Context) {
 	globalObjectAPI = newObject
 	globalObjLayerMutex.Unlock()
 
-	newAllSubsystems()
-
-	go startBackgroundOps(GlobalContext, newObject)
+	go initDataCrawler(GlobalContext, newObject)
 
 	logger.FatalIf(initSafeMode(GlobalContext, newObject), "Unable to initialize server switching into safe-mode")
 
@@ -548,7 +507,7 @@ func serverMain(ctx *cli.Context) {
 		logger.StartupMessage(color.RedBold(msg))
 	}
 
-	handleSignals()
+	<-globalOSSignalCh
 }
 
 // Initialize object layer with the supplied disks, objectLayer is nil upon any error.

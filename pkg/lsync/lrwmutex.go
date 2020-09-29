@@ -19,10 +19,9 @@ package lsync
 import (
 	"context"
 	"math"
+	"math/rand"
 	"sync"
 	"time"
-
-	"github.com/minio/minio/pkg/retry"
 )
 
 // A LRWMutex is a mutual exclusion lock with timeouts.
@@ -46,7 +45,7 @@ func NewLRWMutex() *LRWMutex {
 func (lm *LRWMutex) Lock() {
 
 	const isWriteLock = true
-	lm.lockLoop(context.Background(), lm.id, lm.source, time.Duration(math.MaxInt64), isWriteLock)
+	lm.lockLoop(context.Background(), lm.id, lm.source, math.MaxInt64, isWriteLock)
 }
 
 // GetLock tries to get a write lock on lm before the timeout occurs.
@@ -63,7 +62,7 @@ func (lm *LRWMutex) GetLock(ctx context.Context, id string, source string, timeo
 func (lm *LRWMutex) RLock() {
 
 	const isWriteLock = false
-	lm.lockLoop(context.Background(), lm.id, lm.source, time.Duration(1<<63-1), isWriteLock)
+	lm.lockLoop(context.Background(), lm.id, lm.source, 1<<63-1, isWriteLock)
 }
 
 // GetRLock tries to get a read lock on lm before the timeout occurs.
@@ -94,25 +93,33 @@ func (lm *LRWMutex) lock(id, source string, isWriteLock bool) (locked bool) {
 	return locked
 }
 
+const (
+	lockRetryInterval = 50 * time.Millisecond
+)
+
 // lockLoop will acquire either a read or a write lock
 //
 // The call will block until the lock is granted using a built-in
 // timing randomized back-off algorithm to try again until successful
 func (lm *LRWMutex) lockLoop(ctx context.Context, id, source string, timeout time.Duration, isWriteLock bool) (locked bool) {
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+
 	retryCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	// We timed out on the previous lock, incrementally wait
-	// for a longer back-off time and try again afterwards.
-	for range retry.NewTimer(retryCtx) {
-		if lm.lock(id, source, isWriteLock) {
-			return true
+	for {
+		select {
+		case <-retryCtx.Done():
+			// Caller context canceled or we timedout,
+			// return false anyways for both situations.
+			return false
+		default:
+			if lm.lock(id, source, isWriteLock) {
+				return true
+			}
+			time.Sleep(time.Duration(r.Float64() * float64(lockRetryInterval)))
 		}
 	}
-
-	// We timed out on the previous lock, incrementally wait
-	// for a longer back-off time and try again afterwards.
-	return false
 }
 
 // Unlock unlocks the write lock.

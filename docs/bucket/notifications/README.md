@@ -337,6 +337,8 @@ index*       (string)             Elasticsearch index to store/update events, in
 format*      (namespace*|access)  'namespace' reflects current bucket/object list and 'access' reflects a journal of object operations, defaults to 'namespace'
 queue_dir    (path)               staging dir for undelivered messages e.g. '/home/events'
 queue_limit  (number)             maximum limit for undelivered messages, defaults to '100000'
+username     (string)             username for Elasticsearch basic-auth
+password     (string)             password for Elasticsearch basic-auth
 comment      (sentence)           optionally add a comment to this setting
 ```
 
@@ -353,6 +355,8 @@ MINIO_NOTIFY_ELASTICSEARCH_INDEX*       (string)             Elasticsearch index
 MINIO_NOTIFY_ELASTICSEARCH_FORMAT*      (namespace*|access)  'namespace' reflects current bucket/object list and 'access' reflects a journal of object operations, defaults to 'namespace'
 MINIO_NOTIFY_ELASTICSEARCH_QUEUE_DIR    (path)               staging dir for undelivered messages e.g. '/home/events'
 MINIO_NOTIFY_ELASTICSEARCH_QUEUE_LIMIT  (number)             maximum limit for undelivered messages, defaults to '100000'
+MINIO_NOTIFY_ELASTICSEARCH_USERNAME     (string)             username for Elasticsearch basic-auth
+MINIO_NOTIFY_ELASTICSEARCH_PASSWORD     (string)             password for Elasticsearch basic-auth
 MINIO_NOTIFY_ELASTICSEARCH_COMMENT      (sentence)           optionally add a comment to this setting
 ```
 
@@ -372,7 +376,7 @@ notify_elasticsearch:1 queue_limit="0"  url="" format="namespace" index="" queue
 Use `mc admin config set` command to update the configuration for the deployment. Restart the MinIO server to put the changes into effect. The server will print a line like `SQS ARNs: arn:minio:sqs::1:elasticsearch` at start-up if there were no errors.
 
 ```sh
-$ mc admin config set myminio notify_elasticsearch:1 queue_limit="0"  url="http://127.0.0.1:9200" format="namespace" index="minio_events" queue_dir=""
+$ mc admin config set myminio notify_elasticsearch:1 queue_limit="0"  url="http://127.0.0.1:9200" format="namespace" index="minio_events" queue_dir="" username="" password=""
 ```
 
 Note that, you can add as many Elasticsearch server endpoint configurations as needed by providing an identifier (like "1" in the example above) for the Elasticsearch instance and an object of per-server configuration parameters.
@@ -852,12 +856,13 @@ KEY:
 notify_postgres[:name]  publish bucket notifications to Postgres databases
 
 ARGS:
-connection_string*  (string)             Postgres server connection-string e.g. "host=localhost port=5432 dbname=minio_events user=postgres password=password sslmode=disable"
-table*              (string)             DB table name to store/update events, table is auto-created
-format*             (namespace*|access)  'namespace' reflects current bucket/object list and 'access' reflects a journal of object operations, defaults to 'namespace'
-queue_dir           (path)               staging dir for undelivered messages e.g. '/home/events'
-queue_limit         (number)             maximum limit for undelivered messages, defaults to '100000'
-comment             (sentence)           optionally add a comment to this setting
+connection_string*   (string)             Postgres server connection-string e.g. "host=localhost port=5432 dbname=minio_events user=postgres password=password sslmode=disable"
+table*               (string)             DB table name to store/update events, table is auto-created
+format*              (namespace*|access)  'namespace' reflects current bucket/object list and 'access' reflects a journal of object operations, defaults to 'namespace'
+queue_dir            (path)               staging dir for undelivered messages e.g. '/home/events'
+queue_limit          (number)             maximum limit for undelivered messages, defaults to '100000'
+max_open_connections (number)             maximum number of open connections to the database, defaults to '2'
+comment              (sentence)           optionally add a comment to this setting
 ```
 
 or environment variables
@@ -866,14 +871,18 @@ KEY:
 notify_postgres[:name]  publish bucket notifications to Postgres databases
 
 ARGS:
-MINIO_NOTIFY_POSTGRES_ENABLE*             (on|off)             enable notify_postgres target, default is 'off'
-MINIO_NOTIFY_POSTGRES_CONNECTION_STRING*  (string)             Postgres server connection-string e.g. "host=localhost port=5432 dbname=minio_events user=postgres password=password sslmode=disable"
-MINIO_NOTIFY_POSTGRES_TABLE*              (string)             DB table name to store/update events, table is auto-created
-MINIO_NOTIFY_POSTGRES_FORMAT*             (namespace*|access)  'namespace' reflects current bucket/object list and 'access' reflects a journal of object operations, defaults to 'namespace'
-MINIO_NOTIFY_POSTGRES_QUEUE_DIR           (path)               staging dir for undelivered messages e.g. '/home/events'
-MINIO_NOTIFY_POSTGRES_QUEUE_LIMIT         (number)             maximum limit for undelivered messages, defaults to '100000'
-MINIO_NOTIFY_POSTGRES_COMMENT             (sentence)           optionally add a comment to this setting
+MINIO_NOTIFY_POSTGRES_ENABLE*              (on|off)             enable notify_postgres target, default is 'off'
+MINIO_NOTIFY_POSTGRES_CONNECTION_STRING*   (string)             Postgres server connection-string e.g. "host=localhost port=5432 dbname=minio_events user=postgres password=password sslmode=disable"
+MINIO_NOTIFY_POSTGRES_TABLE*               (string)             DB table name to store/update events, table is auto-created
+MINIO_NOTIFY_POSTGRES_FORMAT*              (namespace*|access)  'namespace' reflects current bucket/object list and 'access' reflects a journal of object operations, defaults to 'namespace'
+MINIO_NOTIFY_POSTGRES_QUEUE_DIR            (path)               staging dir for undelivered messages e.g. '/home/events'
+MINIO_NOTIFY_POSTGRES_QUEUE_LIMIT          (number)             maximum limit for undelivered messages, defaults to '100000'
+MINIO_NOTIFY_POSTGRES_COMMENT              (sentence)           optionally add a comment to this setting
+MINIO_NOTIFY_POSTGRES_MAX_OPEN_CONNECTIONS (number)             maximum number of open connections to the database, defaults to '2'
 ```
+
+> NOTE: If the `max_open_connections` key or the environment variable `MINIO_NOTIFY_POSTGRES_MAX_OPEN_CONNECTIONS` is set to `0`, There will be no limit set on the number of
+> open connections to the database. This setting is generally NOT recommended as the behaviour may be inconsistent during recursive deletes in `namespace` format.
 
 MinIO supports persistent event store. The persistent store will backup events when the PostgreSQL connection goes offline and replays it when the broker comes back online. The event store can be configured by setting the directory path in `queue_dir` field and the maximum limit of events in the queue_dir in `queue_limit` field. For eg, the `queue_dir` can be `/home/events` and `queue_limit` can be `1000`. By default, the `queue_limit` is set to 100000.
 
@@ -981,12 +990,13 @@ KEY:
 notify_mysql[:name]  publish bucket notifications to MySQL databases. When multiple MySQL server endpoints are needed, a user specified "name" can be added for each configuration, (e.g."notify_mysql:myinstance").
 
 ARGS:
-dsn_string*  (string)             MySQL data-source-name connection string e.g. "<user>:<password>@tcp(<host>:<port>)/<database>"
-table*       (string)             DB table name to store/update events, table is auto-created
-format*      (namespace*|access)  'namespace' reflects current bucket/object list and 'access' reflects a journal of object operations, defaults to 'namespace'
-queue_dir    (path)               staging dir for undelivered messages e.g. '/home/events'
-queue_limit  (number)             maximum limit for undelivered messages, defaults to '100000'
-comment      (sentence)           optionally add a comment to this setting
+dsn_string*          (string)             MySQL data-source-name connection string e.g. "<user>:<password>@tcp(<host>:<port>)/<database>"
+table*               (string)             DB table name to store/update events, table is auto-created
+format*              (namespace*|access)  'namespace' reflects current bucket/object list and 'access' reflects a journal of object operations, defaults to 'namespace'
+queue_dir            (path)               staging dir for undelivered messages e.g. '/home/events'
+queue_limit          (number)             maximum limit for undelivered messages, defaults to '100000'
+max_open_connections (number)             maximum number of open connections to the database, defaults to '2'
+comment              (sentence)           optionally add a comment to this setting
 ```
 
 or environment variables
@@ -995,14 +1005,18 @@ KEY:
 notify_mysql[:name]  publish bucket notifications to MySQL databases
 
 ARGS:
-MINIO_NOTIFY_MYSQL_ENABLE*      (on|off)             enable notify_mysql target, default is 'off'
-MINIO_NOTIFY_MYSQL_DSN_STRING*  (string)             MySQL data-source-name connection string e.g. "<user>:<password>@tcp(<host>:<port>)/<database>"
-MINIO_NOTIFY_MYSQL_TABLE*       (string)             DB table name to store/update events, table is auto-created
-MINIO_NOTIFY_MYSQL_FORMAT*      (namespace*|access)  'namespace' reflects current bucket/object list and 'access' reflects a journal of object operations, defaults to 'namespace'
-MINIO_NOTIFY_MYSQL_QUEUE_DIR    (path)               staging dir for undelivered messages e.g. '/home/events'
-MINIO_NOTIFY_MYSQL_QUEUE_LIMIT  (number)             maximum limit for undelivered messages, defaults to '100000'
-MINIO_NOTIFY_MYSQL_COMMENT      (sentence)           optionally add a comment to this setting
+MINIO_NOTIFY_MYSQL_ENABLE*              (on|off)             enable notify_mysql target, default is 'off'
+MINIO_NOTIFY_MYSQL_DSN_STRING*          (string)             MySQL data-source-name connection string e.g. "<user>:<password>@tcp(<host>:<port>)/<database>"
+MINIO_NOTIFY_MYSQL_TABLE*               (string)             DB table name to store/update events, table is auto-created
+MINIO_NOTIFY_MYSQL_FORMAT*              (namespace*|access)  'namespace' reflects current bucket/object list and 'access' reflects a journal of object operations, defaults to 'namespace'
+MINIO_NOTIFY_MYSQL_QUEUE_DIR            (path)               staging dir for undelivered messages e.g. '/home/events'
+MINIO_NOTIFY_MYSQL_QUEUE_LIMIT          (number)             maximum limit for undelivered messages, defaults to '100000'
+MINIO_NOTIFY_MYSQL_MAX_OPEN_CONNECTIONS (number)             maximum number of open connections to the database, defaults to '2'
+MINIO_NOTIFY_MYSQL_COMMENT              (sentence)           optionally add a comment to this setting
 ```
+
+> NOTE: If the `max_open_connections` key or the environment variable `MINIO_NOTIFY_MYSQL_MAX_OPEN_CONNECTIONS` is set to `0`, There will be no limit set on the number of
+> open connections to the database. This setting is generally NOT recommended as the behaviour may be inconsistent during recursive deletes in `namespace` format.
 
 `dsn_string` is required and is of form `"<user>:<password>@tcp(<host>:<port>)/<database>"`
 
@@ -1373,13 +1387,13 @@ MINIO_NOTIFY_NSQ_COMMENT          (sentence)  optionally add a comment to this s
 
 ```sh
 $ mc admin config get myminio/ notify_nsq
-notify_nsq:1 nsqd_address="" queue_dir="" queue_limit="0"  tls_enable="off" tls_skip_verify="off" topic=""
+notify_nsq:1 nsqd_address="" queue_dir="" queue_limit="0"  tls="off" tls_skip_verify="off" topic=""
 ```
 
 Use `mc admin config set` command to update the configuration for the deployment. Restart the MinIO server to put the changes into effect. The server will print a line like `SQS ARNs: arn:minio:sqs::1:nsq` at start-up if there were no errors.
 
 ```sh
-$ mc admin config set myminio notify_nsq:1 nsqd_address="127.0.0.1:4150" queue_dir="" queue_limit="0" tls_enable="off" tls_skip_verify="on" topic="minio"
+$ mc admin config set myminio notify_nsq:1 nsqd_address="127.0.0.1:4150" queue_dir="" queue_limit="0" tls="off" tls_skip_verify="on" topic="minio"
 ```
 
 Note that, you can add as many NSQ daemon endpoint configurations as needed by providing an identifier (like "1" in the example above) for the NSQ instance and an object of per-server configuration parameters.

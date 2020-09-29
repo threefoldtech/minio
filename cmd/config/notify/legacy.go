@@ -201,6 +201,14 @@ func SetNotifyES(s config.Config, esName string, cfg target.ElasticsearchArgs) e
 			Key:   target.ElasticQueueLimit,
 			Value: strconv.Itoa(int(cfg.QueueLimit)),
 		},
+		config.KV{
+			Key:   target.ElasticUsername,
+			Value: cfg.Username,
+		},
+		config.KV{
+			Key:   target.ElasticPassword,
+			Value: cfg.Password,
+		},
 	}
 
 	return nil
@@ -348,6 +356,10 @@ func SetNotifyPostgres(s config.Config, psqName string, cfg target.PostgreSQLArg
 		config.KV{
 			Key:   target.PostgresQueueLimit,
 			Value: strconv.Itoa(int(cfg.QueueLimit)),
+		},
+		config.KV{
+			Key:   target.PostgresMaxOpenConnections,
+			Value: strconv.Itoa(cfg.MaxOpenConnections),
 		},
 	}
 
@@ -545,6 +557,10 @@ func SetNotifyMySQL(s config.Config, sqlName string, cfg target.MySQLArgs) error
 		config.KV{
 			Key:   target.MySQLQueueLimit,
 			Value: strconv.Itoa(int(cfg.QueueLimit)),
+		},
+		config.KV{
+			Key:   target.MySQLMaxOpenConnections,
+			Value: strconv.Itoa(cfg.MaxOpenConnections),
 		},
 	}
 

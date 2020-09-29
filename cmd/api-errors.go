@@ -29,7 +29,7 @@ import (
 
 	minio "github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/tags"
-	"github.com/minio/minio/cmd/config/etcd/dns"
+	"github.com/minio/minio/cmd/config/dns"
 	"github.com/minio/minio/cmd/crypto"
 	"github.com/minio/minio/cmd/logger"
 	"github.com/minio/minio/pkg/auth"
@@ -109,6 +109,7 @@ const (
 	ErrReplicationDestinationNotFoundError
 	ErrReplicationDestinationMissingLock
 	ErrReplicationTargetNotFoundError
+	ErrReplicationRemoteConnectionError
 	ErrBucketRemoteIdenticalToSource
 	ErrBucketRemoteAlreadyExists
 	ErrBucketRemoteArnTypeInvalid
@@ -663,20 +664,9 @@ var errorCodes = errorCodeMap{
 		Description:    "X-Amz-Date must be in the ISO8601 Long Format \"yyyyMMdd'T'HHmmss'Z'\"",
 		HTTPStatusCode: http.StatusBadRequest,
 	},
-	// FIXME: Should contain the invalid param set as seen in https://github.com/minio/minio/issues/2385.
-	// right Description:    "Error parsing the X-Amz-Credential parameter; incorrect date format \"%s\". This date in the credential must be in the format \"yyyyMMdd\".",
-	// Need changes to make sure variable messages can be constructed.
 	ErrMalformedCredentialDate: {
 		Code:           "AuthorizationQueryParametersError",
-		Description:    "Error parsing the X-Amz-Credential parameter; incorrect date format \"%s\". This date in the credential must be in the format \"yyyyMMdd\".",
-		HTTPStatusCode: http.StatusBadRequest,
-	},
-	// FIXME: Should contain the invalid param set as seen in https://github.com/minio/minio/issues/2385.
-	// right Description:    "Error parsing the X-Amz-Credential parameter; the region 'us-east-' is wrong; expecting 'us-east-1'".
-	// Need changes to make sure variable messages can be constructed.
-	ErrMalformedCredentialRegion: {
-		Code:           "AuthorizationQueryParametersError",
-		Description:    "Error parsing the X-Amz-Credential parameter; the region is wrong;",
+		Description:    "Error parsing the X-Amz-Credential parameter; incorrect date format. This date in the credential must be in the format \"yyyyMMdd\".",
 		HTTPStatusCode: http.StatusBadRequest,
 	},
 	ErrInvalidRegion: {
@@ -684,9 +674,6 @@ var errorCodes = errorCodeMap{
 		Description:    "Region does not match.",
 		HTTPStatusCode: http.StatusBadRequest,
 	},
-	// FIXME: Should contain the invalid param set as seen in https://github.com/minio/minio/issues/2385.
-	// right Description:   "Error parsing the X-Amz-Credential parameter; incorrect service \"s4\". This endpoint belongs to \"s3\".".
-	// Need changes to make sure variable messages can be constructed.
 	ErrInvalidServiceS3: {
 		Code:           "AuthorizationParametersError",
 		Description:    "Error parsing the Credential/X-Amz-Credential parameter; incorrect service. This endpoint belongs to \"s3\".",
@@ -697,9 +684,6 @@ var errorCodes = errorCodeMap{
 		Description:    "Error parsing the Credential parameter; incorrect service. This endpoint belongs to \"sts\".",
 		HTTPStatusCode: http.StatusBadRequest,
 	},
-	// FIXME: Should contain the invalid param set as seen in https://github.com/minio/minio/issues/2385.
-	// Description:   "Error parsing the X-Amz-Credential parameter; incorrect terminal "aws4_reque". This endpoint uses "aws4_request".
-	// Need changes to make sure variable messages can be constructed.
 	ErrInvalidRequestVersion: {
 		Code:           "AuthorizationQueryParametersError",
 		Description:    "Error parsing the X-Amz-Credential parameter; incorrect terminal. This endpoint uses \"aws4_request\".",
@@ -770,8 +754,6 @@ var errorCodes = errorCodeMap{
 		Description:    "Your key is too long",
 		HTTPStatusCode: http.StatusBadRequest,
 	},
-
-	// FIXME: Actual XML error response also contains the header which missed in list of signed header parameters.
 	ErrUnsignedHeaders: {
 		Code:           "AccessDenied",
 		Description:    "There were headers present in the request which were not signed",
@@ -840,6 +822,11 @@ var errorCodes = errorCodeMap{
 	ErrReplicationTargetNotFoundError: {
 		Code:           "XminioAdminReplicationTargetNotFoundError",
 		Description:    "The replication target does not exist",
+		HTTPStatusCode: http.StatusNotFound,
+	},
+	ErrReplicationRemoteConnectionError: {
+		Code:           "XminioAdminReplicationRemoteConnectionError",
+		Description:    "Remote service endpoint or target bucket not available",
 		HTTPStatusCode: http.StatusNotFound,
 	},
 	ErrBucketRemoteIdenticalToSource: {
@@ -984,7 +971,7 @@ var errorCodes = errorCodeMap{
 		HTTPStatusCode: http.StatusBadRequest,
 	},
 	ErrMetadataTooLarge: {
-		Code:           "InvalidArgument",
+		Code:           "MetadataTooLarge",
 		Description:    "Your metadata headers exceed the maximum allowed metadata size.",
 		HTTPStatusCode: http.StatusBadRequest,
 	},
@@ -1925,6 +1912,8 @@ func toAPIErrorCode(ctx context.Context, err error) (apiErr APIErrorCode) {
 		apiErr = ErrReplicationDestinationMissingLock
 	case BucketRemoteTargetNotFound:
 		apiErr = ErrReplicationTargetNotFoundError
+	case BucketRemoteConnectionErr:
+		apiErr = ErrReplicationRemoteConnectionError
 	case BucketRemoteAlreadyExists:
 		apiErr = ErrBucketRemoteAlreadyExists
 	case BucketRemoteArnTypeInvalid:

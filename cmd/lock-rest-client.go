@@ -23,6 +23,7 @@ import (
 	"errors"
 	"io"
 	"net/url"
+	"time"
 
 	"github.com/minio/minio/cmd/http"
 	xhttp "github.com/minio/minio/cmd/http"
@@ -63,7 +64,7 @@ func (client *lockRESTClient) callWithContext(ctx context.Context, method string
 		values = make(url.Values)
 	}
 
-	respBody, err = client.restClient.Call(method, values, body, length)
+	respBody, err = client.restClient.Call(ctx, method, values, body, length)
 	if err == nil {
 		return respBody, nil
 	}
@@ -86,6 +87,7 @@ func (client *lockRESTClient) Close() error {
 func (client *lockRESTClient) restCall(ctx context.Context, call string, args dsync.LockArgs) (reply bool, err error) {
 	values := url.Values{}
 	values.Set(lockRESTUID, args.UID)
+	values.Set(lockRESTOwner, args.Owner)
 	values.Set(lockRESTSource, args.Source)
 	var buffer bytes.Buffer
 	for _, resource := range args.Resources {
@@ -152,13 +154,13 @@ func newlockRESTClient(endpoint Endpoint) *lockRESTClient {
 		}
 	}
 
-	trFn := newInternodeHTTPTransport(tlsConfig, rest.DefaultRESTTimeout)
+	trFn := newInternodeHTTPTransport(tlsConfig, 10*time.Second)
 	restClient := rest.NewClient(serverURL, trFn, newAuthToken)
 	restClient.HealthCheckFn = func() bool {
 		ctx, cancel := context.WithTimeout(GlobalContext, restClient.HealthCheckTimeout)
 		// Instantiate a new rest client for healthcheck
 		// to avoid recursive healthCheckFn()
-		respBody, err := rest.NewClient(serverURL, trFn, newAuthToken).CallWithContext(ctx, lockRESTMethodHealth, nil, nil, -1)
+		respBody, err := rest.NewClient(serverURL, trFn, newAuthToken).Call(ctx, lockRESTMethodHealth, nil, nil, -1)
 		xhttp.DrainBody(respBody)
 		cancel()
 		var ne *rest.NetworkError

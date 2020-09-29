@@ -388,12 +388,7 @@ func DecryptBlocksRequestR(inputReader io.Reader, h http.Header, offset,
 		object:            object,
 		customerKeyHeader: h.Get(crypto.SSECKey),
 		copySource:        copySource,
-	}
-
-	w.metadata = map[string]string{}
-	// Copy encryption metadata for internal use.
-	for k, v := range oi.UserDefined {
-		w.metadata[k] = v
+		metadata:          cloneMSS(oi.UserDefined),
 	}
 
 	if w.copySource {
@@ -432,10 +427,7 @@ type DecryptBlocksReader struct {
 }
 
 func (d *DecryptBlocksReader) buildDecrypter(partID int) error {
-	m := make(map[string]string)
-	for k, v := range d.metadata {
-		m[k] = v
-	}
+	m := cloneMSS(d.metadata)
 	// Initialize the first decrypter; new decrypters will be
 	// initialized in Read() operation as needed.
 	var key []byte
@@ -605,12 +597,14 @@ func getDecryptedETag(headers http.Header, objInfo ObjectInfo, copySource bool) 
 	if crypto.IsMultiPart(objInfo.UserDefined) {
 		return objInfo.ETag
 	}
+
 	if crypto.SSECopy.IsRequested(headers) {
 		key, err = crypto.SSECopy.ParseHTTP(headers)
 		if err != nil {
 			return objInfo.ETag
 		}
 	}
+
 	// As per AWS S3 Spec, ETag for SSE-C encrypted objects need not be MD5Sum of the data.
 	// Since server side copy with same source and dest just replaces the ETag, we save
 	// encrypted content MD5Sum as ETag for both SSE-C and SSE-S3, we standardize the ETag
@@ -664,7 +658,7 @@ func (o *ObjectInfo) GetDecryptedRange(rs *HTTPRangeSpec) (encOff, encLength, sk
 
 	if rs == nil {
 		// No range, so offsets refer to the whole object.
-		return 0, int64(o.Size), 0, 0, 0, nil
+		return 0, o.Size, 0, 0, 0, nil
 	}
 
 	// Assemble slice of (decrypted) part sizes in `sizes`

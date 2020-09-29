@@ -23,12 +23,45 @@ import (
 	"github.com/minio/minio/pkg/sync/errgroup"
 )
 
-// getLoadBalancedDisks - fetches load balanced (sufficiently randomized) disk slice.
-func (er erasureObjects) getLoadBalancedDisks() (newDisks []StorageAPI) {
+func (er erasureObjects) getLoadBalancedLocalDisks() (newDisks []StorageAPI) {
 	disks := er.getDisks()
 	// Based on the random shuffling return back randomized disks.
 	for _, i := range hashOrder(UTCNow().String(), len(disks)) {
-		newDisks = append(newDisks, disks[i-1])
+		if disks[i-1] != nil && disks[i-1].IsLocal() {
+			if !disks[i-1].Healing() && disks[i-1].IsOnline() {
+				newDisks = append(newDisks, disks[i-1])
+			}
+		}
+	}
+	return newDisks
+}
+
+// getLoadBalancedNDisks - fetches load balanced (sufficiently randomized) disk slice
+// with N disks online. If ndisks is zero or negative, then it will returns all disks,
+// same if ndisks is greater than the number of all disks.
+func (er erasureObjects) getLoadBalancedNDisks(ndisks int) (newDisks []StorageAPI) {
+	disks := er.getLoadBalancedDisks()
+	for _, disk := range disks {
+		newDisks = append(newDisks, disk)
+		ndisks--
+		if ndisks == 0 {
+			break
+		}
+	}
+	return
+}
+
+// getLoadBalancedDisks - fetches load balanced (sufficiently randomized) disk slice.
+// ensures to skip disks if they are not healing and online.
+func (er erasureObjects) getLoadBalancedDisks() (newDisks []StorageAPI) {
+	disks := er.getDisks()
+
+	// Based on the random shuffling return back randomized disks.
+	for _, i := range hashOrder(UTCNow().String(), len(disks)) {
+		// Do not consume disks which are being healed.
+		if disks[i-1] != nil && !disks[i-1].Healing() && disks[i-1].IsOnline() {
+			newDisks = append(newDisks, disks[i-1])
+		}
 	}
 	return newDisks
 }
@@ -66,7 +99,7 @@ func (er erasureObjects) isObject(ctx context.Context, bucket, prefix string) (o
 				return errDiskNotFound
 			}
 			// Check if 'prefix' is an object on this 'disk', else continue the check the next disk
-			return storageDisks[index].CheckFile(bucket, prefix)
+			return storageDisks[index].CheckFile(ctx, bucket, prefix)
 		}, index)
 	}
 

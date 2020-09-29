@@ -168,6 +168,10 @@ func StartGateway(ctx *cli.Context, gw Gateway) {
 		cli.ShowCommandHelpAndExit(ctx, gatewayName, 1)
 	}
 
+	// Initialize globalConsoleSys system
+	globalConsoleSys = NewConsoleLogger(GlobalContext)
+	logger.AddTarget(globalConsoleSys)
+
 	// Handle common command args.
 	handleCommonCmdArgs(ctx)
 
@@ -179,6 +183,11 @@ func StartGateway(ctx *cli.Context, gw Gateway) {
 	// Check and load Root CAs.
 	globalRootCAs, err = certs.GetRootCAs(globalCertsCADir.Get())
 	logger.FatalIf(err, "Failed to read root CAs (%v)", err)
+
+	// Add the global public crts as part of global root CAs
+	for _, publicCrt := range globalPublicCerts {
+		globalRootCAs.AddCert(publicCrt)
+	}
 
 	// Register root CAs for remote ENVs
 	env.RegisterGlobalCAs(globalRootCAs)
@@ -256,12 +265,8 @@ func StartGateway(ctx *cli.Context, gw Gateway) {
 		logger.FatalIf(registerWebRouter(router), "Unable to configure web browser")
 	}
 
-	// Currently only NAS and S3 gateway support encryption headers.
-	encryptionEnabled := gatewayName == "s3" || gatewayName == "nas"
-	allowSSEKMS := gatewayName == "s3" // Only S3 can support SSE-KMS (as pass-through)
-
 	// Add API router.
-	registerAPIRouter(router, encryptionEnabled, allowSSEKMS)
+	registerAPIRouter(router)
 
 	// Use all the middlewares
 	router.Use(registerMiddlewares)
@@ -288,9 +293,6 @@ func StartGateway(ctx *cli.Context, gw Gateway) {
 
 	newObject, err := gw.NewGatewayLayer(globalActiveCred)
 	if err != nil {
-		// Stop watching for any certificate changes.
-		globalTLSCerts.Stop()
-
 		globalHTTPServer.Shutdown()
 		logger.FatalIf(err, "Unable to initialize gateway backend")
 	}
@@ -305,12 +307,12 @@ func StartGateway(ctx *cli.Context, gw Gateway) {
 	// Calls all New() for all sub-systems.
 	newAllSubsystems()
 
-	if gatewayName == "nas" {
+	if gatewayName == NASBackendGateway {
 		buckets, err := newObject.ListBuckets(GlobalContext)
 		if err != nil {
 			logger.Fatal(err, "Unable to list buckets")
 		}
-		logger.FatalIf(globalNotificationSys.Init(buckets, newObject), "Unable to initialize notification system")
+		logger.FatalIf(globalNotificationSys.Init(GlobalContext, buckets, newObject), "Unable to initialize notification system")
 	}
 
 	if globalEtcdClient != nil {

@@ -1,7 +1,5 @@
-// +build netbsd
-
 /*
- * MinIO Cloud Storage, (C) 2017 MinIO, Inc.
+ * MinIO Cloud Storage, (C) 2020 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +14,14 @@
  * limitations under the License.
  */
 
-package disk
+package config
 
-// GetInfo returns total and free bytes available in a directory, e.g. `/`.
-func GetInfo(path string) (info Info, err error) {
-	return Info{}, nil
+import "context"
+
+// Logger contains injected logger methods.
+var Logger = struct {
+	Info  func(msg string, data ...interface{})
+	LogIf func(ctx context.Context, err error, errKind ...interface{})
+}{
+	// Initialized via injection.
 }

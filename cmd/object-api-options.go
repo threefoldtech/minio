@@ -133,6 +133,7 @@ func delOpts(ctx context.Context, r *http.Request, bucket, object string) (opts 
 		return opts, err
 	}
 	opts.Versioned = versioned
+	opts.VersionSuspended = globalBucketVersioningSys.Suspended(bucket)
 	return opts, nil
 }
 
@@ -167,7 +168,7 @@ func putOpts(ctx context.Context, r *http.Request, bucket, object string, metada
 	etag := strings.TrimSpace(r.Header.Get(xhttp.MinIOSourceETag))
 	if etag != "" {
 		if metadata == nil {
-			metadata = make(map[string]string)
+			metadata = make(map[string]string, 1)
 		}
 		metadata["etag"] = etag
 	}

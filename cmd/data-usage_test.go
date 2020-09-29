@@ -240,7 +240,6 @@ func TestDataUsageUpdate(t *testing.T) {
 				t.Fatal("got nil result")
 			}
 			if w.flatten {
-				t.Log(e.Children)
 				*e = got.flatten(*e)
 			}
 			if e.Size != int64(w.size) {
@@ -359,6 +358,13 @@ func TestDataUsageUpdatePrefix(t *testing.T) {
 	got, err := crawlDataFolder(context.Background(), base, dataUsageCache{Info: dataUsageCacheInfo{Name: "bucket"}}, func() {}, getSize)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if got.root() == nil {
+		t.Log("cached folders:")
+		for folder := range got.Cache {
+			t.Log("folder:", folder)
+		}
+		t.Fatal("got nil root.")
 	}
 
 	// Test dirs

@@ -119,14 +119,14 @@ func readAllFileInfo(ctx context.Context, disks []StorageAPI, bucket, object, ve
 	metadataArray := make([]FileInfo, len(disks))
 
 	g := errgroup.WithNErrs(len(disks))
-	// Read `xl.meta` parallelly across disks.
+	// Read `xl.meta` in parallel across disks.
 	for index := range disks {
 		index := index
 		g.Go(func() (err error) {
 			if disks[index] == nil {
 				return errDiskNotFound
 			}
-			metadataArray[index], err = disks[index].ReadVersion(bucket, object, versionID)
+			metadataArray[index], err = disks[index].ReadVersion(ctx, bucket, object, versionID)
 			if err != nil {
 				if err != errFileNotFound && err != errVolumeNotFound && err != errFileVersionNotFound {
 					logger.GetReqInfo(ctx).AppendTags("disk", disks[index].String())

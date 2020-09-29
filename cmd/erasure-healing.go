@@ -29,16 +29,6 @@ import (
 	"github.com/minio/minio/pkg/sync/errgroup"
 )
 
-func (er erasureObjects) ReloadFormat(ctx context.Context, dryRun bool) error {
-	logger.LogIf(ctx, NotImplemented{})
-	return NotImplemented{}
-}
-
-func (er erasureObjects) HealFormat(ctx context.Context, dryRun bool) (madmin.HealResultItem, error) {
-	logger.LogIf(ctx, NotImplemented{})
-	return madmin.HealResultItem{}, NotImplemented{}
-}
-
 // Heals a bucket if it doesn't exist on one of the disks, additionally
 // also heals the missing entries for bucket metadata files
 // `policy.json, notification.xml, listeners.json`.
@@ -78,7 +68,7 @@ func healBucket(ctx context.Context, storageDisks []StorageAPI, storageEndpoints
 				afterState[index] = madmin.DriveStateOffline
 				return errDiskNotFound
 			}
-			if _, serr := storageDisks[index].StatVol(bucket); serr != nil {
+			if _, serr := storageDisks[index].StatVol(ctx, bucket); serr != nil {
 				if serr == errDiskNotFound {
 					beforeState[index] = madmin.DriveStateOffline
 					afterState[index] = madmin.DriveStateOffline
@@ -136,7 +126,7 @@ func healBucket(ctx context.Context, storageDisks []StorageAPI, storageEndpoints
 		index := index
 		g.Go(func() error {
 			if beforeState[index] == madmin.DriveStateMissing {
-				makeErr := storageDisks[index].MakeVol(bucket)
+				makeErr := storageDisks[index].MakeVol(ctx, bucket)
 				if makeErr == nil {
 					afterState[index] = madmin.DriveStateOk
 				}
@@ -165,34 +155,37 @@ func healBucket(ctx context.Context, storageDisks []StorageAPI, storageEndpoints
 
 // listAllBuckets lists all buckets from all disks. It also
 // returns the occurrence of each buckets in all disks
-func listAllBuckets(storageDisks []StorageAPI, healBuckets map[string]VolInfo) (err error) {
-	for _, disk := range storageDisks {
-		if disk == nil {
-			continue
-		}
-		var volsInfo []VolInfo
-		volsInfo, err = disk.ListVols()
-		if err != nil {
-			if IsErrIgnored(err, bucketMetadataOpIgnoredErrs...) {
-				continue
+func listAllBuckets(ctx context.Context, storageDisks []StorageAPI, healBuckets map[string]VolInfo) error {
+	g := errgroup.WithNErrs(len(storageDisks))
+	var mu sync.Mutex
+	for index := range storageDisks {
+		index := index
+		g.Go(func() error {
+			if storageDisks[index] == nil {
+				// we ignore disk not found errors
+				return nil
 			}
-			return err
-		}
-		for _, volInfo := range volsInfo {
-			// StorageAPI can send volume names which are
-			// incompatible with buckets - these are
-			// skipped, like the meta-bucket.
-			if isReservedOrInvalidBucket(volInfo.Name, false) {
-				continue
+			volsInfo, err := storageDisks[index].ListVols(ctx)
+			if err != nil {
+				return err
 			}
-			// always save unique buckets across drives.
-			if _, ok := healBuckets[volInfo.Name]; !ok {
-				healBuckets[volInfo.Name] = volInfo
+			for _, volInfo := range volsInfo {
+				// StorageAPI can send volume names which are
+				// incompatible with buckets - these are
+				// skipped, like the meta-bucket.
+				if isReservedOrInvalidBucket(volInfo.Name, false) {
+					continue
+				}
+				mu.Lock()
+				if _, ok := healBuckets[volInfo.Name]; !ok {
+					healBuckets[volInfo.Name] = volInfo
+				}
+				mu.Unlock()
 			}
-
-		}
+			return nil
+		}, index)
 	}
-	return nil
+	return reduceReadQuorumErrs(ctx, g.Wait(), bucketMetadataOpIgnoredErrs, len(storageDisks)/2)
 }
 
 // Only heal on disks where we are sure that healing is needed. We can expand
@@ -275,7 +268,7 @@ func (er erasureObjects) healObject(ctx context.Context, bucket string, object s
 			}
 		case errs[i] == errDiskNotFound, dataErrs[i] == errDiskNotFound:
 			driveState = madmin.DriveStateOffline
-		case errs[i] == errFileNotFound, errs[i] == errVolumeNotFound:
+		case errs[i] == errFileNotFound, errs[i] == errFileVersionNotFound, errs[i] == errVolumeNotFound:
 			fallthrough
 		case dataErrs[i] == errFileNotFound, dataErrs[i] == errFileVersionNotFound, dataErrs[i] == errVolumeNotFound:
 			driveState = madmin.DriveStateMissing
@@ -472,7 +465,7 @@ func (er erasureObjects) healObject(ctx context.Context, bucket string, object s
 		}
 
 		// Attempt a rename now from healed data to final location.
-		if err = disk.RenameData(minioMetaTmpBucket, tmpID, partsMetadata[i].DataDir, bucket, object); err != nil {
+		if err = disk.RenameData(ctx, minioMetaTmpBucket, tmpID, partsMetadata[i].DataDir, bucket, object); err != nil {
 			if err != errIsNotRegular && err != errFileNotFound {
 				logger.LogIf(ctx, err)
 			}
@@ -525,7 +518,7 @@ func (er erasureObjects) healObjectDir(ctx context.Context, bucket, object strin
 				wg.Add(1)
 				go func(index int, disk StorageAPI) {
 					defer wg.Done()
-					_ = disk.DeleteFile(bucket, object)
+					_ = disk.DeleteFile(ctx, bucket, object)
 				}(index, disk)
 			}
 			wg.Wait()
@@ -557,7 +550,7 @@ func (er erasureObjects) healObjectDir(ctx context.Context, bucket, object strin
 	for i, err := range errs {
 		if err == errVolumeNotFound || err == errFileNotFound {
 			// Bucket or prefix/directory not found
-			merr := storageDisks[i].MakeVol(pathJoin(bucket, object))
+			merr := storageDisks[i].MakeVol(ctx, pathJoin(bucket, object))
 			switch merr {
 			case nil, errVolumeExists:
 				hr.After.Drives[i].State = madmin.DriveStateOk
@@ -642,7 +635,7 @@ func statAllDirs(ctx context.Context, storageDisks []StorageAPI, bucket, prefix 
 		}
 		index := index
 		g.Go(func() error {
-			entries, err := storageDisks[index].ListDir(bucket, prefix, 1)
+			entries, err := storageDisks[index].ListDir(ctx, bucket, prefix, 1)
 			if err != nil {
 				return err
 			}

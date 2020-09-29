@@ -309,7 +309,7 @@ func (v Value) CSVString() string {
 // floatToValue converts a float into int representation if needed.
 func floatToValue(f float64) *Value {
 	intPart, fracPart := math.Modf(f)
-	if fracPart == 0 {
+	if fracPart == 0 && intPart < math.MaxInt64 && intPart > math.MinInt64 {
 		return FromInt(int64(intPart))
 	}
 	return FromFloat(f)
@@ -785,6 +785,7 @@ func intCompare(op string, left, right int64) bool {
 }
 
 func floatCompare(op string, left, right float64) bool {
+	diff := math.Abs(left - right)
 	switch op {
 	case opLt:
 		return left < right
@@ -795,9 +796,9 @@ func floatCompare(op string, left, right float64) bool {
 	case opGte:
 		return left >= right
 	case opEq:
-		return left == right
+		return diff < floatCmpTolerance
 	case opIneq:
-		return left != right
+		return diff > floatCmpTolerance
 	}
 	// This case does not happen
 	return false

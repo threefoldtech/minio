@@ -22,12 +22,18 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"strings"
 )
 
 // Converts underlying storage error. Convenience function written to
 // handle all cases where we have known types of errors returned by
 // underlying storage layer.
 func toObjectErr(err error, params ...string) error {
+	if len(params) > 1 {
+		if HasSuffix(params[1], globalDirSuffix) {
+			params[1] = strings.TrimSuffix(params[1], globalDirSuffix) + slashSeparator
+		}
+	}
 	switch err {
 	case errVolumeNotFound:
 		if len(params) >= 1 {
@@ -374,6 +380,13 @@ type BucketRemoteTargetNotFound GenericError
 
 func (e BucketRemoteTargetNotFound) Error() string {
 	return "Remote target not found: " + e.Bucket
+}
+
+// BucketRemoteConnectionErr remote target connection failure.
+type BucketRemoteConnectionErr GenericError
+
+func (e BucketRemoteConnectionErr) Error() string {
+	return "Remote service endpoint or target bucket not available: " + e.Bucket
 }
 
 // BucketRemoteAlreadyExists remote already exists for this target type.

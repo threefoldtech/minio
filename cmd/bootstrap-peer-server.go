@@ -131,7 +131,7 @@ func (client *bootstrapRESTClient) callWithContext(ctx context.Context, method s
 		values = make(url.Values)
 	}
 
-	respBody, err = client.restClient.CallWithContext(ctx, method, values, body, length)
+	respBody, err = client.restClient.Call(ctx, method, values, body, length)
 	if err == nil {
 		return respBody, nil
 	}
@@ -178,17 +178,22 @@ func verifyServerSystemConfig(ctx context.Context, endpointZones EndpointZones) 
 			}
 			onlineServers++
 		}
-		// Sleep for a while - so that we don't go into
-		// 100% CPU when half the endpoints are offline.
-		time.Sleep(500 * time.Millisecond)
-		retries++
-		// after 5 retries start logging that servers are not reachable yet
-		if retries >= 5 {
-			logger.Info(fmt.Sprintf("Waiting for atleast %d servers to be online for bootstrap check", len(clnts)/2))
-			logger.Info(fmt.Sprintf("Following servers are currently offline or unreachable %s", offlineEndpoints))
-			retries = 0 // reset to log again after 5 retries.
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			// Sleep for a while - so that we don't go into
+			// 100% CPU when half the endpoints are offline.
+			time.Sleep(100 * time.Millisecond)
+			retries++
+			// after 5 retries start logging that servers are not reachable yet
+			if retries >= 5 {
+				logger.Info(fmt.Sprintf("Waiting for atleast %d remote servers to be online for bootstrap check", len(clnts)/2))
+				logger.Info(fmt.Sprintf("Following servers are currently offline or unreachable %s", offlineEndpoints))
+				retries = 0 // reset to log again after 5 retries.
+			}
+			offlineEndpoints = nil
 		}
-		offlineEndpoints = nil
 	}
 	return nil
 }
@@ -234,7 +239,7 @@ func newBootstrapRESTClient(endpoint Endpoint) *bootstrapRESTClient {
 		ctx, cancel := context.WithTimeout(GlobalContext, restClient.HealthCheckTimeout)
 		// Instantiate a new rest client for healthcheck
 		// to avoid recursive healthCheckFn()
-		respBody, err := rest.NewClient(serverURL, trFn, newAuthToken).CallWithContext(ctx, bootstrapRESTMethodHealth, nil, nil, -1)
+		respBody, err := rest.NewClient(serverURL, trFn, newAuthToken).Call(ctx, bootstrapRESTMethodHealth, nil, nil, -1)
 		xhttp.DrainBody(respBody)
 		cancel()
 		var ne *rest.NetworkError

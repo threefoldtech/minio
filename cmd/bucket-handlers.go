@@ -33,7 +33,7 @@ import (
 	"github.com/minio/minio-go/v7/pkg/set"
 	"github.com/minio/minio-go/v7/pkg/tags"
 	"github.com/minio/minio/cmd/config"
-	"github.com/minio/minio/cmd/config/etcd/dns"
+	"github.com/minio/minio/cmd/config/dns"
 	"github.com/minio/minio/cmd/crypto"
 	xhttp "github.com/minio/minio/cmd/http"
 	"github.com/minio/minio/cmd/logger"
@@ -72,7 +72,7 @@ func initFederatorBackend(buckets []BucketInfo, objLayer ObjectLayer) {
 
 	// Get buckets in the DNS
 	dnsBuckets, err := globalDNSConfig.List()
-	if err != nil && err != dns.ErrNoEntriesFound {
+	if err != nil && err != dns.ErrNoEntriesFound && err != dns.ErrNotImplemented {
 		logger.LogIf(GlobalContext, err)
 		return
 	}
@@ -80,33 +80,35 @@ func initFederatorBackend(buckets []BucketInfo, objLayer ObjectLayer) {
 	bucketsSet := set.NewStringSet()
 	bucketsToBeUpdated := set.NewStringSet()
 	bucketsInConflict := set.NewStringSet()
-	for _, bucket := range buckets {
-		bucketsSet.Add(bucket.Name)
-		r, ok := dnsBuckets[bucket.Name]
-		if !ok {
-			bucketsToBeUpdated.Add(bucket.Name)
-			continue
-		}
-		if !globalDomainIPs.Intersection(set.CreateStringSet(getHostsSlice(r)...)).IsEmpty() {
-			if globalDomainIPs.Difference(set.CreateStringSet(getHostsSlice(r)...)).IsEmpty() {
-				// No difference in terms of domainIPs and nothing
-				// has changed so we don't change anything on the etcd.
+	if dnsBuckets != nil {
+		for _, bucket := range buckets {
+			bucketsSet.Add(bucket.Name)
+			r, ok := dnsBuckets[bucket.Name]
+			if !ok {
+				bucketsToBeUpdated.Add(bucket.Name)
 				continue
 			}
-			// if domain IPs intersect then it won't be an empty set.
-			// such an intersection means that bucket exists on etcd.
-			// but if we do see a difference with local domain IPs with
-			// hostSlice from etcd then we should update with newer
-			// domainIPs, we proceed to do that here.
-			bucketsToBeUpdated.Add(bucket.Name)
-			continue
+			if !globalDomainIPs.Intersection(set.CreateStringSet(getHostsSlice(r)...)).IsEmpty() {
+				if globalDomainIPs.Difference(set.CreateStringSet(getHostsSlice(r)...)).IsEmpty() {
+					// No difference in terms of domainIPs and nothing
+					// has changed so we don't change anything on the etcd.
+					continue
+				}
+				// if domain IPs intersect then it won't be an empty set.
+				// such an intersection means that bucket exists on etcd.
+				// but if we do see a difference with local domain IPs with
+				// hostSlice from etcd then we should update with newer
+				// domainIPs, we proceed to do that here.
+				bucketsToBeUpdated.Add(bucket.Name)
+				continue
+			}
+			// No IPs seem to intersect, this means that bucket exists but has
+			// different IP addresses perhaps from a different deployment.
+			// bucket names are globally unique in federation at a given
+			// path prefix, name collision is not allowed. We simply log
+			// an error and continue.
+			bucketsInConflict.Add(bucket.Name)
 		}
-		// No IPs seem to intersect, this means that bucket exists but has
-		// different IP addresses perhaps from a different deployment.
-		// bucket names are globally unique in federation at a given
-		// path prefix, name collision is not allowed. We simply log
-		// an error and continue.
-		bucketsInConflict.Add(bucket.Name)
 	}
 
 	// Add/update buckets that are not registered with the DNS
@@ -449,14 +451,15 @@ func (api objectAPIHandlers) DeleteMultipleObjectsHandler(w http.ResponseWriter,
 
 	deleteList := toNames(objectsToDelete)
 	dObjects, errs := deleteObjectsFn(ctx, bucket, deleteList, ObjectOptions{
-		Versioned: globalBucketVersioningSys.Enabled(bucket),
+		Versioned:        globalBucketVersioningSys.Enabled(bucket),
+		VersionSuspended: globalBucketVersioningSys.Suspended(bucket),
 	})
 
 	deletedObjects := make([]DeletedObject, len(deleteObjects.Objects))
 	for i := range errs {
 		dindex := objectsToDelete[deleteList[i]]
 		apiErr := toAPIError(ctx, errs[i])
-		if apiErr.Code == "" || apiErr.Code == "NoSuchKey" {
+		if apiErr.Code == "" || apiErr.Code == "NoSuchKey" || apiErr.Code == "InvalidArgument" {
 			deletedObjects[dindex] = dObjects[i]
 			continue
 		}
@@ -561,7 +564,9 @@ func (api objectAPIHandlers) PutBucketHandler(w http.ResponseWriter, r *http.Req
 	if globalDNSConfig != nil {
 		sr, err := globalDNSConfig.Get(bucket)
 		if err != nil {
-			if err == dns.ErrNoEntriesFound {
+			// ErrNotImplemented indicates a DNS backend that doesn't need to check if bucket already
+			// exists elsewhere
+			if err == dns.ErrNoEntriesFound || err == dns.ErrNotImplemented {
 				// Proceed to creating a bucket.
 				if err = objectAPI.MakeBucketWithLocation(ctx, bucket, opts); err != nil {
 					writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
@@ -654,15 +659,13 @@ func (api objectAPIHandlers) PostPolicyBucketHandler(w http.ResponseWriter, r *h
 		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(ErrNotImplemented), r.URL, guessIsBrowserReq(r))
 		return
 	}
-	if !api.EncryptionEnabled() && crypto.IsRequested(r.Header) {
+
+	if !objectAPI.IsEncryptionSupported() && crypto.IsRequested(r.Header) {
 		writeErrorResponse(ctx, w, errorCodes.ToAPIErr(ErrNotImplemented), r.URL, guessIsBrowserReq(r))
 		return
 	}
 
 	bucket := mux.Vars(r)["bucket"]
-
-	// To detect if the client has disconnected.
-	r.Body = &contextReader{r.Body, r.Context()}
 
 	// Require Content-Length to be set in the request
 	size := r.ContentLength
@@ -762,7 +765,7 @@ func (api objectAPIHandlers) PostPolicyBucketHandler(w http.ResponseWriter, r *h
 
 		// Make sure formValues adhere to policy restrictions.
 		if err = checkPostPolicy(formValues, postPolicyForm); err != nil {
-			writeCustomErrorResponseXML(ctx, w, errorCodes.ToAPIErr(ErrAccessDenied), err.Error(), r.URL, guessIsBrowserReq(r))
+			writeErrorResponse(ctx, w, errorCodes.ToAPIErrWithErr(ErrAccessDenied, err), r.URL, guessIsBrowserReq(r))
 			return
 		}
 
@@ -804,7 +807,7 @@ func (api objectAPIHandlers) PostPolicyBucketHandler(w http.ResponseWriter, r *h
 	if _, err = globalBucketSSEConfigSys.Get(bucket); err == nil || globalAutoEncryption {
 		// This request header needs to be set prior to setting ObjectOptions
 		if !crypto.SSEC.IsRequested(r.Header) {
-			r.Header.Add(crypto.SSEHeader, crypto.SSEAlgorithmAES256)
+			r.Header.Set(crypto.SSEHeader, crypto.SSEAlgorithmAES256)
 		}
 	}
 
@@ -999,7 +1002,7 @@ func (api objectAPIHandlers) DeleteBucketHandler(w http.ResponseWriter, r *http.
 
 	if globalDNSConfig != nil {
 		if err := globalDNSConfig.Delete(bucket); err != nil {
-			logger.LogIf(ctx, fmt.Errorf("Unable to delete bucket DNS entry %w, please delete it manually using etcdctl", err))
+			logger.LogIf(ctx, fmt.Errorf("Unable to delete bucket DNS entry %w, please delete it manually", err))
 			writeErrorResponse(ctx, w, toAPIError(ctx, err), r.URL, guessIsBrowserReq(r))
 			return
 		}

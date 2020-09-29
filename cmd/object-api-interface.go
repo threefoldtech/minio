@@ -37,6 +37,7 @@ type GetObjectInfoFn func(ctx context.Context, bucket, object string, opts Objec
 // ObjectOptions represents object options for ObjectLayer object operations
 type ObjectOptions struct {
 	ServerSideEncryption encrypt.ServerSide
+	VersionSuspended     bool                // indicates if the bucket was previously versioned but is currently suspended.
 	Versioned            bool                // indicates if the bucket is versioned
 	WalkVersions         bool                // indicates if the we are interested in walking versions
 	VersionID            string              // Specifies the versionID which needs to be overwritten or read
@@ -109,7 +110,7 @@ type ObjectLayer interface {
 	PutObjectPart(ctx context.Context, bucket, object, uploadID string, partID int, data *PutObjReader, opts ObjectOptions) (info PartInfo, err error)
 	GetMultipartInfo(ctx context.Context, bucket, object, uploadID string, opts ObjectOptions) (info MultipartInfo, err error)
 	ListObjectParts(ctx context.Context, bucket, object, uploadID string, partNumberMarker int, maxParts int, opts ObjectOptions) (result ListPartsInfo, err error)
-	AbortMultipartUpload(ctx context.Context, bucket, object, uploadID string) error
+	AbortMultipartUpload(ctx context.Context, bucket, object, uploadID string, opts ObjectOptions) error
 	CompleteMultipartUpload(ctx context.Context, bucket, object, uploadID string, uploadedParts []CompletePart, opts ObjectOptions) (objInfo ObjectInfo, err error)
 
 	// Healing operations.

@@ -17,11 +17,18 @@ checks:
 getdeps:
 	@mkdir -p ${GOPATH}/bin
 	@which golangci-lint 1>/dev/null || (echo "Installing golangci-lint" && curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GOPATH)/bin v1.27.0)
+	@which ruleguard 1>/dev/null || (echo "Installing ruleguard" && GO111MODULE=off go get github.com/quasilyte/go-ruleguard/...)
+	@which msgp 1>/dev/null || (echo "Installing msgp" && go get github.com/tinylib/msgp)
+	@which stringer 1>/dev/null || (echo "Installing stringer" && go get golang.org/x/tools/cmd/stringer)
 
 crosscompile:
 	@(env bash $(PWD)/buildscripts/cross-compile.sh)
 
-verifiers: getdeps fmt lint
+verifiers: getdeps fmt lint ruleguard check-gen
+
+check-gen:
+	@go generate ./... >/dev/null
+	@git diff --exit-code >/dev/null || echo "Non-committed changes in auto-generated code are detected, please check."
 
 fmt:
 	@echo "Running $@ check"
@@ -32,6 +39,10 @@ lint:
 	@echo "Running $@ check"
 	@GO111MODULE=on ${GOPATH}/bin/golangci-lint cache clean
 	@GO111MODULE=on ${GOPATH}/bin/golangci-lint run --timeout=5m --config ./.golangci.yml
+
+ruleguard:
+	@echo "Running $@ check"
+	@${GOPATH}/bin/ruleguard -rules ruleguard.rules.go github.com/minio/minio/...
 
 # Builds minio, runs the verifiers then runs the tests.
 check: test

@@ -38,13 +38,14 @@ import (
 	"github.com/klauspost/readahead"
 	"github.com/minio/minio-go/v7/pkg/s3utils"
 	"github.com/minio/minio/cmd/config/compress"
-	"github.com/minio/minio/cmd/config/etcd/dns"
+	"github.com/minio/minio/cmd/config/dns"
 	"github.com/minio/minio/cmd/config/storageclass"
 	"github.com/minio/minio/cmd/crypto"
 	xhttp "github.com/minio/minio/cmd/http"
 	"github.com/minio/minio/cmd/logger"
 	"github.com/minio/minio/pkg/hash"
 	"github.com/minio/minio/pkg/ioutil"
+	"github.com/minio/minio/pkg/trie"
 	"github.com/minio/minio/pkg/wildcard"
 )
 
@@ -270,7 +271,7 @@ func removeStandardStorageClass(metadata map[string]string) map[string]string {
 // cleanMetadataKeys takes keyNames to be filtered
 // and returns a new map with all the entries with keyNames removed.
 func cleanMetadataKeys(metadata map[string]string, keyNames ...string) map[string]string {
-	var newMeta = make(map[string]string)
+	var newMeta = make(map[string]string, len(metadata))
 	for k, v := range metadata {
 		if contains(keyNames, k) {
 			continue
@@ -353,12 +354,10 @@ func getHostsSlice(records []dns.SrvRecord) []string {
 	return hosts
 }
 
-var rng = rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
-
 // returns an online host (and corresponding port) from a slice of DNS records
 func getHostFromSrv(records []dns.SrvRecord) (host string) {
 	hosts := getHostsSlice(records)
-
+	rng := rand.New(rand.NewSource(time.Now().UTC().UnixNano()))
 	var d net.Dialer
 	var retry int
 	for retry < len(hosts) {
@@ -398,6 +397,15 @@ func (o ObjectInfo) IsCompressedOK() (bool, error) {
 		return true, nil
 	}
 	return true, fmt.Errorf("unknown compression scheme: %s", scheme)
+}
+
+// GetActualETag - returns the actual etag of the stored object
+// decrypts SSE objects.
+func (o ObjectInfo) GetActualETag(h http.Header) string {
+	if !crypto.IsEncrypted(o.UserDefined) {
+		return o.ETag
+	}
+	return getDecryptedETag(h, o, false)
 }
 
 // GetActualSize - returns the actual size of the stored object
@@ -478,13 +486,12 @@ func hasPattern(patterns []string, matchStr string) bool {
 }
 
 // Returns the part file name which matches the partNumber and etag.
-func getPartFile(entries []string, partNumber int, etag string) string {
-	for _, entry := range entries {
-		if strings.HasPrefix(entry, fmt.Sprintf("%.5d.%s.", partNumber, etag)) {
-			return entry
-		}
+func getPartFile(entriesTrie *trie.Trie, partNumber int, etag string) (partFile string) {
+	for _, match := range entriesTrie.PrefixMatch(fmt.Sprintf("%.5d.%s.", partNumber, etag)) {
+		partFile = match
+		break
 	}
-	return ""
+	return partFile
 }
 
 // Returns the compressed offset which should be skipped.
@@ -867,20 +874,4 @@ func newS2CompressReader(r io.Reader) io.ReadCloser {
 		pw.Close()
 	}()
 	return pr
-}
-
-// Returns error if the context is canceled, indicating
-// either client has disconnected
-type contextReader struct {
-	io.ReadCloser
-	ctx context.Context
-}
-
-func (d *contextReader) Read(p []byte) (int, error) {
-	select {
-	case <-d.ctx.Done():
-		return 0, d.ctx.Err()
-	default:
-		return d.ReadCloser.Read(p)
-	}
 }
