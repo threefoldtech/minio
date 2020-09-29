@@ -163,6 +163,11 @@ type Manager interface {
 	UploadPutPart(bucket, uploadID string, partID int, meta string) error
 	UploadListParts(bucket, uploadID string) ([]minio.PartInfo, error)
 	UploadComplete(bucket, object, uploadID string, parts []minio.CompletePart) (Metadata, error)
+	//UploadDelete deletes upload metadata (parts info) to fully delete an upload
+	//you need to delete its parts first
+	UploadDelete(bucket, uploadID string) error
+	UploadList(bucket string) (minio.ListMultipartsInfo, error)
+	UploadDeletePart(bucket, uploadID string, partID int) error
 
 	SetBlob(obj *Metadata) error
 	LinkObject(bucket, object, blob string) error
@@ -170,9 +175,6 @@ type Manager interface {
 	//LinkPart(bucket, uploadID, partID, blob string) error
 	ListObjects(ctx context.Context, bucket, prefix, marker, delimiter string, maxKeys int) (minio.ListObjectsInfo, error)
 	ListObjectsV2(ctx context.Context, bucket, prefix, continuationToken, delimiter string, maxKeys int, fetchOwner bool, startAfter string) (minio.ListObjectsV2Info, error)
-
-	ListMultipartUploads(bucket string) (minio.ListMultipartsInfo, error)
-	DeleteUpload(bucket, uploadID string) error
 
 	DeleteBlob(blob string) error
 	DeleteObject(bucket, object string) error

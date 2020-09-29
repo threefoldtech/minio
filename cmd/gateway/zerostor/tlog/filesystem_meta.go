@@ -159,7 +159,7 @@ func (t *fsTLogger) DeleteUpload(bucket, uploadID string) error {
 	t.recorder.Begin()
 	defer t.recorder.End()
 
-	if err := t.Manager.DeleteUpload(bucket, uploadID); err != nil {
+	if err := t.Manager.UploadDelete(bucket, uploadID); err != nil {
 		return err
 	}
 

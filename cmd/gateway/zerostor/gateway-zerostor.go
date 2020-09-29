@@ -545,9 +545,6 @@ func (zo *zerostorObjects) GetObject(ctx context.Context, bucket, object string,
 		return err
 	}
 
-	log.WithFields(log.Fields{
-		"size": objMeta.Size,
-	}).Debug("object size")
 	if length == -1 {
 		length = objMeta.Size
 	}
@@ -561,32 +558,30 @@ func (zo *zerostorObjects) GetObject(ctx context.Context, bucket, object string,
 		}
 
 		// we haven't reached the correct part to start from
-		// if startOffset > r.Obj.Size {
-		// 	startOffset -= r.Obj.Size
-		// 	continue
-		// }
+		if startOffset > r.Obj.Size {
+			startOffset -= r.Obj.Size
+			continue
+		}
 
-		// readLength := length
-		// if readLength > r.Obj.Size {
-		// 	readLength = r.Obj.Size
-		// 	length -= readLength
-		// }
+		readLength := length
+		if readLength > r.Obj.Size {
+			readLength = r.Obj.Size
+		}
 
-		if err := zstor.Read(&r.Obj.Metadata, writer, startOffset, -1); err != nil {
+		if err := zstor.Read(&r.Obj.Metadata, writer, startOffset, readLength); err != nil {
 			log.WithError(err).Error("failed to read")
 			return err
 		}
-		//startOffset = 0
-		// if length == 0 {
-		// 	break
-		// }
+
+		startOffset = 0
+		length -= readLength
+		if length <= 0 {
+			break
+		}
 	}
+
 	return nil
 }
-
-// func (zo *zerostorObjects) getObjectInfo(bucket, object string) (minio.ObjectInfo, error) {
-
-// }
 
 func (zo *zerostorObjects) GetObjectInfo(ctx context.Context, bucket, object string, opts minio.ObjectOptions) (objInfo minio.ObjectInfo, err error) {
 	log.WithFields(log.Fields{
@@ -970,6 +965,10 @@ func (zo *zerostorObjects) CompleteMultipartUpload(ctx context.Context, bucket, 
 		return info, err
 	}
 
+	if err := metaMgr.UploadDelete(bucket, uploadID); err != nil {
+		log.WithError(err).Error("failed to clean up upload")
+	}
+
 	return meta.CreateObjectInfo(bucket, object, &objMeta), nil
 }
 
@@ -993,29 +992,21 @@ func (zo *zerostorObjects) AbortMultipartUpload(ctx context.Context, bucket, obj
 	zstor := zo.manager.GetClient()
 	defer zstor.Close()
 
-	c := metaMgr.StreamMultiPartsMeta(ctx, bucket, uploadID)
-	for r := range c {
-		if r.Error != nil {
-			err = r.Error
-			break
-		}
-		if err = zstor.Delete(r.Obj.Metadata); err != nil {
-			break
-		}
-		metaMgr.DeleteBlob(r.Obj.Filename)
-	}
+	parts, err := metaMgr.UploadListParts(bucket, uploadID)
 	if err != nil {
+		return err
+	}
+
+	for _, part := range parts {
+		if err := metaMgr.UploadDeletePart(bucket, uploadID, part.PartNumber); err != nil {
+			log.WithError(err).WithField("part", part.PartNumber).Error("failed to delete part")
+		}
+	}
+
+	if err = metaMgr.UploadDelete(bucket, uploadID); err != nil {
 		return zstorToObjectErr(errors.WithStack(err), Operation("AbortMultipartUpload"), bucket, object)
 	}
 
-	if err = metaMgr.DeleteUpload(bucket, uploadID); err != nil {
-		return zstorToObjectErr(errors.WithStack(err), Operation("AbortMultipartUpload"), bucket, object)
-	}
-
-	err = metaMgr.DeleteObject(bucket, object)
-	if err != nil {
-		err = zstorToObjectErr(errors.WithStack(err), Operation("AbortMultipartUpload"), bucket, object)
-	}
 	return err
 }
 
@@ -1030,7 +1021,7 @@ func (zo *zerostorObjects) ListMultipartUploads(ctx context.Context, bucket, pre
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
 
-	result, err = metaMgr.ListMultipartUploads(bucket)
+	result, err = metaMgr.UploadList(bucket)
 	if err != nil {
 		err = zstorToObjectErr(errors.WithStack(err), Operation("ListMultipartUploads"), bucket)
 	}

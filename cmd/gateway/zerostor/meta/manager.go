@@ -184,6 +184,28 @@ func (m *metaManager) UploadPutPart(bucket, uploadID string, partID int, meta st
 	)
 }
 
+// UploadDeletePart this one does not only delete the link to the part meta
+// it also deletes all blobs in that part.
+func (m *metaManager) UploadDeletePart(bucket, uploadID string, partID int) error {
+	path := FilePath(UploadCollection, bucket, uploadID, fmt.Sprint(partID))
+	for {
+		meta, err := m.getBlob(path)
+		if err != nil {
+			return err
+		}
+		blob := FilePath(BlobCollection, meta.Filename)
+		if err := m.store.Del(blob); err != nil {
+			log.WithError(err).WithField("path", blob.String()).Error("failed to delete blob")
+		}
+		if len(meta.NextBlob) == 0 {
+			break
+		}
+		path = FilePath(BlobCollection, meta.NextBlob)
+	}
+
+	return nil
+}
+
 // DeleteBlob deletes a metadata blob file
 func (m *metaManager) DeleteBlob(blob string) error {
 
@@ -197,8 +219,8 @@ func (m *metaManager) DeleteBlob(blob string) error {
 }
 
 // DeleteUpload deletes the temporary multipart upload dir
-func (m *metaManager) DeleteUpload(bucket, uploadID string) error {
-	return m.store.Del(FilePath(UploadCollection, bucket, uploadID))
+func (m *metaManager) UploadDelete(bucket, uploadID string) error {
+	return m.store.Del(DirPath(UploadCollection, bucket, uploadID))
 }
 
 // DeleteObject deletes an object file from a bucket
@@ -673,7 +695,7 @@ func (m *metaManager) ValidUpload(bucket, uploadID string) (bool, error) {
 }
 
 // ListMultipartUploads lists multipart uploads that are in progress
-func (m *metaManager) ListMultipartUploads(bucket string) (minio.ListMultipartsInfo, error) {
+func (m *metaManager) UploadList(bucket string) (minio.ListMultipartsInfo, error) {
 	paths, err := m.store.List(FilePath(UploadCollection, bucket))
 	if os.IsNotExist(err) {
 		return minio.ListMultipartsInfo{}, nil
@@ -701,8 +723,8 @@ func (m *metaManager) ListMultipartUploads(bucket string) (minio.ListMultipartsI
 		}
 
 		info.Uploads = append(info.Uploads, uploadInfo.MultipartInfo)
-
 	}
+
 	return info, nil
 }
 
@@ -798,7 +820,7 @@ func (m *metaManager) UploadListParts(bucket, uploadID string) ([]minio.PartInfo
 			continue
 		}
 
-		metaObj, err := m.getMeta(file)
+		metaObj, err := m.getBlob(file)
 
 		if err != nil {
 			return nil, err
