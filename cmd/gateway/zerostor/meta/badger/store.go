@@ -114,7 +114,7 @@ func (s *badgerStore) Get(path meta.Path) (meta.Record, error) {
 
 		parts := strings.SplitN(string(record.Data), string(filepath.Separator), 2)
 		if len(parts) != 2 {
-			return record, fmt.Errorf("invalid link format: %s", string(record.Data))
+			return record, fmt.Errorf("invalid link format: (%s) -> (%s)", path.String(), string(record.Data))
 		}
 
 		path = meta.FilePath(meta.Collection(parts[0]), parts[1])

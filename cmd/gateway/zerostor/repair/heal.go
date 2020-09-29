@@ -171,7 +171,7 @@ func (h *Healer) checkBlob(ctx context.Context, cb Callback, meta meta.Metadata)
 
 	meta.Metadata = *updated
 
-	if err := h.manager.WriteObjMeta(&meta); err != nil {
+	if err := h.manager.SetBlob(&meta); err != nil {
 		return result.WithError(errors.Wrapf(err, "failed to update meta object for blob (%s)", meta.Filename))
 	}
 	// if repaired then status should be back to optimal
@@ -200,7 +200,7 @@ func (h *Healer) Check(ctx context.Context, cb Callback) <-chan Status {
 
 //CheckObject check single object
 func (h *Healer) CheckObject(ctx context.Context, cb Callback, bucket, object string) <-chan Status {
-	blobs := h.manager.StreamObjectMeta(ctx, bucket, object)
+	blobs := h.manager.GetMetaStream(ctx, bucket, object)
 	ch := make(chan Status)
 	go func(ctx context.Context) {
 		defer close(ch)

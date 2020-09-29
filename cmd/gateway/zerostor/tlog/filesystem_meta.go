@@ -3,6 +3,7 @@ package tlog
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"time"
 
@@ -69,25 +70,27 @@ func (t *fsTLogger) SetBucketPolicy(name string, policy *policy.Policy) error {
 
 // PutObject creates metadata for an object
 func (t *fsTLogger) PutObject(metaData *metatypes.Metadata, bucket, object string) (minio.ObjectInfo, error) {
-	t.recorder.Begin()
-	defer t.recorder.End()
+	return minio.ObjectInfo{}, fmt.Errorf("not implemented")
 
-	info, err := t.Manager.PutObject(metaData, bucket, object)
-	if err != nil {
-		return info, err
-	}
+	// t.recorder.Begin()
+	// defer t.recorder.End()
 
-	metaBytes, err := json.Marshal(metaData)
-	if err != nil {
-		return info, err
-	}
-	_, err = t.recorder.Record(Record{
-		OperationObjectPut,
-		metaBytes,
-		bucket,
-		object,
-	}, true)
-	return info, err
+	// info, err := t.Manager.PutObject(metaData, bucket, object)
+	// if err != nil {
+	// 	return info, err
+	// }
+
+	// metaBytes, err := json.Marshal(metaData)
+	// if err != nil {
+	// 	return info, err
+	// }
+	// _, err = t.recorder.Record(Record{
+	// 	OperationObjectPut,
+	// 	metaBytes,
+	// 	bucket,
+	// 	object,
+	// }, true)
+	// return info, err
 }
 
 // PutObject creates metadata for an object
@@ -111,26 +114,28 @@ func (t *fsTLogger) Mkdir(bucket, object string) error {
 
 // PutObjectPart creates metadata for an object upload part
 func (t *fsTLogger) PutObjectPart(objMeta meta.Metadata, bucket, uploadID string, partID int) (minio.PartInfo, error) {
-	t.recorder.Begin()
-	defer t.recorder.End()
+	return minio.PartInfo{}, fmt.Errorf("not implemented")
 
-	info, err := t.Manager.PutObjectPart(objMeta, bucket, uploadID, partID)
-	if err != nil {
-		return info, err
-	}
+	// t.recorder.Begin()
+	// defer t.recorder.End()
 
-	metaBytes, err := json.Marshal(objMeta)
-	if err != nil {
-		return info, err
-	}
-	_, err = t.recorder.Record(Record{
-		OperationPartPut,
-		metaBytes,
-		bucket,
-		uploadID,
-		partID,
-	}, true)
-	return info, err
+	// info, err := t.Manager.UploadPutPart(objMeta, bucket, uploadID, partID)
+	// if err != nil {
+	// 	return info, err
+	// }
+
+	// metaBytes, err := json.Marshal(objMeta)
+	// if err != nil {
+	// 	return info, err
+	// }
+	// _, err = t.recorder.Record(Record{
+	// 	OperationPartPut,
+	// 	metaBytes,
+	// 	bucket,
+	// 	uploadID,
+	// 	partID,
+	// }, true)
+	// return info, err
 }
 
 // DeleteBlob deletes a metadata blob file
@@ -201,21 +206,24 @@ func (t *fsTLogger) LinkObject(bucket, object, blob string) error {
 
 // LinkPart links a multipart upload part to a metadata blob file
 func (t *fsTLogger) LinkPart(bucket, uploadID, partID, blob string) error {
-	t.recorder.Begin()
-	defer t.recorder.End()
+	return fmt.Errorf("not implemented")
+	/*
+		t.recorder.Begin()
+		defer t.recorder.End()
 
-	if err := t.Manager.LinkPart(bucket, uploadID, partID, blob); err != nil {
+		if err := t.Manager.LinkPart(bucket, uploadID, partID, blob); err != nil {
+			return err
+		}
+
+		_, err := t.recorder.Record(Record{
+			OperationPartLink,
+			bucket,
+			uploadID,
+			partID,
+			blob,
+		}, true)
 		return err
-	}
-
-	_, err := t.recorder.Record(Record{
-		OperationPartLink,
-		bucket,
-		uploadID,
-		partID,
-		blob,
-	}, true)
-	return err
+	*/
 }
 
 // NewMultipartUpload initializes a new multipart upload
@@ -223,7 +231,7 @@ func (t *fsTLogger) NewMultipartUpload(bucket, object, uploadID string, meta map
 	t.recorder.Begin()
 	defer t.recorder.End()
 
-	err := t.Manager.NewMultipartUpload(bucket, object, uploadID, meta)
+	uploadID, err := t.Manager.UploadCreate(bucket, object, meta)
 	if err != nil {
 		return err
 	}
@@ -247,7 +255,7 @@ func (t *fsTLogger) WriteObjMeta(obj *meta.Metadata) error {
 	t.recorder.Begin()
 	defer t.recorder.End()
 
-	if err := t.Manager.WriteObjMeta(obj); err != nil {
+	if err := t.Manager.SetBlob(obj); err != nil {
 		return err
 	}
 
@@ -265,27 +273,30 @@ func (t *fsTLogger) WriteObjMeta(obj *meta.Metadata) error {
 
 // CompleteMultipartUpload completes a multipart upload by linking all metadata blobs
 func (t *fsTLogger) CompleteMultipartUpload(bucket, object, uploadID string, parts []minio.CompletePart) (minio.ObjectInfo, error) {
-	t.recorder.Begin()
-	defer t.recorder.End()
+	return minio.ObjectInfo{}, fmt.Errorf("not implemented")
+	/*
+		t.recorder.Begin()
+		defer t.recorder.End()
 
-	info, err := t.Manager.CompleteMultipartUpload(bucket, object, uploadID, parts)
-	if err != nil {
+		info, err := t.Manager.UploadComplete(bucket, object, uploadID, parts)
+		if err != nil {
+			return info, err
+		}
+
+		partsBytes, err := json.Marshal(parts)
+		if err != nil {
+			return info, err
+		}
+
+		_, err = t.recorder.Record(Record{
+			OperationUploadComplete,
+			bucket,
+			object,
+			uploadID,
+			partsBytes,
+		}, true)
 		return info, err
-	}
-
-	partsBytes, err := json.Marshal(parts)
-	if err != nil {
-		return info, err
-	}
-
-	_, err = t.recorder.Record(Record{
-		OperationUploadComplete,
-		bucket,
-		object,
-		uploadID,
-		partsBytes,
-	}, true)
-	return info, err
+	*/
 }
 
 // WriteMetaStream writes a stream of metadata to disk, links them, and returns the first blob

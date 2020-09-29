@@ -156,24 +156,31 @@ type Manager interface {
 	// link to the given meta file head. returns the version string
 	CreateVersion(objectID string, meta string) (string, error)
 
-	WriteObjMeta(obj *Metadata) error
+	GetMetaStream(ctx context.Context, bucket, object string) <-chan Stream
+
+	UploadCreate(bucket, object string, meta map[string]string) (string, error)
+	UploadGet(bucket, uploadID string) (info minio.MultipartInfo, err error)
+	UploadPutPart(bucket, uploadID string, partID int, meta string) error
+	UploadListParts(bucket, uploadID string) ([]minio.PartInfo, error)
+	UploadComplete(bucket, object, uploadID string, parts []minio.CompletePart) (Metadata, error)
+
+	SetBlob(obj *Metadata) error
 	LinkObject(bucket, object, blob string) error
-	LinkPart(bucket, uploadID, partID, blob string) error
+
+	//LinkPart(bucket, uploadID, partID, blob string) error
 	ListObjects(ctx context.Context, bucket, prefix, marker, delimiter string, maxKeys int) (minio.ListObjectsInfo, error)
 	ListObjectsV2(ctx context.Context, bucket, prefix, continuationToken, delimiter string, maxKeys int, fetchOwner bool, startAfter string) (minio.ListObjectsV2Info, error)
-	NewMultipartUpload(bucket, object string, uploadID string, meta map[string]string) error
+
 	ListMultipartUploads(bucket string) (minio.ListMultipartsInfo, error)
 	DeleteUpload(bucket, uploadID string) error
-	ListUploadParts(bucket, uploadID string) ([]minio.PartInfo, error)
-	CompleteMultipartUpload(bucket, object, uploadID string, parts []minio.CompletePart) (minio.ObjectInfo, error)
+
 	DeleteBlob(blob string) error
 	DeleteObject(bucket, object string) error
-	PutObjectPart(objMeta Metadata, bucket, uploadID string, partID int) (minio.PartInfo, error)
-	PutObject(metaData *metatypes.Metadata, bucket, object string) (minio.ObjectInfo, error)
+
 	Mkdir(bucket, object string) error
 	GetObjectInfo(bucket, object string) (minio.ObjectInfo, error)
 	GetObjectMeta(bucket, object string) (Metadata, error)
-	StreamObjectMeta(ctx context.Context, bucket, object string) <-chan Stream
+
 	StreamMultiPartsMeta(ctx context.Context, bucket, uploadID string) <-chan Stream
 	StreamBlobs(ctx context.Context) <-chan Stream
 	ValidUpload(bucket, uploadID string) (bool, error)
@@ -227,7 +234,7 @@ func getUserMetadataValue(key string, userMeta map[string]string) string {
 	return v
 }
 
-// convert zerostor epoch time to Go timestamp
-func zstorEpochToTimestamp(epoch int64) time.Time {
+// EpochToTimestamp converts zerostor epoch time to Go timestamp
+func EpochToTimestamp(epoch int64) time.Time {
 	return time.Unix(epoch/1e9, epoch%1e9)
 }

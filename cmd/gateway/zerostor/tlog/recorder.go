@@ -8,12 +8,8 @@ import (
 	"os"
 	"sync"
 
-	"github.com/threefoldtech/0-stor/client/metastor/metatypes"
-
 	"github.com/garyburd/redigo/redis"
-	minio "github.com/minio/minio/cmd"
 	"github.com/minio/minio/cmd/gateway/zerostor/meta"
-	"github.com/minio/minio/pkg/bucket/policy"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack"
 )
@@ -100,66 +96,69 @@ func (r Record) JSON(at int, o interface{}) error {
 //returned if the underlying meta manager return an error. A panic
 //is thrown if the record is corrupt
 func (r Record) Play(metaManager meta.Manager) error {
-	var err error
-	switch r.Action() {
-	case OperationBucketCreate:
-		err = metaManager.CreateBucket(r.String(1))
-	case OperationBucketDelete:
-		err = metaManager.DeleteBucket(r.String(1))
-	case OperationBucketSetPolicy:
-		var pol policy.Policy
-		if err = r.JSON(2, &pol); err != nil {
-			return err
+	return fmt.Errorf("not implemented")
+	/*
+		var err error
+		switch r.Action() {
+		case OperationBucketCreate:
+			err = metaManager.CreateBucket(r.String(1))
+		case OperationBucketDelete:
+			err = metaManager.DeleteBucket(r.String(1))
+		case OperationBucketSetPolicy:
+			var pol policy.Policy
+			if err = r.JSON(2, &pol); err != nil {
+				return err
+			}
+			err = metaManager.SetBucketPolicy(r.String(1), &pol)
+		case OperationPartPut:
+			var metaData meta.Metadata
+			if err = r.JSON(1, &metaData); err != nil {
+				return err
+			}
+			_, err = metaManager.UploadPutPart(r.String(2), r.String(3), r.Int(4))
+		case OperationPartLink:
+			err = metaManager.LinkPart(r.String(1), r.String(2), r.String(3), r.String(4))
+		case OperationBlobDelete:
+			err = metaManager.DeleteBlob(r.String(1))
+		case OperationObjectDelete:
+			err = metaManager.DeleteObject(r.String(1), r.String(2))
+		case OperationObjectLink:
+			err = metaManager.LinkObject(r.String(1), r.String(2), r.String(3))
+		case OperationObjectPut:
+			var metaData metatypes.Metadata
+			if err = r.JSON(1, &metaData); err != nil {
+				return err
+			}
+			_, err = metaManager.PutObject(&metaData, r.String(2), r.String(3))
+		case OperationObjectMkdir:
+			err = metaManager.Mkdir(r.String(1), r.String(2))
+		case OperationObjectWriteMeta:
+			var metaData meta.Metadata
+			if err = r.JSON(1, &metaData); err != nil {
+				return err
+			}
+			err = metaManager.WriteObjMeta(&metaData)
+		case OperationUploadNew:
+			var meta map[string]string
+			if err = r.JSON(4, &meta); err != nil {
+				return err
+			}
+			_, err = metaManager.UploadCreate(r.String(1), r.String(2), meta)
+		case OperationUploadDelete:
+			err = metaManager.DeleteUpload(r.String(1), r.String(2))
+		case OperationUploadComplete:
+			var parts []minio.CompletePart
+			if err = r.JSON(4, &parts); err != nil {
+				return err
+			}
+			_, err = metaManager.CompleteMultipartUpload(r.String(1), r.String(2), r.String(3), parts)
+		case OperationTest:
+		default:
+			err = fmt.Errorf("unknown record action: %s", r.Action())
 		}
-		err = metaManager.SetBucketPolicy(r.String(1), &pol)
-	case OperationPartPut:
-		var metaData meta.Metadata
-		if err = r.JSON(1, &metaData); err != nil {
-			return err
-		}
-		_, err = metaManager.PutObjectPart(metaData, r.String(2), r.String(3), r.Int(4))
-	case OperationPartLink:
-		err = metaManager.LinkPart(r.String(1), r.String(2), r.String(3), r.String(4))
-	case OperationBlobDelete:
-		err = metaManager.DeleteBlob(r.String(1))
-	case OperationObjectDelete:
-		err = metaManager.DeleteObject(r.String(1), r.String(2))
-	case OperationObjectLink:
-		err = metaManager.LinkObject(r.String(1), r.String(2), r.String(3))
-	case OperationObjectPut:
-		var metaData metatypes.Metadata
-		if err = r.JSON(1, &metaData); err != nil {
-			return err
-		}
-		_, err = metaManager.PutObject(&metaData, r.String(2), r.String(3))
-	case OperationObjectMkdir:
-		err = metaManager.Mkdir(r.String(1), r.String(2))
-	case OperationObjectWriteMeta:
-		var metaData meta.Metadata
-		if err = r.JSON(1, &metaData); err != nil {
-			return err
-		}
-		err = metaManager.WriteObjMeta(&metaData)
-	case OperationUploadNew:
-		var meta map[string]string
-		if err = r.JSON(4, &meta); err != nil {
-			return err
-		}
-		err = metaManager.NewMultipartUpload(r.String(1), r.String(2), r.String(3), meta)
-	case OperationUploadDelete:
-		err = metaManager.DeleteUpload(r.String(1), r.String(2))
-	case OperationUploadComplete:
-		var parts []minio.CompletePart
-		if err = r.JSON(4, &parts); err != nil {
-			return err
-		}
-		_, err = metaManager.CompleteMultipartUpload(r.String(1), r.String(2), r.String(3), parts)
-	case OperationTest:
-	default:
-		err = fmt.Errorf("unknown record action: %s", r.Action())
-	}
 
-	return err
+		return err
+	*/
 }
 
 type zdbRecorder struct {

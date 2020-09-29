@@ -176,32 +176,12 @@ func (m *metaManager) Mkdir(bucket, object string) error {
 	return m.store.Set(NewPath(ObjectCollection, filepath.Join(bucket, object), ""), nil)
 }
 
-// PutObject creates metadata for an object
-func (m *metaManager) PutObject(metaData *metatypes.Metadata, bucket, object string) (minio.ObjectInfo, error) {
-	objMeta, err := m.createBlob(metaData, false)
-	if err != nil {
-		return minio.ObjectInfo{}, err
-	}
-
-	if err = m.LinkObject(bucket, object, objMeta.Filename); err != nil {
-		return minio.ObjectInfo{}, err
-	}
-
-	return CreateObjectInfo(bucket, object, &objMeta), nil
-}
-
 // PutObjectPart creates metadata for an object upload part
-func (m *metaManager) PutObjectPart(objMeta Metadata, bucket, uploadID string, partID int) (minio.PartInfo, error) {
-	if err := m.LinkPart(bucket, uploadID, strconv.Itoa(partID), objMeta.Filename); err != nil {
-		return minio.PartInfo{}, err
-	}
-
-	return minio.PartInfo{
-		PartNumber:   partID,
-		LastModified: zstorEpochToTimestamp(objMeta.ObjectModTime),
-		ETag:         objMeta.UserDefined[ETagKey],
-		Size:         objMeta.Size,
-	}, nil
+func (m *metaManager) UploadPutPart(bucket, uploadID string, partID int, meta string) error {
+	return m.store.Link(
+		FilePath(UploadCollection, bucket, uploadID, fmt.Sprint(partID)),
+		FilePath(BlobCollection, meta),
+	)
 }
 
 // DeleteBlob deletes a metadata blob file
@@ -248,14 +228,6 @@ func (m *metaManager) LinkObject(bucket, object, fileID string) error {
 
 	return m.store.Link(
 		link,
-		m.blobPath(fileID),
-	)
-}
-
-// LinkPart links a multipart upload part to a metadata blob file
-func (m *metaManager) LinkPart(bucket, uploadID, partID, fileID string) error {
-	return m.store.Link(
-		NewPath(UploadCollection, filepath.Join(bucket, uploadID), partID),
 		m.blobPath(fileID),
 	)
 }
@@ -324,7 +296,7 @@ func (m *metaManager) ListObjectsV2(ctx context.Context, bucket, prefix,
 	return result, err
 }
 
-func (m *metaManager) WriteObjMeta(obj *Metadata) error {
+func (m *metaManager) SetBlob(obj *Metadata) error {
 	if len(obj.Filename) == 0 {
 		return fmt.Errorf("invalid metadata object filename")
 	}
@@ -339,104 +311,96 @@ func (m *metaManager) WriteObjMeta(obj *Metadata) error {
 }
 
 // CompleteMultipartUpload completes a multipart upload by linking all metadata blobs
-func (m *metaManager) CompleteMultipartUpload(bucket, object, uploadID string, parts []minio.CompletePart) (minio.ObjectInfo, error) {
+func (m *metaManager) UploadComplete(bucket, _object, uploadID string, parts []minio.CompletePart) (Metadata, error) {
 
 	var totalSize int64
-	var modTime int64
-	var previousPart Metadata
-	var firstPart Metadata
-	firstPart.Filename = "00000000-0000-0000-0000-000000000000"
+	var head *Metadata
+	var tail *Metadata
+
+	if len(parts) == 0 {
+		return Metadata{}, fmt.Errorf("invalid parts count")
+	}
 
 	// use upload parts to set NextBlob in all blobs metaData
 	for ix, part := range parts {
-		partPath := NewPath(
+		partPath := FilePath(
 			UploadCollection,
-			filepath.Join(bucket, uploadID),
+			bucket, uploadID,
 			fmt.Sprint(part.PartNumber),
 		)
-
-		metaObj, err := m.getObjectMeta(partPath)
+		var err error
+		next, err := m.getBlob(partPath)
 
 		if os.IsNotExist(err) {
-			return minio.ObjectInfo{}, minio.InvalidPart{}
+			return Metadata{}, minio.InvalidPart{}
 		} else if err != nil {
-			return minio.ObjectInfo{}, err
+			return Metadata{}, err
 		}
 
 		if ix == 0 {
-			firstPart = metaObj
+			head = next
 		}
 
-		if metaObj.Size < MinPartSize && ix != len(parts)-1 {
-			//only last part is allowed to be less than 5M
-			return minio.ObjectInfo{}, minio.PartTooSmall{
-				PartSize:   metaObj.Size,
-				PartNumber: part.PartNumber,
+		totalSize += next.Size
+
+		if tail != nil {
+			// if tail has a value, we need to chain it to this blob
+			tail.NextBlob = next.Filename
+			if err := m.SetBlob(tail); err != nil {
+				return Metadata{}, err
 			}
 		}
 
-		// calculate the total size of the object
-		totalSize += metaObj.ObjectSize
-		blob := metaObj
-		for {
-			if blob.NextBlob != "" {
-				blob, err = m.getObjectMeta(m.blobPath(blob.NextBlob))
-				if err != nil {
-					return minio.ObjectInfo{}, err
-				}
-				continue
+		// forward to new tail
+		tail = next
+		for len(tail.NextBlob) > 0 {
+			path := FilePath(BlobCollection, tail.NextBlob)
+			tail, err = m.getBlob(path)
+			if err != nil {
+				return Metadata{}, err
 			}
+		}
+	}
+
+	// verification (debug)
+	test := head
+	for {
+		if len(test.NextBlob) == 0 {
 			break
 		}
 
-		// set the NextBlob and save the file except for the first part which we save later on
-		if ix != 0 {
-			previousPart.NextBlob = string(metaObj.Filename)
-
-			// compare keys to make sure it is the first part and not partitioned blob
-			if ix == 1 && string(previousPart.Key) == string(firstPart.Key) {
-				firstPart = previousPart
-			} else {
-				m.WriteObjMeta(&previousPart)
-			}
+		var err error
+		path := FilePath(BlobCollection, test.NextBlob)
+		test, err = m.getBlob(path)
+		if err != nil {
+			return Metadata{}, err
 		}
-
-		if ix == len(parts)-1 {
-			modTime = metaObj.LastWriteEpoch
-		}
-		previousPart = blob
 	}
 
-	metaRec, err := m.store.Get(NewPath(UploadCollection, filepath.Join(bucket, uploadID), uploadMetaFile))
+	metaRec, err := m.store.Get(FilePath(UploadCollection, bucket, uploadID, uploadMetaFile))
 	if err != nil {
-		return minio.ObjectInfo{}, err
+		return Metadata{}, err
 	}
 
-	uploadInfo := multiPartInfo{}
+	var uploadInfo minio.MultipartInfo
 	err = m.decode(metaRec.Data, &uploadInfo)
 	if err != nil {
-		return minio.ObjectInfo{}, err
+		return Metadata{}, err
 	}
 
 	// put the object info in the first blob and save it
-	firstPart.ObjectUserMeta = uploadInfo.Metadata
-	firstPart.ObjectSize = totalSize
-	firstPart.ObjectModTime = modTime
-	if err := m.WriteObjMeta(&firstPart); err != nil {
-		return minio.ObjectInfo{}, err
+	head.ObjectUserMeta = uploadInfo.UserDefined
+	head.ObjectSize = totalSize
+	if err := m.SetBlob(head); err != nil {
+		return Metadata{}, err
 	}
 
-	// link the object to the first blob
-	if err := m.LinkObject(bucket, object, firstPart.Filename); err != nil {
-		return minio.ObjectInfo{}, err
-	}
-
-	return CreateObjectInfo(bucket, object, &firstPart), m.DeleteUpload(bucket, uploadID)
+	return *head, nil
 }
 
 // GetObjectInfo returns info about a bucket object
 func (m *metaManager) GetObjectInfo(bucket, object string) (minio.ObjectInfo, error) {
-	md, err := m.getObjectMeta(FilePath(ObjectCollection, bucket, object))
+	md, err := m.getMeta(FilePath(ObjectCollection, bucket, object))
 	if os.IsNotExist(err) {
 		return minio.ObjectInfo{}, minio.ObjectNotFound{Bucket: bucket, Object: object}
 	} else if err != nil {
@@ -447,7 +411,7 @@ func (m *metaManager) GetObjectInfo(bucket, object string) (minio.ObjectInfo, er
 
 // GetObjectInfo returns info about a bucket object
 func (m *metaManager) GetObjectMeta(bucket, object string) (Metadata, error) {
-	return m.getObjectMeta(FilePath(ObjectCollection, bucket, object))
+	return m.getMeta(FilePath(ObjectCollection, bucket, object))
 }
 
 func (m *metaManager) getObjectVersion(objectID, version string) (Metadata, error) {
@@ -465,7 +429,12 @@ func (m *metaManager) getObjectVersion(objectID, version string) (Metadata, erro
 	return meta, nil
 }
 
-func (m *metaManager) getObjectMeta(path Path) (Metadata, error) {
+// getMeta returns only the first metadata part. This can
+// be only a part of the full object meta, or the entire object
+// meta based on object size. To get ALL meta parts that makes
+// an object you need to use the GetMetaStream method.
+// DEPRECATED
+func (m *metaManager) getMeta(path Path) (Metadata, error) {
 	record, err := m.store.Get(path)
 	if err != nil {
 		return Metadata{}, err
@@ -489,31 +458,74 @@ func (m *metaManager) getObjectMeta(path Path) (Metadata, error) {
 	return m.getObjectVersion(obj.ID, obj.Version)
 }
 
-// StreamObjectMeta streams an object metadata blobs through a channel
-func (m *metaManager) StreamObjectMeta(ctx context.Context, bucket, object string) <-chan Stream {
+func (m *metaManager) getObject(bucket, object string) (Object, error) {
+	path := FilePath(ObjectCollection, bucket, object)
+	record, err := m.store.Get(path)
+	if err != nil {
+		return Object{}, err
+	}
+
+	if record.Path.IsDir() || len(record.Data) == 0 {
+		// empty data is used for directories.
+
+		return Object{}, os.ErrNotExist
+	}
+
+	var obj Object
+	if err := m.decode(record.Data, &obj); err != nil {
+		return obj, err
+	}
+
+	return obj, err
+}
+
+// getBlob returns only the first metadata part. This can
+// be only a part of the full object meta, or the entire object
+// meta based on object size. To get ALL meta parts that makes
+// an object you need to use the GetMetaStream method.
+func (m *metaManager) getBlob(path Path) (*Metadata, error) {
+	record, err := m.store.Get(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var obj Metadata
+	if err := m.decode(record.Data, &obj); err != nil {
+		return nil, err
+	}
+
+	return &obj, nil
+}
+
+// GetMetaStream streams an object metadata blobs through a channel
+func (m *metaManager) GetMetaStream(ctx context.Context, bucket, object string) <-chan Stream {
 	c := make(chan Stream)
 	go func() {
 		defer close(c)
-		metaFile := FilePath(ObjectCollection, bucket, object)
+		obj, err := m.getObject(bucket, object)
+		if err != nil {
+
+			c <- Stream{Error: err}
+			return
+		}
+
+		path := FilePath(VersionCollection, obj.ID, obj.Version)
+
 		for {
-			objMeta, err := m.getObjectMeta(metaFile)
-			if os.IsNotExist(err) {
+			objMeta, err := m.getBlob(path)
+			if err != nil {
+				c <- Stream{Error: err}
 				return
-			} else if err != nil {
-				switch err.(type) {
-				case minio.ObjectNotFound:
-					return
-				}
 			}
 
 			select {
 			case <-ctx.Done():
 				return
-			case c <- Stream{objMeta, err}:
+			case c <- Stream{*objMeta, err}:
 				if objMeta.NextBlob == "" {
 					return
 				}
-				metaFile = m.blobPath(objMeta.NextBlob)
+				path = FilePath(BlobCollection, objMeta.NextBlob)
 			}
 		}
 	}()
@@ -526,10 +538,12 @@ func (m *metaManager) WriteMetaStream(cb func() (*metatypes.Metadata, error)) (M
 	// any changes to this function need to be mirrored in the filesystem tlogger
 	var totalSize int64
 	var modTime int64
-	var previousPart Metadata
-	var firstPart Metadata
-	var objMeta Metadata
+	var head *Metadata
+	var currentMeta *Metadata
 	counter := 0
+
+	current := uuid.New().String()
+	next := uuid.New().String()
 
 	for {
 		metaData, err := cb()
@@ -541,44 +555,51 @@ func (m *metaManager) WriteMetaStream(cb func() (*metatypes.Metadata, error)) (M
 
 		totalSize += metaData.Size
 		modTime = metaData.LastWriteEpoch
-		objMeta = Metadata{
-			Metadata: *metaData,
-			Filename: uuid.New().String(),
+		currentMeta = new(Metadata)
+		currentMeta.Metadata = *metaData
+		currentMeta.Filename = current
+		currentMeta.NextBlob = next
+
+		if err := m.SetBlob(currentMeta); err != nil {
+			return Metadata{}, err
 		}
 
-		// if this is not the first iteration set the NextBlob on the previous blob and save it if it is not the first blob
-		if counter > 0 {
-			previousPart.NextBlob = objMeta.Filename
-			if counter == 1 {
-				// update the first part
-				firstPart = previousPart
-			} else {
-				if err := m.WriteObjMeta(&previousPart); err != nil {
-					return Metadata{}, err
-				}
-			}
-		} else { // if this is the first iteration, mark the first blob
-			firstPart = objMeta
+		current = next
+		next = uuid.New().String()
+
+		if counter == 0 {
+			head = currentMeta
 		}
-		previousPart = objMeta
+
+		if err == io.EOF {
+			break
+		}
+
 		counter++
 	}
 
-	// write the meta of the last received metadata
-	if err := m.WriteObjMeta(&objMeta); err != nil {
-		return Metadata{}, err
+	// terminate current blob
+	// this stream actually has multiple objects
+	// it means we need to terminate the end part
+	currentMeta.NextBlob = ""
+
+	if currentMeta != head {
+		// write the meta of the last received metadata
+		if err := m.SetBlob(currentMeta); err != nil {
+			return Metadata{}, err
+		}
 	}
 
-	firstPart.ObjectSize = totalSize
-	firstPart.ObjectModTime = modTime
-	firstPart.ObjectUserMeta = firstPart.UserDefined
+	head.ObjectSize = totalSize
+	head.ObjectModTime = modTime
+	head.ObjectUserMeta = head.UserDefined
 
 	// update the the first meta part with the size and mod time
-	if err := m.WriteObjMeta(&firstPart); err != nil {
+	if err := m.SetBlob(head); err != nil {
 		return Metadata{}, err
 	}
 
-	return firstPart, nil
+	return *head, nil
 }
 
 func (m *metaManager) CreateVersion(objectID string, meta string) (string, error) {
@@ -625,7 +646,7 @@ func (m *metaManager) StreamBlobs(ctx context.Context) <-chan Stream {
 				if blob.IsDir() {
 					continue
 				}
-				objMeta, err := m.getObjectMeta(blob)
+				objMeta, err := m.getMeta(blob)
 				if err != nil {
 					log.WithFields(log.Fields{"file": blob}).WithError(err)
 				}
@@ -709,7 +730,7 @@ func (m *metaManager) StreamMultiPartsMeta(ctx context.Context, bucket, uploadID
 				continue
 			}
 
-			objMeta, err := m.getObjectMeta(file)
+			objMeta, err := m.getMeta(file)
 
 			select {
 			case c <- Stream{objMeta, err}:
@@ -724,28 +745,41 @@ func (m *metaManager) StreamMultiPartsMeta(ctx context.Context, bucket, uploadID
 }
 
 // NewMultipartUpload initializes a new multipart upload
-func (m *metaManager) NewMultipartUpload(bucket, object, uploadID string, meta map[string]string) error {
+func (m *metaManager) UploadCreate(bucket, object string, meta map[string]string) (string, error) {
+	uploadID := uuid.New().String()
 	// create upload ID
-	info := multiPartInfo{
-		MultipartInfo: minio.MultipartInfo{
-			UploadID:  uploadID,
-			Object:    object,
-			Initiated: time.Now(),
-		},
-		Metadata: meta,
+	info := minio.MultipartInfo{
+		UploadID:    uploadID,
+		Object:      object,
+		Initiated:   time.Now(),
+		UserDefined: meta,
 	}
 
 	path := FilePath(UploadCollection, bucket, uploadID, uploadMetaFile)
 	data, err := m.encode(info)
 	if err != nil {
-		return err
+		return uploadID, err
 	}
 
-	return m.store.Set(path, data)
+	return uploadID, m.store.Set(path, data)
+}
+
+func (m *metaManager) UploadGet(bucket, uploadID string) (info minio.MultipartInfo, err error) {
+	path := FilePath(UploadCollection, bucket, uploadID, uploadMetaFile)
+	record, err := m.store.Get(path)
+	if err != nil {
+		return info, err
+	}
+
+	if err := m.decode(record.Data, &info); err != nil {
+		return info, err
+	}
+
+	return info, nil
 }
 
 // ListUploadParts lists multipart upload parts
-func (m *metaManager) ListUploadParts(bucket, uploadID string) ([]minio.PartInfo, error) {
+func (m *metaManager) UploadListParts(bucket, uploadID string) ([]minio.PartInfo, error) {
 	files, err := m.store.List(FilePath(UploadCollection, bucket, uploadID))
 	if err != nil {
 		log.WithError(err).WithFields(log.Fields{
@@ -764,7 +798,7 @@ func (m *metaManager) ListUploadParts(bucket, uploadID string) ([]minio.PartInfo
 			continue
 		}
 
-		metaObj, err := m.getObjectMeta(file)
+		metaObj, err := m.getMeta(file)
 
 		if err != nil {
 			return nil, err
@@ -955,7 +989,7 @@ func (m *metaManager) createBlob(metaData *metatypes.Metadata, multiUpload bool)
 		objMeta.ObjectUserMeta = metaData.UserDefined
 		objMeta.ObjectModTime = metaData.LastWriteEpoch
 	}
-	return objMeta, m.WriteObjMeta(&objMeta)
+	return objMeta, m.SetBlob(&objMeta)
 }
 
 func (m *metaManager) isNotExist(err error) bool {
@@ -1006,7 +1040,7 @@ func (m *metaManager) scanDelimited(ctx context.Context, bucket, prefix, after s
 			continue
 		}
 
-		md, err := m.getObjectMeta(path)
+		md, err := m.getMeta(path)
 		if os.IsNotExist(err) {
 			continue
 		} else if err != nil {
@@ -1054,7 +1088,7 @@ func (m *metaManager) scanFlat(ctx context.Context, bucket, prefix, after string
 			continue
 		}
 
-		md, err := m.getObjectMeta(path)
+		md, err := m.getMeta(path)
 		if err != nil {
 			return after, err
 		}
@@ -1102,7 +1136,7 @@ func CreateObjectInfo(bucket, object string, md *Metadata) minio.ObjectInfo {
 		Bucket:          bucket,
 		Name:            object,
 		Size:            md.ObjectSize,
-		ModTime:         zstorEpochToTimestamp(md.ObjectModTime),
+		ModTime:         EpochToTimestamp(md.ObjectModTime),
 		ETag:            etag,
 		IsDir:           md.IsDir,
 		ContentType:     getUserMetadataValue(contentTypeKey, md.ObjectUserMeta),

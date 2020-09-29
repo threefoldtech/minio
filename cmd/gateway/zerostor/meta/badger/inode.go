@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/minio/minio/cmd/gateway/zerostor/meta"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -204,6 +205,7 @@ func (s *badgerInodeStore) Get(path meta.Path) (meta.Record, error) {
 }
 
 func (s *badgerInodeStore) Del(path meta.Path) error {
+	log.WithField("path", path).Debug("Del")
 	//TODO:
 	// - How to delete an object
 	// - Do we allow deleting of non-empty directories ?
