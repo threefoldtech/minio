@@ -27,6 +27,9 @@ var (
 		Version: policy.DefaultVersion,
 	}
 	errMaxKeyReached = errors.New("max keys reached")
+
+	//ErrDirectoryNotEmpty in case deleting a directory that has children
+	ErrDirectoryNotEmpty = errors.New("directory not empty")
 )
 
 // Collection defines a collection type under the metastore
@@ -143,12 +146,12 @@ type Scan struct {
 
 // Manager interface for metadata managers
 type Manager interface {
-	CreateBucket(string) error
-	GetBucket(name string) (*Bucket, error)
-	DeleteBucket(string) error
-	IsBucketEmpty(string) (bool, error)
-	ListBuckets() (map[string]*Bucket, error)
-	SetBucketPolicy(name string, policy *policy.Policy) error
+	BucketCreate(string) error
+	BucketGet(name string) (*Bucket, error)
+	BucketDelete(string) error
+	BucketIsEmpty(string) (bool, error)
+	BucketSetPolicy(name string, policy *policy.Policy) error
+	BucketsList() (map[string]*Bucket, error)
 
 	// ObjectEnsure returns or create a new initialized object
 	ObjectEnsure(bucket, object string) (Object, error)

@@ -12,7 +12,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/minio/minio/cmd/gateway/zerostor/meta"
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -158,11 +157,16 @@ func (s *badgerInodeStore) getDir(txn *badger.Txn, path string) (inode, error) {
 
 	return ind, nil
 }
-
 func (s *badgerInodeStore) Get(path meta.Path) (meta.Record, error) {
+	_, record, err := s.get(path)
+	return record, err
+}
+
+func (s *badgerInodeStore) get(path meta.Path) ([]byte, meta.Record, error) {
 	var data []byte
 	var stamp time.Time
 	var link bool
+	var key []byte
 	err := s.db.View(func(txn *badger.Txn) error {
 		dir, base := filepath.Split(path.Relative())
 		parent, err := s.getDir(txn, dir)
@@ -170,7 +174,7 @@ func (s *badgerInodeStore) Get(path meta.Path) (meta.Record, error) {
 			return err
 		}
 
-		key := s.getKey(parent, base)
+		key = s.getKey(parent, base)
 		item, err := txn.Get(key)
 		if err == badger.ErrKeyNotFound {
 			return os.ErrNotExist
@@ -196,7 +200,7 @@ func (s *badgerInodeStore) Get(path meta.Path) (meta.Record, error) {
 		})
 	})
 
-	return meta.Record{
+	return key, meta.Record{
 		Path: path,
 		Data: data,
 		Time: stamp,
@@ -205,46 +209,44 @@ func (s *badgerInodeStore) Get(path meta.Path) (meta.Record, error) {
 }
 
 func (s *badgerInodeStore) Del(path meta.Path) error {
-	log.WithField("path", path).Debug("Del")
-	//TODO:
-	// - How to delete an object
-	// - Do we allow deleting of non-empty directories ?
-	return fmt.Errorf("not implemented")
-	// log.WithField("path", path.String()).Debug("deleting path")
-	// //TODO: this should be done in patches to avoid allocating a big
-	// //arrays
-	// var keys [][]byte
+	key, record, err := s.get(path)
+	if err == os.ErrNotExist {
+		return nil
+	} else if err != nil {
+		return err
+	}
 
-	// err := s.db.View(func(txn *badger.Txn) error {
-	// 	prefix := []byte(path.String() + "/")
-	// 	it := txn.NewIterator(badger.DefaultIteratorOptions)
-	// 	defer it.Close()
-	// 	for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-	// 		keys = append(keys, it.Item().KeyCopy(nil))
-	// 	}
+	err = s.db.Update(func(txn *badger.Txn) error {
+		if !record.Path.IsDir() {
+			// it is a file or a link.
+			// can be deleted. first fine the parent
+			return txn.Delete(key)
+		}
 
-	// 	keys = append(keys, []byte(path.String()))
-	// 	return nil
-	// })
+		// it's a directory, we first get it's inode
+		ind, err := s.getDir(txn, path.Relative())
+		if err != nil {
+			return err
+		}
+		// scan it see if it has ANY objects
+		prefix := s.getPrefix(ind)
+		it := txn.NewIterator(badger.DefaultIteratorOptions)
+		defer it.Close()
 
-	// if err != nil {
-	// 	return err
-	// }
+		notEmpty := false
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			notEmpty = true
+			break
+		}
 
-	// err = s.db.Update(func(txn *badger.Txn) error {
-	// 	for _, key := range keys {
-	// 		err := txn.Delete(key)
-	// 		if err == badger.ErrKeyNotFound {
-	// 			continue
-	// 		} else if err != nil {
-	// 			log.WithField("err", err).WithField("key", key).Warn("failed to delete item")
-	// 		}
-	// 	}
+		if notEmpty {
+			return meta.ErrDirectoryNotEmpty
+		}
 
-	// 	return nil
-	// })
+		return txn.Delete(key)
+	})
 
-	// return err
+	return err
 }
 
 func (s *badgerInodeStore) Exists(path meta.Path) (bool, error) {
@@ -350,35 +352,6 @@ func (s *badgerInodeStore) scanDelimited(path meta.Path, after []byte, limit int
 
 func (s *badgerInodeStore) scanRecursive(path meta.Path, after []byte, limit int) (meta.Scan, error) {
 	return meta.Scan{}, fmt.Errorf("recursive scan is not implemented")
-	// var paths []meta.Path
-	// err := s.db.View(func(txn *badger.Txn) error {
-	// 	dir := s.getDir(txn, path)
-	// 	prefix := s.getPrefix(dir)
-	// 	it := txn.NewIterator(badger.DefaultIteratorOptions)
-	// 	defer it.Close()
-	// 	// should be one level under this prefix
-	// 	if len(after) == 0 {
-	// 		after = prefix
-	// 	}
-	// 	for it.Seek(after); it.ValidForPrefix(prefix); it.Next() {
-	// 		item := it.Item()
-	// 		key := item.Key()
-
-	// 		path, err := s.keyToPath(string(key), item.UserMeta())
-	// 		if err != nil {
-	// 			return err
-	// 		}
-	// 		paths = append(paths, path)
-
-	// 		if len(paths) >= limit {
-	// 			return nil
-	// 		}
-	// 	}
-
-	// 	return nil
-	// })
-
-	// return paths, err
 }
 
 func (s *badgerInodeStore) Scan(path meta.Path, after []byte, limit int, mode meta.ScanMode) (meta.Scan, error) {

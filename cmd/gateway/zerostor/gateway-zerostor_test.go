@@ -172,7 +172,7 @@ func TestGatewayObjectRoundTrip(t *testing.T) {
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
 
-	metaMgr.CreateBucket(destBucket)
+	metaMgr.BucketCreate(destBucket)
 
 	_, err = zo.CopyObject(ctx, bucket, object, destBucket, object, info, opts, minio.ObjectOptions{})
 	if err != nil {

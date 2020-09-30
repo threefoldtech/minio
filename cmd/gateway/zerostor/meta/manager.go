@@ -48,8 +48,7 @@ func (m *metaManager) Close() error {
 	return m.store.Close()
 }
 
-// CreateBucket creates bucket given its name
-func (m *metaManager) CreateBucket(name string) error {
+func (m *metaManager) BucketCreate(name string) error {
 	b := &Bucket{
 		Name:    name,
 		Created: time.Now(),
@@ -60,8 +59,8 @@ func (m *metaManager) CreateBucket(name string) error {
 	return m.saveBucket(b, false)
 }
 
-// DeleteBucket deletes a bucket given its name
-func (m *metaManager) DeleteBucket(name string) error {
+// BucketDelete deletes a bucket given its name
+func (m *metaManager) BucketDelete(name string) error {
 	isErr := func(err error) bool {
 		if os.IsNotExist(err) {
 			return false
@@ -99,8 +98,8 @@ func (m *metaManager) DeleteBucket(name string) error {
 	return nil
 }
 
-func (m *metaManager) IsBucketEmpty(name string) (bool, error) {
-	entries, err := m.store.List(NewPath(ObjectCollection, name, ""))
+func (m *metaManager) BucketIsEmpty(name string) (bool, error) {
+	entries, err := m.store.List(DirPath(ObjectCollection, name))
 	if err != nil {
 		return false, err
 	}
@@ -109,7 +108,7 @@ func (m *metaManager) IsBucketEmpty(name string) (bool, error) {
 }
 
 // ListBuckets lists all buckets
-func (m *metaManager) ListBuckets() (map[string]*Bucket, error) {
+func (m *metaManager) BucketsList() (map[string]*Bucket, error) {
 
 	paths, err := m.store.List(DirPath(BucketCollection))
 	if err != nil {
@@ -129,13 +128,13 @@ func (m *metaManager) ListBuckets() (map[string]*Bucket, error) {
 	return buckets, nil
 }
 
-// GetBucket returns a Bucket given its name
-func (m *metaManager) GetBucket(name string) (*Bucket, error) {
+// BucketGet returns a Bucket given its name
+func (m *metaManager) BucketGet(name string) (*Bucket, error) {
 	return m.getBucket(name)
 }
 
 // SetBucketPolicy changes bucket policy
-func (m *metaManager) SetBucketPolicy(name string, policy *policy.Policy) error {
+func (m *metaManager) BucketSetPolicy(name string, policy *policy.Policy) error {
 	bkt, err := m.getBucket(name)
 	if err != nil {
 		return err

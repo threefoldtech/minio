@@ -222,7 +222,7 @@ func (zo *zerostorObjects) GetBucketInfo(ctx context.Context, bucket string) (bu
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
 
-	bkt, err := metaMgr.GetBucket(bucket)
+	bkt, err := metaMgr.BucketGet(bucket)
 	if err != nil {
 		err = zstorToObjectErr(err, Operation("GetBucketInfo"), bucket)
 		return bucketInfo, err
@@ -245,7 +245,7 @@ func (zo *zerostorObjects) DeleteBucket(ctx context.Context, bucket string, forc
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
 
-	empty, err := metaMgr.IsBucketEmpty(bucket)
+	empty, err := metaMgr.BucketIsEmpty(bucket)
 	if err != nil {
 		return zstorToObjectErr(errors.WithStack(err), Operation("DeleteBucket"), bucket)
 	}
@@ -254,7 +254,7 @@ func (zo *zerostorObjects) DeleteBucket(ctx context.Context, bucket string, forc
 		return minio.BucketNotEmpty{}
 	}
 
-	err = metaMgr.DeleteBucket(bucket)
+	err = metaMgr.BucketDelete(bucket)
 	return zstorToObjectErr(errors.WithStack(err), Operation("DeleteBucket"), bucket)
 
 }
@@ -267,7 +267,7 @@ func (zo *zerostorObjects) ListBuckets(ctx context.Context) ([]minio.BucketInfo,
 	defer metaMgr.Close()
 
 	var buckets []minio.BucketInfo
-	bucketsList, err := metaMgr.ListBuckets()
+	bucketsList, err := metaMgr.BucketsList()
 	if err != nil {
 		return nil, zstorToObjectErr(errors.WithStack(err), Operation("ListBuckets"))
 
@@ -297,7 +297,7 @@ func (zo *zerostorObjects) MakeBucketWithLocation(ctx context.Context, bucket st
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
 
-	err := metaMgr.CreateBucket(bucket)
+	err := metaMgr.BucketCreate(bucket)
 	return zstorToObjectErr(errors.WithStack(err), Operation("MakeBucketWithLocation"), bucket)
 }
 
@@ -310,7 +310,7 @@ func (zo *zerostorObjects) GetBucketPolicy(ctx context.Context, bucket string) (
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
 
-	bkt, err := metaMgr.GetBucket(bucket)
+	bkt, err := metaMgr.BucketGet(bucket)
 	if err != nil {
 		err = zstorToObjectErr(err, Operation("GetBucketPolicy"), bucket)
 		return nil, err
@@ -336,7 +336,7 @@ func (zo *zerostorObjects) SetBucketPolicy(ctx context.Context, bucket string, p
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
 
-	err := metaMgr.SetBucketPolicy(bucket, policy)
+	err := metaMgr.BucketSetPolicy(bucket, policy)
 	return zstorToObjectErr(errors.WithStack(err), Operation("SetBucketPolicy"), bucket)
 
 }
@@ -352,7 +352,7 @@ func (zo *zerostorObjects) DeleteBucketPolicy(ctx context.Context, bucket string
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
 
-	err := metaMgr.SetBucketPolicy(bucket, &policy.Policy{Version: policy.DefaultVersion})
+	err := metaMgr.BucketSetPolicy(bucket, &policy.Policy{Version: policy.DefaultVersion})
 	return zstorToObjectErr(errors.WithStack(err), Operation("DeleteBucketPolicy"), bucket)
 }
 
@@ -622,7 +622,7 @@ func (zo *zerostorObjects) ListObjects(ctx context.Context, bucket, prefix, mark
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
 
-	_, err = metaMgr.GetBucket(bucket)
+	_, err = metaMgr.BucketGet(bucket)
 	if err != nil {
 		err = zstorToObjectErr(err, Operation("GetBucketInfo"), bucket)
 		return result, err
@@ -652,7 +652,7 @@ func (zo *zerostorObjects) ListObjectsV2(ctx context.Context, bucket, prefix, co
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
 
-	_, err = metaMgr.GetBucket(bucket)
+	_, err = metaMgr.BucketGet(bucket)
 	if err != nil {
 		err = zstorToObjectErr(err, Operation("GetBucketInfo"), bucket)
 		return result, err
