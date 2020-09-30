@@ -130,8 +130,15 @@ type Store interface {
 	Exists(path Path) (bool, error)
 	Link(link, target Path) error
 	List(path Path) ([]Path, error)
-	Scan(path Path, after string, limit int, mode ScanMode) ([]Path, error)
+	Scan(path Path, after []byte, limit int, mode ScanMode) (Scan, error)
 	Close() error
+}
+
+// Scan is result of a scan process
+type Scan struct {
+	Truncated bool
+	After     []byte
+	Results   []Path
 }
 
 // Manager interface for metadata managers

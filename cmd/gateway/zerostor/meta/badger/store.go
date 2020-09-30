@@ -158,10 +158,10 @@ func (s *badgerStore) List(path meta.Path) ([]meta.Path, error) {
 	return store.List(path)
 }
 
-func (s *badgerStore) Scan(path meta.Path, after string, limit int, mode meta.ScanMode) ([]meta.Path, error) {
+func (s *badgerStore) Scan(path meta.Path, after []byte, limit int, mode meta.ScanMode) (meta.Scan, error) {
 	store, err := s.storeFor(path.Collection)
 	if err != nil {
-		return nil, err
+		return meta.Scan{}, err
 	}
 
 	return store.Scan(path, after, limit, mode)

@@ -278,13 +278,18 @@ func (s *badgerInodeStore) Link(link, target meta.Path) error {
 }
 
 func (s *badgerInodeStore) List(path meta.Path) ([]meta.Path, error) {
-	return s.scanDelimited(path, nil, 10000)
+	scan, err := s.scanDelimited(path, nil, 10000)
+	if err != nil {
+		return nil, err
+	}
+
+	return scan.Results, nil
 }
 
-func (s *badgerInodeStore) scanDelimited(path meta.Path, after []byte, limit int) ([]meta.Path, error) {
-	// path is a directory, always
-
+func (s *badgerInodeStore) scanDelimited(path meta.Path, after []byte, limit int) (meta.Scan, error) {
+	// path is a directory, always.
 	var paths []meta.Path
+	var truncated bool
 	err := s.db.View(func(txn *badger.Txn) error {
 		dir, err := s.getDir(txn, path.Relative())
 		if os.IsNotExist(err) {
@@ -303,8 +308,14 @@ func (s *badgerInodeStore) scanDelimited(path meta.Path, after []byte, limit int
 
 		for it.Seek(after); it.ValidForPrefix(prefix); it.Next() {
 			item := it.Item()
-
 			key := item.Key()
+
+			if len(paths) >= limit {
+				truncated = true
+				after = key
+				return nil
+			}
+
 			name := string(bytes.TrimPrefix(key, prefix))
 			m := item.UserMeta()
 			if m == MetaTypeDirectory {
@@ -325,27 +336,24 @@ func (s *badgerInodeStore) scanDelimited(path meta.Path, after []byte, limit int
 					),
 				)
 			}
-
-			if len(paths) >= limit {
-				return nil
-			}
 		}
 
 		return nil
 	})
 
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to scan '%s'", path.String())
+		return meta.Scan{}, errors.Wrapf(err, "failed to scan '%s'", path.String())
 	}
 
-	return paths, err
+	return meta.Scan{Results: paths, Truncated: truncated, After: after}, err
 }
 
-func (s *badgerInodeStore) scanRecursive(path meta.Path, after []byte, limit int) ([]meta.Path, error) {
-	return nil, fmt.Errorf("recursive scan is not implemented")
-	// prefix := []byte(path.String())
+func (s *badgerInodeStore) scanRecursive(path meta.Path, after []byte, limit int) (meta.Scan, error) {
+	return meta.Scan{}, fmt.Errorf("recursive scan is not implemented")
 	// var paths []meta.Path
 	// err := s.db.View(func(txn *badger.Txn) error {
+	// 	dir := s.getDir(txn, path)
+	// 	prefix := s.getPrefix(dir)
 	// 	it := txn.NewIterator(badger.DefaultIteratorOptions)
 	// 	defer it.Close()
 	// 	// should be one level under this prefix
@@ -373,13 +381,13 @@ func (s *badgerInodeStore) scanRecursive(path meta.Path, after []byte, limit int
 	// return paths, err
 }
 
-func (s *badgerInodeStore) Scan(path meta.Path, after string, limit int, mode meta.ScanMode) ([]meta.Path, error) {
+func (s *badgerInodeStore) Scan(path meta.Path, after []byte, limit int, mode meta.ScanMode) (meta.Scan, error) {
 	switch mode {
 	case meta.ScanModeDelimited:
-		return s.scanDelimited(path, []byte(after), limit)
+		return s.scanDelimited(path, after, limit)
 	case meta.ScanModeRecursive:
-		return s.scanRecursive(path, []byte(after), limit)
+		return s.scanRecursive(path, after, limit)
 	}
 
-	return nil, fmt.Errorf("unsupported scan mode: '%d'", mode)
+	return meta.Scan{}, fmt.Errorf("unsupported scan mode: '%d'", mode)
 }

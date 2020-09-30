@@ -590,7 +590,7 @@ func TestMultipartUploadListAbort(t *testing.T) {
 
 	// AbortMultipartUpload
 	for _, upload := range uploads.Uploads {
-		err = zo.AbortMultipartUpload(ctx, bucket, upload.Object, upload.UploadID)
+		err = zo.AbortMultipartUpload(ctx, bucket, upload.Object, upload.UploadID, minio.ObjectOptions{})
 		if err != nil {
 			t.Fatalf("failed to AbortMultipartUpload uploadID `%v`: %v", upload.UploadID, err)
 		}

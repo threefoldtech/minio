@@ -162,14 +162,19 @@ func (s *badgerSimpleStore) Link(link, target meta.Path) error {
 }
 
 func (s *badgerSimpleStore) List(path meta.Path) ([]meta.Path, error) {
-	return s.scanFlat(path, nil, 10000)
+	scan, err := s.scanFlat(path, nil, 10000)
+	if err != nil {
+		return nil, err
+	}
+
+	return scan.Results, nil
 }
 
-func (s *badgerSimpleStore) scanDelimited(path meta.Path, after []byte, limit int) ([]meta.Path, error) {
-	return nil, fmt.Errorf("delimited scan mode not implemented for this store type")
+func (s *badgerSimpleStore) scanDelimited(path meta.Path, after []byte, limit int) (meta.Scan, error) {
+	return meta.Scan{}, fmt.Errorf("delimited scan mode not implemented for this store type")
 }
 
-func (s *badgerSimpleStore) scanFlat(path meta.Path, after []byte, limit int) ([]meta.Path, error) {
+func (s *badgerSimpleStore) scanFlat(path meta.Path, after []byte, limit int) (meta.Scan, error) {
 	prefix := []byte(path.Relative())
 	var paths []meta.Path
 	err := s.db.View(func(txn *badger.Txn) error {
@@ -201,16 +206,16 @@ func (s *badgerSimpleStore) scanFlat(path meta.Path, after []byte, limit int) ([
 		return nil
 	})
 
-	return paths, err
+	return meta.Scan{Results: paths}, err
 }
 
-func (s *badgerSimpleStore) Scan(path meta.Path, after string, limit int, mode meta.ScanMode) ([]meta.Path, error) {
+func (s *badgerSimpleStore) Scan(path meta.Path, after []byte, limit int, mode meta.ScanMode) (meta.Scan, error) {
 	switch mode {
 	case meta.ScanModeDelimited:
-		return s.scanDelimited(path, []byte(after), limit)
+		return s.scanDelimited(path, after, limit)
 	case meta.ScanModeRecursive:
-		return s.scanFlat(path, []byte(after), limit)
+		return s.scanFlat(path, after, limit)
 	}
 
-	return nil, fmt.Errorf("unsupported scan mode: '%d'", mode)
+	return meta.Scan{}, fmt.Errorf("unsupported scan mode: '%d'", mode)
 }

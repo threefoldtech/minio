@@ -297,21 +297,12 @@ func (m *metaManager) ListObjectsV2(ctx context.Context, bucket, prefix,
 	if len(delimiter) != 0 && delimiter != "/" {
 		return result, fmt.Errorf("only delimeter / is supported")
 	}
-	encoder := base64.URLEncoding
-	if len(continuationToken) != 0 {
-		//this overrides startAfter which is only valid on the first call
-		start, decodeErr := encoder.DecodeString(continuationToken)
-		if decodeErr != nil {
-			return result, fmt.Errorf("invalid continuation token: %s", decodeErr)
-		}
-		startAfter = string(start)
-	}
 
 	result.ContinuationToken = continuationToken
-	token, err := m.scan(ctx, bucket, prefix, startAfter, len(delimiter) != 0, maxKeys, &result)
+	token, err := m.scan(ctx, bucket, prefix, continuationToken, len(delimiter) != 0, maxKeys, &result)
 	if err == errMaxKeyReached {
 		result.IsTruncated = true
-		result.NextContinuationToken = encoder.EncodeToString([]byte(token))
+		result.NextContinuationToken = token
 		err = nil
 	}
 
@@ -1037,7 +1028,7 @@ func (m *metaManager) isNotExist(err error) bool {
 	return false
 }
 
-func (m *metaManager) scanDelimited(ctx context.Context, bucket, prefix, after string, maxKeys int, result *minio.ListObjectsV2Info) (string, error) {
+func (m *metaManager) scanDelimited(ctx context.Context, bucket, prefix string, after []byte, maxKeys int, result *minio.ListObjectsV2Info) ([]byte, error) {
 	log.WithFields(log.Fields{
 		"bucket":    bucket,
 		"directory": prefix,
@@ -1045,27 +1036,16 @@ func (m *metaManager) scanDelimited(ctx context.Context, bucket, prefix, after s
 		"maxKeys":   maxKeys,
 	}).Debug("scan delimited bucket")
 
-	var paths []Path
-	var err error
 	scan := FilePath(ObjectCollection, bucket, prefix)
-	if prefix == "" || strings.HasSuffix(prefix, "/") {
-		// this is a bucket scan or a folder scan
-		paths, err = m.store.Scan(scan, after, maxKeys, ScanModeDelimited)
-		if err != nil {
-			return after, err
-		}
-	} else {
-		paths = []Path{
-			scan,
-		}
+	results, err := m.store.Scan(scan, after, maxKeys, ScanModeDelimited)
+	if err != nil {
+		return after, err
 	}
 
-	for _, path := range paths {
-		after = path.Relative()
-
+	for _, path := range results.Results {
 		relative, err := filepath.Rel(bucket, path.Relative())
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 
 		if path.IsDir() {
@@ -1083,57 +1063,11 @@ func (m *metaManager) scanDelimited(ctx context.Context, bucket, prefix, after s
 		result.Objects = append(result.Objects, CreateObjectInfo(bucket, relative, &md))
 	}
 
-	if len(paths) == maxKeys {
-		return after, errMaxKeyReached
+	if results.Truncated {
+		return results.After, errMaxKeyReached
 	}
 
-	return after, nil
-}
-
-func (m *metaManager) scanFlat(ctx context.Context, bucket, prefix, after string, maxKeys int, result *minio.ListObjectsV2Info) (string, error) {
-	log.WithFields(log.Fields{
-		"bucket":    bucket,
-		"directory": prefix,
-		"after":     after,
-		"maxKeys":   maxKeys,
-	}).Debug("scan flat bucket")
-
-	scan := FilePath(ObjectCollection, bucket, prefix)
-	paths, err := m.store.Scan(scan, after, maxKeys, ScanModeRecursive)
-	if err != nil {
-		return after, err
-	}
-
-	for _, path := range paths {
-		after = path.Name
-		relative, err := filepath.Rel(bucket, path.Relative())
-		if err != nil {
-			return "", err
-		}
-
-		if path.IsDir() {
-			result.Objects = append(result.Objects, minio.ObjectInfo{
-				Bucket: bucket,
-				Name:   relative + "/",
-				ETag:   relative,
-				IsDir:  true,
-			})
-			continue
-		}
-
-		md, err := m.getMeta(path)
-		if err != nil {
-			return after, err
-		}
-
-		result.Objects = append(result.Objects, CreateObjectInfo(bucket, relative, &md))
-	}
-
-	if len(paths) == maxKeys {
-		return after, errMaxKeyReached
-	}
-
-	return after, nil
+	return results.After, nil
 }
 
 func (m *metaManager) scan(ctx context.Context, bucket, prefix, after string, delimited bool, maxKeys int, result *minio.ListObjectsV2Info) (string, error) {
@@ -1145,12 +1079,21 @@ func (m *metaManager) scan(ctx context.Context, bucket, prefix, after string, de
 		"maxKeys":   maxKeys,
 	}).Debug("scan bucket")
 
-	if delimited {
-		return m.scanDelimited(ctx, bucket, prefix, after, maxKeys, result)
+	if !delimited {
+		return "", minio.NotImplemented{}
 	}
 
-	return m.scanFlat(ctx, bucket, prefix, after, maxKeys, result)
+	marker, err := base64.URLEncoding.DecodeString(after)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to process the 'after' delimeter")
+	}
 
+	marker, err = m.scanDelimited(ctx, bucket, prefix, marker, maxKeys, result)
+	if err != nil {
+		return "", err
+	}
+
+	return base64.URLEncoding.EncodeToString(marker), nil
 }
 
 // CreateObjectInfo creates minio ObjectInfo from 0-stor metadata
