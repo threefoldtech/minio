@@ -117,6 +117,8 @@ func (r Record) Play(store meta.Store) error {
 		err = store.Del(r.Path(1))
 	case OperationLink:
 		err = store.Link(r.Path(1), r.Path(2))
+	case OperationTest:
+
 	}
 
 	return err

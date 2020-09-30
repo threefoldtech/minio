@@ -62,8 +62,8 @@ type fsTLogger struct {
 	meta.Store
 }
 
-//InitializeMetaManager creates a new zdb tlogger
-func InitializeMetaManager(address, namespace, password, stateFile string, store meta.Store) (TLogger, error) {
+//NewTLogger creates a new zdb tlogger
+func NewTLogger(address, namespace, password, stateFile string, store meta.Store) (TLogger, error) {
 	recorder, err := newZDBRecorder(address, namespace, password, stateFile)
 	if err != nil {
 		return nil, err
