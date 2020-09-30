@@ -377,7 +377,7 @@ func isFileExists(p string) bool {
 
 // NewMetaManager creates a new meta config manager from configuration
 func NewMetaManager(ctx context.Context, cfg config.Config, metaDir, metaPrivKey string) (meta.Manager, error) {
-	var zoMetaManager meta.Manager
+
 	//store, err := meta.NewFilesystemStore(metaDir)
 	if err := os.MkdirAll(metaDir, 0766); err != nil && !os.IsExist(err) {
 		return nil, errors.Wrapf(err, "failed to create meta directory")
@@ -387,8 +387,6 @@ func NewMetaManager(ctx context.Context, cfg config.Config, metaDir, metaPrivKey
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create badger meta store")
 	}
-	metaManager := meta.NewMetaManager(store, metaPrivKey)
-	zoMetaManager = metaManager
 
 	tlogStateFile := path.Join(metaDir, tlog.StateFile)
 	masterStateFile := path.Join(metaDir, tlog.MasterStateFile)
@@ -402,13 +400,13 @@ func NewMetaManager(ctx context.Context, cfg config.Config, metaDir, metaPrivKey
 		}
 
 		tlogCfg := cfg.Minio.TLog
-		tlogMetaManager, err := tlog.InitializeMetaManager(tlogCfg.Address, tlogCfg.Namespace, tlogCfg.Password, tlogStateFile, metaManager)
+		tlogStore, err := tlog.NewTLogger(tlogCfg.Address, tlogCfg.Namespace, tlogCfg.Password, tlogStateFile, store)
 		if err != nil {
 			log.Println("failed to create tlog meta manager: ", err.Error())
 			return nil, err
 		}
 
-		err = tlogMetaManager.Sync()
+		err = tlogStore.Sync()
 		if err != nil {
 			log.WithError(err).WithFields(log.Fields{
 				"tlog":      tlogCfg.Address,
@@ -417,8 +415,8 @@ func NewMetaManager(ctx context.Context, cfg config.Config, metaDir, metaPrivKey
 			return nil, err
 		}
 
-		go tlogMetaManager.HealthChecker(ctx) //start tlog health checker
-		zoMetaManager = tlogMetaManager
+		go tlogStore.HealthChecker(ctx) //start tlog health checker
+		store = tlogStore
 
 	}
 
@@ -431,7 +429,7 @@ func NewMetaManager(ctx context.Context, cfg config.Config, metaDir, metaPrivKey
 		}
 
 		masterCfg := cfg.Minio.Master
-		syncher := tlog.NewSyncher(masterCfg.Address, masterCfg.Namespace, masterCfg.Password, masterStateFile, metaManager)
+		syncher := tlog.NewSyncher(masterCfg.Address, masterCfg.Namespace, masterCfg.Password, masterStateFile, store)
 		go func() {
 			for {
 				if err := syncher.Sync(ctx); err != nil {
@@ -452,5 +450,5 @@ func NewMetaManager(ctx context.Context, cfg config.Config, metaDir, metaPrivKey
 		}()
 	}
 
-	return zoMetaManager, nil
+	return meta.NewMetaManager(store, metaPrivKey), nil
 }

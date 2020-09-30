@@ -3,7 +3,6 @@ package tlog
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"sync"
@@ -87,6 +86,19 @@ func (r Record) Bytes(at int) []byte {
 	return nil
 }
 
+//Path returns path at index
+func (r Record) Path(at int) meta.Path {
+	if len(r) <= at {
+		panic("entry out of range")
+	}
+
+	if o := r.At(at); o != nil {
+		return o.(meta.Path)
+	}
+
+	return meta.Path{}
+}
+
 //JSON unmarshal field
 func (r Record) JSON(at int, o interface{}) error {
 	return json.Unmarshal(r.Bytes(at), o)
@@ -95,70 +107,19 @@ func (r Record) JSON(at int, o interface{}) error {
 //Play plays the record on the given meta manager. Note that error is only
 //returned if the underlying meta manager return an error. A panic
 //is thrown if the record is corrupt
-func (r Record) Play(metaManager meta.Manager) error {
-	return fmt.Errorf("not implemented")
-	/*
-		var err error
-		switch r.Action() {
-		case OperationBucketCreate:
-			err = metaManager.CreateBucket(r.String(1))
-		case OperationBucketDelete:
-			err = metaManager.DeleteBucket(r.String(1))
-		case OperationBucketSetPolicy:
-			var pol policy.Policy
-			if err = r.JSON(2, &pol); err != nil {
-				return err
-			}
-			err = metaManager.SetBucketPolicy(r.String(1), &pol)
-		case OperationPartPut:
-			var metaData meta.Metadata
-			if err = r.JSON(1, &metaData); err != nil {
-				return err
-			}
-			_, err = metaManager.UploadPutPart(r.String(2), r.String(3), r.Int(4))
-		case OperationPartLink:
-			err = metaManager.LinkPart(r.String(1), r.String(2), r.String(3), r.String(4))
-		case OperationBlobDelete:
-			err = metaManager.DeleteBlob(r.String(1))
-		case OperationObjectDelete:
-			err = metaManager.DeleteObject(r.String(1), r.String(2))
-		case OperationObjectLink:
-			err = metaManager.LinkObject(r.String(1), r.String(2), r.String(3))
-		case OperationObjectPut:
-			var metaData metatypes.Metadata
-			if err = r.JSON(1, &metaData); err != nil {
-				return err
-			}
-			_, err = metaManager.PutObject(&metaData, r.String(2), r.String(3))
-		case OperationObjectMkdir:
-			err = metaManager.Mkdir(r.String(1), r.String(2))
-		case OperationObjectWriteMeta:
-			var metaData meta.Metadata
-			if err = r.JSON(1, &metaData); err != nil {
-				return err
-			}
-			err = metaManager.WriteObjMeta(&metaData)
-		case OperationUploadNew:
-			var meta map[string]string
-			if err = r.JSON(4, &meta); err != nil {
-				return err
-			}
-			_, err = metaManager.UploadCreate(r.String(1), r.String(2), meta)
-		case OperationUploadDelete:
-			err = metaManager.DeleteUpload(r.String(1), r.String(2))
-		case OperationUploadComplete:
-			var parts []minio.CompletePart
-			if err = r.JSON(4, &parts); err != nil {
-				return err
-			}
-			_, err = metaManager.CompleteMultipartUpload(r.String(1), r.String(2), r.String(3), parts)
-		case OperationTest:
-		default:
-			err = fmt.Errorf("unknown record action: %s", r.Action())
-		}
+func (r Record) Play(store meta.Store) error {
+	var err error
 
-		return err
-	*/
+	switch r.Action() {
+	case OperationSet:
+		err = store.Set(r.Path(1), r.Bytes(2))
+	case OperationDel:
+		err = store.Del(r.Path(1))
+	case OperationLink:
+		err = store.Link(r.Path(1), r.Path(2))
+	}
+
+	return err
 }
 
 type zdbRecorder struct {

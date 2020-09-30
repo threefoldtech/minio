@@ -14,18 +14,18 @@ import (
 
 //Syncher struct
 type Syncher struct {
-	meta meta.Manager
-	p    *Pool
-	s    string
+	store meta.Store
+	p     *Pool
+	s     string
 }
 
 //NewSyncher creates a new syncher that sync tlogs from source zdb defined by address, and namespace
 //to the local TLogger
-func NewSyncher(address, namespace, password, stateFile string, meta meta.Manager) *Syncher {
+func NewSyncher(address, namespace, password, stateFile string, store meta.Store) *Syncher {
 	return &Syncher{
-		meta: meta,
-		p:    newZDBPool(address, namespace, password),
-		s:    stateFile,
+		store: store,
+		p:     newZDBPool(address, namespace, password),
+		s:     stateFile,
 	}
 }
 
@@ -99,7 +99,7 @@ func (s *Syncher) sync() error {
 	}).Debug("synchronizing with master")
 
 	return s.p.play(key, func(key []byte, rec Record) error {
-		if err := rec.Play(s.meta); err != nil {
+		if err := rec.Play(s.store); err != nil {
 			logger := log.WithError(err).WithFields(log.Fields{
 				"subsystem": "sync",
 				"tlog":      s.p.address,
