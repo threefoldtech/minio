@@ -2,11 +2,16 @@ package tlog
 
 import (
 	"context"
+	"encoding/gob"
 	"time"
 
 	"github.com/minio/minio/cmd/gateway/zerostor/meta"
 	log "github.com/sirupsen/logrus"
 )
+
+func init() {
+	gob.Register(meta.Path{})
+}
 
 func (t *fsTLogger) Set(path meta.Path, data []byte) error {
 	t.recorder.Begin()

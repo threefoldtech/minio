@@ -2,6 +2,7 @@ package tlog
 
 import (
 	"bytes"
+	"encoding/gob"
 	"encoding/json"
 	"io/ioutil"
 	"os"
@@ -10,7 +11,6 @@ import (
 	"github.com/garyburd/redigo/redis"
 	"github.com/minio/minio/cmd/gateway/zerostor/meta"
 	log "github.com/sirupsen/logrus"
-	"github.com/vmihailenco/msgpack"
 )
 
 var (
@@ -164,7 +164,7 @@ func (z *zdbRecorder) Record(record Record, setState bool) ([]byte, error) {
 	defer con.Close()
 
 	var buf bytes.Buffer
-	enc := msgpack.NewEncoder(&buf)
+	enc := gob.NewEncoder(&buf)
 	if err := enc.Encode(record); err != nil {
 		return nil, err
 	}

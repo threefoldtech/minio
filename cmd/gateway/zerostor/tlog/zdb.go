@@ -1,11 +1,12 @@
 package tlog
 
 import (
+	"bytes"
 	"context"
+	"encoding/gob"
 	"time"
 
 	"github.com/garyburd/redigo/redis"
-	"github.com/vmihailenco/msgpack"
 )
 
 //Pool is a zdb pool with extra functionality to build other components
@@ -71,8 +72,8 @@ func (z *Pool) play(key []byte, cb func([]byte, Record) error) error {
 			return err
 		}
 		var rec Record
-
-		if err := msgpack.Unmarshal(recData, &rec); err != nil {
+		dec := gob.NewDecoder(bytes.NewBuffer(recData))
+		if err := dec.Decode(&rec); err != nil {
 			return err
 		}
 
