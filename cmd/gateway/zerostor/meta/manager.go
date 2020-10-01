@@ -267,8 +267,7 @@ func (m *metaManager) ListObjects(ctx context.Context, bucket, prefix, marker, d
 
 	result.IsTruncated = resultV2.IsTruncated
 	if resultV2.IsTruncated {
-		next, _ := base64.URLEncoding.DecodeString(resultV2.NextContinuationToken)
-		result.NextMarker = string(next)
+		result.NextMarker = resultV2.NextContinuationToken
 	}
 
 	result.Objects = make([]minio.ObjectInfo, 0, len(resultV2.Objects))
@@ -278,6 +277,7 @@ func (m *metaManager) ListObjects(ctx context.Context, bucket, prefix, marker, d
 		if obj.IsDir {
 			continue
 		}
+
 		result.Objects = append(result.Objects, obj)
 	}
 

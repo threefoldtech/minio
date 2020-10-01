@@ -154,9 +154,9 @@ func (z *Zerostor) Production() bool {
 // NewGatewayLayer implements minio.Gateway.NewGatewayLayer interface
 func (z *Zerostor) NewGatewayLayer(creds auth.Credentials) (minio.ObjectLayer, error) {
 	// check options
-	log.Println("zerostor config file = ", z.confFile)
-	log.Println("debugging flag: ", debugFlag)
-	log.Println("metadata encrypted: ", z.metaPrivKey != "")
+	log.WithField("config", z.confFile).Info("using config file")
+	log.WithField("debug", debugFlag).Info("debugging flag set")
+	log.WithField("enabled", z.metaPrivKey != "").Info("setting meta encryption")
 
 	cfg, err := config.Load(z.confFile)
 	if err != nil {
@@ -418,50 +418,6 @@ func (zo *zerostorObjects) CopyObject(ctx context.Context, srcBucket, srcObject,
 	}
 
 	return objInfo, minio.NotImplemented{}
-
-	// metaMgr := zo.manager.GetMeta()
-	// defer metaMgr.Close()
-
-	// srcObjMeta, err := metaMgr.GetObjectMeta(srcBucket, srcObject)
-	// newMeta := make(map[string]string)
-	// for k, v := range srcObjMeta.UserDefined {
-	// 	if strings.HasPrefix(strings.ToLower(k), "x-amz-meta-") {
-	// 		continue
-	// 	}
-	// 	newMeta[k] = v
-	// }
-
-	// for k, v := range srcInfo.UserDefined {
-	// 	newMeta[strings.ToLower(k)] = v
-	// }
-
-	// storRd, storWr := io.Pipe()
-	// defer storRd.Close()
-	// getCtx, cancel := context.WithCancel(context.Background())
-	// defer cancel()
-
-	// go func() {
-	// 	storWr.CloseWithError(zo.GetObject(getCtx, srcBucket, srcObject, 0, srcInfo.Size, storWr, "", srcOpts))
-	// }()
-
-	// hashReader, err := hash.NewReader(storRd, srcInfo.Size, "", "", srcInfo.Size, true)
-	// if err != nil {
-	// 	return objInfo, zstorToObjectErr(errors.WithStack(err), Operation("CopyObject"), destBucket, destObject)
-	// }
-
-	// reader := minio.NewPutObjReader(hashReader, nil, nil)
-
-	// objMeta, err := zo.writeStream(ctx, reader.Size(), reader.Reader, minio.ObjectOptions{UserDefined: newMeta})
-	// if err != nil {
-	// 	err = zstorToObjectErr(errors.WithStack(err), Operation("CopyObject"), destBucket, destObject)
-	// 	return objInfo, err
-	// }
-
-	// if err := metaMgr.LinkObject(destBucket, destObject, objMeta.Filename); err != nil {
-	// 	return objInfo, err
-	// }
-
-	// return zo.GetObjectInfo(ctx, destBucket, destObject, dstOpts)
 }
 
 func (zo *zerostorObjects) GetObjectNInfo(ctx context.Context, bucket, object string, rs *minio.HTTPRangeSpec, h http.Header, lockType minio.LockType, opts minio.ObjectOptions) (reader *minio.GetObjectReader, err error) {
@@ -491,7 +447,7 @@ func (zo *zerostorObjects) GetObjectNInfo(ctx context.Context, bucket, object st
 	// Setup cleanup function to cause the above go-routine to
 	// exit in case of partial read
 	pipeCloser := func() { pr.Close() }
-	return minio.NewGetObjectReaderFromReader(pr, objInfo, minio.ObjectOptions{}, pipeCloser)
+	return minio.NewGetObjectReaderFromReader(pr, objInfo, opts, pipeCloser)
 }
 
 func (zo *zerostorObjects) GetObject(ctx context.Context, bucket, object string, startOffset int64, length int64,
@@ -585,9 +541,29 @@ func (zo *zerostorObjects) GetObjectInfo(ctx context.Context, bucket, object str
 	return objInfo, err
 }
 
+func (zo *zerostorObjects) ListObjectVersions(
+	ctx context.Context,
+	bucket,
+	prefix,
+	marker,
+	versionMarker,
+	delimiter string,
+	maxKeys int) (result minio.ListObjectVersionsInfo, err error) {
+
+	log.WithFields(log.Fields{
+		"bucket":         bucket,
+		"prefix":         prefix,
+		"marker":         marker,
+		"version-marker": versionMarker,
+		"delimiter":      delimiter,
+		"max-keys":       maxKeys,
+	}).Debug("ListObjectVersions")
+
+	return minio.ListObjectVersionsInfo{}, minio.NotImplemented{}
+}
+
 func (zo *zerostorObjects) GetBucketObjectLockConfig(context.Context, string) (*objectlock.Config, error) {
 	return nil, minio.BucketObjectLockConfigNotFound{}
-
 }
 
 func (zo *zerostorObjects) ListObjects(ctx context.Context, bucket, prefix, marker, delimiter string,
