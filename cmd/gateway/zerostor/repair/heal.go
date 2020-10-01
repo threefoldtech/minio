@@ -200,7 +200,7 @@ func (h *Healer) Check(ctx context.Context, cb Callback) <-chan Status {
 
 //CheckObject check single object
 func (h *Healer) CheckObject(ctx context.Context, cb Callback, bucket, object string) <-chan Status {
-	blobs := h.manager.GetMetaStream(ctx, bucket, object)
+	blobs := h.manager.MetaGetStream(ctx, bucket, object, "")
 	ch := make(chan Status)
 	go func(ctx context.Context) {
 		defer close(ch)

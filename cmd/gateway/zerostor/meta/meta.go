@@ -43,22 +43,14 @@ type Manager interface {
 	// ObjectEnsure returns or create a new initialized object
 	// with default version (delete-marker = true)
 	ObjectEnsure(bucket, object string) (ObjectID, error)
-
+	// ObjectGet gets object ID
 	ObjectGet(bucket, object string) (ObjectID, error)
-
 	// ObjectSet creates a new version that points to given meta
-	ObjectSet(id ObjectID, meta string) error
-
+	ObjectSet(id ObjectID, meta string) (version string, err error)
 	// ObjectDel creates a new version that points to a delete marker
 	ObjectDelete(id ObjectID) error
-
-	ObjectGetInfo(bucket, object string) (minio.ObjectInfo, error)
-
-	// // ObjectSet update the object with given Object
-	// ObjectGet(bucket, object string) (Object, error)
-	// // Create version, creates a new version for object with objectId and
-	// // link to the given meta file head. returns the version string
-	// CreateVersion(objectID string, meta string) (string, error)
+	// ObjectGetInfo get info for an object
+	ObjectGetInfo(bucket, object, version string) (minio.ObjectInfo, error)
 
 	// Upload operations
 	UploadCreate(bucket, object string, meta map[string]string) (string, error)
@@ -73,12 +65,12 @@ type Manager interface {
 	UploadDeletePart(bucket, uploadID string, partID int) error
 	UploadExists(bucket, uploadID string) (bool, error)
 
-	// WriteMetaStream calls cb until receive an EOF error. Creates a new blob
+	// MetaWriteStream calls cb until receive an EOF error. Creates a new blob
 	// for each meta object returned by cb. Links blobs together and return
 	// the head. Blobs can be streamed again later using the StreamObjectMeta method
-	WriteMetaStream(cb func() (*metatypes.Metadata, error)) (Metadata, error)
-
-	GetMetaStream(ctx context.Context, bucket, object string) <-chan Stream
+	MetaWriteStream(cb func() (*metatypes.Metadata, error)) (Metadata, error)
+	// MetaGetStream returns meta stream for an object
+	MetaGetStream(ctx context.Context, bucket, object, version string) <-chan Stream
 
 	SetBlob(obj *Metadata) error
 
@@ -88,8 +80,6 @@ type Manager interface {
 
 	// DEPRECATED
 	Mkdir(bucket, object string) error
-
-	//GetObjectMeta(bucket, object string) (Metadata, error)
 
 	StreamBlobs(ctx context.Context) <-chan Stream
 

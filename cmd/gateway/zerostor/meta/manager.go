@@ -152,7 +152,8 @@ func (m *metaManager) BucketSetPolicy(name string, policy *policy.Policy) error 
 
 // ObjectDel creates a new version that points to a delete marker
 func (m *metaManager) ObjectDelete(id ObjectID) error {
-	return m.ObjectSet(id, "") // create a new empty version
+	_, err := m.ObjectSet(id, "") // create a new empty version
+	return err
 }
 
 // EnsureObject makes sure that this object exists in the metastore
@@ -415,7 +416,7 @@ func (m *metaManager) UploadComplete(bucket, _object, uploadID string, parts []m
 }
 
 // GetObjectInfo returns info about a bucket object
-func (m *metaManager) ObjectGetInfo(bucket, object string) (info minio.ObjectInfo, err error) {
+func (m *metaManager) ObjectGetInfo(bucket, object, version string) (info minio.ObjectInfo, err error) {
 	//path := FilePath(ObjectCollection, bucket, object)
 	directory, id, err := m.objectGet(bucket, object)
 	if os.IsNotExist(err) {
@@ -432,22 +433,22 @@ func (m *metaManager) ObjectGetInfo(bucket, object string) (info minio.ObjectInf
 		return
 	}
 
-	version, err := m.getObjectVersion(id, "")
+	ver, err := m.getObjectVersion(id, version)
 	if err != nil {
 		return info, err
 	}
 
-	info.VersionID = version.ID
+	info.VersionID = ver.ID
 
-	if len(version.Meta) == 0 {
+	if len(ver.Meta) == 0 {
 		var ts int64
-		fmt.Sscanf(version.ID, "%x", &ts)
+		fmt.Sscanf(ver.ID, "%x", &ts)
 		info.DeleteMarker = true
 		info.ModTime = EpochToTimestamp(ts)
 		return
 	}
 
-	md, err := m.getMetadata(FilePath(BlobCollection, version.Meta))
+	md, err := m.getMetadata(FilePath(BlobCollection, ver.Meta))
 	if err != nil {
 		return info, err
 	}
@@ -500,7 +501,7 @@ func (m *metaManager) objectGet(bucket, object string) (bool, ObjectID, error) {
 	return false, ObjectID(record.Data), nil
 }
 
-func (m *metaManager) ObjectSet(id ObjectID, meta string) error {
+func (m *metaManager) ObjectSet(id ObjectID, meta string) (string, error) {
 	version := versionInfo{
 		ID:   fmt.Sprintf("%x", time.Now().UnixNano()),
 		Meta: meta,
@@ -509,16 +510,16 @@ func (m *metaManager) ObjectSet(id ObjectID, meta string) error {
 	path := FilePath(VersionCollection, string(id), version.ID)
 	data, err := m.encode(version)
 	if err != nil {
-		return err
+		return version.ID, err
 	}
 
 	if err := m.store.Set(path, data); err != nil {
-		return err
+		return version.ID, err
 	}
 
 	current := FilePath(VersionCollection, string(id), currentVersionFile)
 	// now link current version to this version
-	return m.store.Link(current, path)
+	return version.ID, m.store.Link(current, path)
 }
 
 func (m *metaManager) getObjectVersion(id ObjectID, version string) (versionInfo, error) {
@@ -545,7 +546,7 @@ func (m *metaManager) getObjectVersion(id ObjectID, version string) (versionInfo
 // getBlob returns only the first metadata part. This can
 // be only a part of the full object meta, or the entire object
 // meta based on object size. To get ALL meta parts that makes
-// an object you need to use the GetMetaStream method.
+// an object you need to use the MetaGetStream method.
 func (m *metaManager) getBlob(path Path) (*Metadata, error) {
 	record, err := m.store.Get(path)
 	if err != nil {
@@ -561,7 +562,7 @@ func (m *metaManager) getBlob(path Path) (*Metadata, error) {
 }
 
 // GetMetaStream streams an object metadata blobs through a channel
-func (m *metaManager) GetMetaStream(ctx context.Context, bucket, object string) <-chan Stream {
+func (m *metaManager) MetaGetStream(ctx context.Context, bucket, object, version string) <-chan Stream {
 	c := make(chan Stream)
 	go func() {
 		defer close(c)
@@ -574,18 +575,18 @@ func (m *metaManager) GetMetaStream(ctx context.Context, bucket, object string) 
 			return
 		}
 
-		version, err := m.getObjectVersion(id, "")
+		ver, err := m.getObjectVersion(id, version)
 		if err != nil {
 			errored(err)
 			return
 		}
 
-		if len(version.Meta) == 0 {
+		if len(ver.Meta) == 0 {
 			// a delete marker
 			return
 		}
 
-		path := FilePath(BlobCollection, version.Meta)
+		path := FilePath(BlobCollection, ver.Meta)
 
 		for {
 			objMeta, err := m.getBlob(path)
@@ -610,7 +611,7 @@ func (m *metaManager) GetMetaStream(ctx context.Context, bucket, object string) 
 }
 
 // WriteMetaStream writes a stream of metadata to disk, links them, and returns the first blob
-func (m *metaManager) WriteMetaStream(cb func() (*metatypes.Metadata, error)) (Metadata, error) {
+func (m *metaManager) MetaWriteStream(cb func() (*metatypes.Metadata, error)) (Metadata, error) {
 	// any changes to this function need to be mirrored in the filesystem tlogger
 	var totalSize int64
 	var modTime int64
@@ -1001,7 +1002,7 @@ func (m *metaManager) scanDelimited(ctx context.Context, bucket, prefix string, 
 			continue
 		}
 
-		info, err := m.ObjectGetInfo(bucket, relative)
+		info, err := m.ObjectGetInfo(bucket, relative, "")
 		if err != nil {
 			log.WithError(err).WithFields(log.Fields{
 				"bucket": bucket,

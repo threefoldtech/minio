@@ -399,7 +399,7 @@ func (zo *zerostorObjects) DeleteObject(ctx context.Context, bucket, object stri
 		return info, err
 	}
 
-	return manager.ObjectGetInfo(bucket, object)
+	return manager.ObjectGetInfo(bucket, object, "")
 }
 
 func (zo *zerostorObjects) CopyObject(ctx context.Context, srcBucket, srcObject, destBucket, destObject string, srcInfo minio.ObjectInfo, srcOpts, dstOpts minio.ObjectOptions) (objInfo minio.ObjectInfo, err error) {
@@ -517,9 +517,13 @@ func (zo *zerostorObjects) GetObject(ctx context.Context, bucket, object string,
 	manager := zo.manager.GetMeta()
 	defer manager.Close()
 
-	meta, err := manager.ObjectGetInfo(bucket, object)
+	meta, err := manager.ObjectGetInfo(bucket, object, opts.VersionID)
 	if err != nil {
 		return err
+	}
+
+	if meta.IsDir {
+		return minio.ObjectExistsAsDirectory{Bucket: bucket, Object: object}
 	}
 
 	if meta.DeleteMarker {
@@ -530,7 +534,7 @@ func (zo *zerostorObjects) GetObject(ctx context.Context, bucket, object string,
 		length = meta.Size
 	}
 
-	c := manager.GetMetaStream(ctx, bucket, object)
+	c := manager.MetaGetStream(ctx, bucket, object, opts.VersionID)
 	for r := range c {
 		log.WithField("blob", r.Obj.Filename).Debug("downloading blob")
 		if r.Error != nil {
@@ -573,7 +577,7 @@ func (zo *zerostorObjects) GetObjectInfo(ctx context.Context, bucket, object str
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
 
-	objInfo, err = metaMgr.ObjectGetInfo(bucket, object)
+	objInfo, err = metaMgr.ObjectGetInfo(bucket, object, opts.VersionID)
 	if err != nil {
 		err = zstorToObjectErr(errors.WithStack(err), Operation("GetObjectInfo"), bucket, object)
 	}
@@ -677,11 +681,12 @@ func (zo *zerostorObjects) PutObject(ctx context.Context, bucket, object string,
 		return objInfo, err
 	}
 
-	if err := metaMgr.ObjectSet(id, objMeta.Filename); err != nil {
+	version, err := metaMgr.ObjectSet(id, objMeta.Filename)
+	if err != nil {
 		return objInfo, err
 	}
 
-	return metaMgr.ObjectGetInfo(bucket, object)
+	return metaMgr.ObjectGetInfo(bucket, object, version)
 }
 
 // writeStream writes the given stream to blobs, and return the metadata head
@@ -704,7 +709,7 @@ func (zo *zerostorObjects) writeStream(ctx context.Context, size int64, reader i
 	finished := false
 	//objectSize := size
 
-	head, err = metaMgr.WriteMetaStream(
+	head, err = metaMgr.MetaWriteStream(
 		func() (*metatypes.Metadata, error) {
 			if finished {
 				return nil, io.EOF
@@ -817,63 +822,6 @@ func (zo *zerostorObjects) putObjectPart(ctx context.Context, bucket, object, up
 	return info, err
 }
 
-// CopyObjectPart implements ObjectLayer.CopyObjectPart
-func (zo *zerostorObjects) CopyObjectPart(ctx context.Context, srcBucket, srcObject, destBucket, destObject string, uploadID string, partID int, startOffset int64, length int64, srcInfo minio.ObjectInfo, srcOpts, dstOpts minio.ObjectOptions) (info minio.PartInfo, err error) {
-	log.WithFields(log.Fields{
-		"src-bucket":  srcBucket,
-		"src-object":  srcObject,
-		"dest-bucket": destBucket,
-		"dest-object": destObject,
-		"upload-id":   uploadID,
-		"src-info":    srcInfo,
-		"src-opts":    srcOpts,
-		"dst-opts":    dstOpts,
-	}).Debug("CopyObjectPart")
-
-	if zo.isReadOnly() {
-		return info, ErrReadOnlyZeroStor
-	}
-
-	return info, minio.NotImplemented{}
-	/*
-		metaMgr := zo.manager.GetMeta()
-		defer metaMgr.Close()
-
-		srcObjMeta, err := metaMgr.GetObjectMeta(srcBucket, srcObject)
-		newMeta := make(map[string]string)
-		for k, v := range srcObjMeta.UserDefined {
-			if strings.HasPrefix(strings.ToLower(k), "x-amz-meta-") {
-				continue
-			}
-			newMeta[k] = v
-		}
-
-		for k, v := range srcInfo.UserDefined {
-			newMeta[strings.ToLower(k)] = v
-		}
-
-		storRd, storWr := io.Pipe()
-		defer storRd.Close()
-		getCtx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-
-		if length <= 0 {
-			length = srcInfo.Size
-		}
-
-		go func() {
-			storWr.CloseWithError(zo.GetObject(getCtx, srcBucket, srcObject, startOffset, length, storWr, "", srcOpts))
-		}()
-
-		hashReader, err := hash.NewReader(storRd, length-startOffset, "", "", length-startOffset, true)
-		if err != nil {
-			return info, err
-		}
-		reader := minio.NewPutObjReader(hashReader, nil, nil)
-		return zo.putObjectPart(ctx, destBucket, destObject, uploadID, partID, reader, minio.ObjectOptions{UserDefined: newMeta})
-	*/
-}
-
 func (zo *zerostorObjects) GetMultipartInfo(ctx context.Context, bucket, object, uploadID string, opts minio.ObjectOptions) (info minio.MultipartInfo, err error) {
 
 	metaMgr := zo.manager.GetMeta()
@@ -925,7 +873,8 @@ func (zo *zerostorObjects) CompleteMultipartUpload(ctx context.Context, bucket, 
 		return info, err
 	}
 
-	if err := metaMgr.ObjectSet(id, objMeta.Filename); err != nil {
+	version, err := metaMgr.ObjectSet(id, objMeta.Filename)
+	if err != nil {
 		return info, err
 	}
 
@@ -933,7 +882,7 @@ func (zo *zerostorObjects) CompleteMultipartUpload(ctx context.Context, bucket, 
 		log.WithError(err).Error("failed to clean up upload")
 	}
 
-	return metaMgr.ObjectGetInfo(bucket, object)
+	return metaMgr.ObjectGetInfo(bucket, object, version)
 }
 
 // AbortMultipartUpload implements minio.ObjectLayer.AbortMultipartUpload
