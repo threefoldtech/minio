@@ -14,6 +14,10 @@ import (
 	"github.com/pkg/errors"
 )
 
+var (
+	errNotDirectory = fmt.Errorf("entry is not a directory")
+)
+
 const (
 	emptyInode = inode("00000000-0000-0000-0000-000000000000")
 )
@@ -144,7 +148,7 @@ func (s *badgerInodeStore) getDir(txn *badger.Txn, path string) (inode, error) {
 
 		m := item.UserMeta()
 		if m != MetaTypeDirectory {
-			return emptyInode, fmt.Errorf("entry '%s' (item: '%s') is not a directory", path, path)
+			return emptyInode, errNotDirectory
 		}
 
 		if err := item.Value(func(val []byte) error {
@@ -294,7 +298,7 @@ func (s *badgerInodeStore) scanDelimited(path meta.Path, after []byte, limit int
 	var truncated bool
 	err := s.db.View(func(txn *badger.Txn) error {
 		dir, err := s.getDir(txn, path.Relative())
-		if os.IsNotExist(err) {
+		if os.IsNotExist(err) || err == errNotDirectory {
 			return nil
 		} else if err != nil {
 			return err

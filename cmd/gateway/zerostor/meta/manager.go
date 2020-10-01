@@ -152,7 +152,7 @@ func (m *metaManager) BucketSetPolicy(name string, policy *policy.Policy) error 
 
 // ObjectDel creates a new version that points to a delete marker
 func (m *metaManager) ObjectDelete(id ObjectID) error {
-	return minio.NotImplemented{}
+	return m.ObjectSet(id, "") // create a new empty version
 }
 
 // EnsureObject makes sure that this object exists in the metastore
@@ -415,22 +415,36 @@ func (m *metaManager) UploadComplete(bucket, _object, uploadID string, parts []m
 }
 
 // GetObjectInfo returns info about a bucket object
-func (m *metaManager) GetObjectInfo(bucket, object string) (info minio.ObjectInfo, err error) {
+func (m *metaManager) ObjectGetInfo(bucket, object string) (info minio.ObjectInfo, err error) {
 	//path := FilePath(ObjectCollection, bucket, object)
-	id, err := m.ObjectGet(bucket, object)
+	directory, id, err := m.objectGet(bucket, object)
 	if os.IsNotExist(err) {
 		return info, minio.ObjectNotFound{Bucket: bucket, Object: object}
 	} else if err != nil {
 		return info, err
 	}
 
+	info.Bucket = bucket
+	info.Name = object
+
+	if directory {
+		info.IsDir = true
+		return
+	}
+
 	version, err := m.getObjectVersion(id, "")
 	if err != nil {
 		return info, err
 	}
+
 	info.VersionID = version.ID
+
 	if len(version.Meta) == 0 {
+		var ts int64
+		fmt.Sscanf(version.ID, "%x", &ts)
 		info.DeleteMarker = true
+		info.ModTime = EpochToTimestamp(ts)
+		return
 	}
 
 	md, err := m.getMetadata(FilePath(BlobCollection, version.Meta))
@@ -438,7 +452,7 @@ func (m *metaManager) GetObjectInfo(bucket, object string) (info minio.ObjectInf
 		return info, err
 	}
 
-	createObjectInfo(bucket, object, &info, &md)
+	fillObjectInfo(&info, &md)
 
 	return info, nil
 }
@@ -458,18 +472,32 @@ func (m *metaManager) getMetadata(path Path) (Metadata, error) {
 }
 
 func (m *metaManager) ObjectGet(bucket, object string) (ObjectID, error) {
+	directory, id, err := m.objectGet(bucket, object)
+	if err != nil {
+		return id, err
+	}
+
+	if directory {
+		// empty data is used for directories.
+		return "", minio.ObjectExistsAsDirectory{}
+	}
+
+	return id, nil
+}
+
+func (m *metaManager) objectGet(bucket, object string) (bool, ObjectID, error) {
 	path := FilePath(ObjectCollection, bucket, object)
 	record, err := m.store.Get(path)
 	if err != nil {
-		return "", err
+		return false, "", err
 	}
 
-	if record.Path.IsDir() || len(record.Data) == 0 {
+	if record.Path.IsDir() {
 		// empty data is used for directories.
-		return "", os.ErrNotExist
+		return true, "", nil
 	}
 
-	return ObjectID(record.Data), nil
+	return false, ObjectID(record.Data), nil
 }
 
 func (m *metaManager) ObjectSet(id ObjectID, meta string) error {
@@ -648,14 +676,6 @@ func (m *metaManager) WriteMetaStream(cb func() (*metatypes.Metadata, error)) (M
 	}
 
 	return *head, nil
-}
-
-func (m *metaManager) createVersion(objectID string, meta string) (string, error) {
-	// this will store a new version under the object ID
-	version := fmt.Sprintf("%x", time.Now().UnixNano())
-	link := FilePath(VersionCollection, objectID, version)
-
-	return version, m.store.Link(link, FilePath(BlobCollection, meta))
 }
 
 // StreamObjectMeta streams all blobs through a channel
@@ -943,22 +963,6 @@ func (m *metaManager) getBucket(name string) (*Bucket, error) {
 	return &bkt, m.decode(data.Data, &bkt)
 }
 
-// createBlob saves the metadata to a file under /blobs and returns the file id
-func (m *metaManager) createBlob(metaData *metatypes.Metadata, multiUpload bool) (Metadata, error) {
-	objMeta := Metadata{
-		Metadata: *metaData,
-		Filename: uuid.New().String(),
-	}
-
-	if !multiUpload {
-		objMeta.ObjectSize = metaData.Size
-
-		objMeta.ObjectUserMeta = metaData.UserDefined
-		objMeta.ObjectModTime = metaData.LastWriteEpoch
-	}
-	return objMeta, m.SetBlob(&objMeta)
-}
-
 func (m *metaManager) isNotExist(err error) bool {
 	if err == nil {
 		return false
@@ -980,6 +984,7 @@ func (m *metaManager) scanDelimited(ctx context.Context, bucket, prefix string, 
 	}).Debug("scan delimited bucket")
 
 	scan := FilePath(ObjectCollection, bucket, prefix)
+	//m.ObjectGetInfo(bucket, prefix)
 	results, err := m.store.Scan(scan, after, maxKeys, ScanModeDelimited)
 	if err != nil {
 		return after, err
@@ -996,12 +1001,16 @@ func (m *metaManager) scanDelimited(ctx context.Context, bucket, prefix string, 
 			continue
 		}
 
-		info, err := m.GetObjectInfo(bucket, relative)
+		info, err := m.ObjectGetInfo(bucket, relative)
 		if err != nil {
 			log.WithError(err).WithFields(log.Fields{
 				"bucket": bucket,
 				"object": relative,
 			}).Error("failed to get object info")
+			continue
+		}
+
+		if info.DeleteMarker {
 			continue
 		}
 
@@ -1041,27 +1050,26 @@ func (m *metaManager) scan(ctx context.Context, bucket, prefix, after string, de
 	return base64.URLEncoding.EncodeToString(marker), nil
 }
 
-// createObjectInfo creates minio ObjectInfo from 0-stor metadata
-func createObjectInfo(bucket, object string, info *minio.ObjectInfo, md *Metadata) {
+// fillObjectInfo creates minio ObjectInfo from 0-stor metadata
+func fillObjectInfo(info *minio.ObjectInfo, md *Metadata) {
+	const stdStorageClass = "STANDARD"
+	info.StorageClass = stdStorageClass
+
 	etag := getUserMetadataValue(ETagKey, md.ObjectUserMeta)
 	if etag == "" {
-		etag = object
+		etag = info.Name
 	}
 
-	storageClass := "STANDARD"
 	if class, ok := md.ObjectUserMeta[amzStorageClass]; ok {
-		storageClass = class
+		info.StorageClass = class
 	}
 
-	info.Bucket = bucket
-	info.Name = object
 	info.Size = md.ObjectSize
 	info.ModTime = EpochToTimestamp(md.ObjectModTime)
 	info.ETag = etag
 	info.IsDir = md.IsDir
 	info.ContentType = getUserMetadataValue(contentTypeKey, md.ObjectUserMeta)
 	info.ContentEncoding = getUserMetadataValue(contentEncodingKey, md.ObjectUserMeta)
-	info.StorageClass = storageClass
 
 	delete(md.ObjectUserMeta, contentTypeKey)
 	delete(md.ObjectUserMeta, contentEncodingKey)

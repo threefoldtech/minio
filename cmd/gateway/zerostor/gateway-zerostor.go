@@ -386,46 +386,20 @@ func (zo *zerostorObjects) DeleteObject(ctx context.Context, bucket, object stri
 		return info, ErrReadOnlyZeroStor
 	}
 
-	return info, minio.NotImplemented{}
+	manager := zo.manager.GetMeta()
+	defer manager.Close()
 
-	// zstor := zo.manager.GetClient()
-	// defer zstor.Close()
+	id, err := manager.ObjectGet(bucket, object)
+	if os.IsNotExist(err) {
+		return info, minio.ObjectNotFound{Bucket: bucket, Object: object}
+	}
 
-	// metaMgr := zo.manager.GetMeta()
-	// defer metaMgr.Close()
+	//TODO: use version id
+	if err := manager.ObjectDelete(id); err != nil {
+		return info, err
+	}
 
-	// md, err := metaMgr.GetObjectMeta(bucket, object)
-	// if os.IsNotExist(err) {
-	// 	return info, nil
-	// }
-
-	// info = meta.CreateObjectInfo(bucket, object, &md)
-
-	// if err != nil {
-	// 	return info, zstorToObjectErr(errors.WithStack(err), Operation("DeleteObject"), bucket, object)
-	// }
-
-	// c := metaMgr.GetMetaStream(ctx, bucket, object)
-
-	// for r := range c {
-	// 	if r.Error != nil {
-	// 		return info, zstorToObjectErr(errors.WithStack(r.Error), Operation("DeleteObject"), bucket, object)
-	// 	}
-	// 	if err := zstor.Delete(r.Obj.Metadata); err != nil && err.Error() != "no chunks given to delete" {
-	// 		return info, zstorToObjectErr(errors.WithStack(err), Operation("DeleteObject"), bucket, object)
-	// 	}
-	// 	if err := metaMgr.DeleteBlob(r.Obj.Filename); err != nil {
-	// 		return info, zstorToObjectErr(errors.WithStack(err), Operation("DeleteObject"), bucket, object)
-	// 	}
-	// 	if r.Obj.NextBlob != "" {
-	// 		if err := metaMgr.LinkObject(bucket, object, r.Obj.NextBlob); err != nil {
-	// 			return info, zstorToObjectErr(errors.WithStack(err), Operation("DeleteObject"), bucket, object)
-	// 		}
-	// 	}
-	// }
-
-	// err = metaMgr.DeleteObject(bucket, object)
-	// return info, zstorToObjectErr(errors.WithStack(err), Operation("DeleteObject"), bucket, object)
+	return manager.ObjectGetInfo(bucket, object)
 }
 
 func (zo *zerostorObjects) CopyObject(ctx context.Context, srcBucket, srcObject, destBucket, destObject string, srcInfo minio.ObjectInfo, srcOpts, dstOpts minio.ObjectOptions) (objInfo minio.ObjectInfo, err error) {
@@ -540,19 +514,23 @@ func (zo *zerostorObjects) GetObject(ctx context.Context, bucket, object string,
 	zstor := zo.manager.GetClient()
 	defer zstor.Close()
 
-	metaMgr := zo.manager.GetMeta()
-	defer metaMgr.Close()
+	manager := zo.manager.GetMeta()
+	defer manager.Close()
 
-	objMeta, err := metaMgr.GetObjectInfo(bucket, object)
+	meta, err := manager.ObjectGetInfo(bucket, object)
 	if err != nil {
 		return err
 	}
 
-	if length == -1 {
-		length = objMeta.Size
+	if meta.DeleteMarker {
+		return minio.ObjectNotFound{Bucket: bucket, Object: object}
 	}
 
-	c := metaMgr.GetMetaStream(ctx, bucket, object)
+	if length == -1 {
+		length = meta.Size
+	}
+
+	c := manager.GetMetaStream(ctx, bucket, object)
 	for r := range c {
 		log.WithField("blob", r.Obj.Filename).Debug("downloading blob")
 		if r.Error != nil {
@@ -595,7 +573,7 @@ func (zo *zerostorObjects) GetObjectInfo(ctx context.Context, bucket, object str
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
 
-	objInfo, err = metaMgr.GetObjectInfo(bucket, object)
+	objInfo, err = metaMgr.ObjectGetInfo(bucket, object)
 	if err != nil {
 		err = zstorToObjectErr(errors.WithStack(err), Operation("GetObjectInfo"), bucket, object)
 	}
@@ -650,7 +628,6 @@ func (zo *zerostorObjects) ListObjectsV2(ctx context.Context, bucket, prefix, co
 
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
-
 	_, err = metaMgr.BucketGet(bucket)
 	if err != nil {
 		err = zstorToObjectErr(err, Operation("GetBucketInfo"), bucket)
@@ -704,7 +681,7 @@ func (zo *zerostorObjects) PutObject(ctx context.Context, bucket, object string,
 		return objInfo, err
 	}
 
-	return metaMgr.GetObjectInfo(bucket, object)
+	return metaMgr.ObjectGetInfo(bucket, object)
 }
 
 // writeStream writes the given stream to blobs, and return the metadata head
@@ -956,7 +933,7 @@ func (zo *zerostorObjects) CompleteMultipartUpload(ctx context.Context, bucket, 
 		log.WithError(err).Error("failed to clean up upload")
 	}
 
-	return metaMgr.GetObjectInfo(bucket, object)
+	return metaMgr.ObjectGetInfo(bucket, object)
 }
 
 // AbortMultipartUpload implements minio.ObjectLayer.AbortMultipartUpload

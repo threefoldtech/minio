@@ -52,6 +52,8 @@ type Manager interface {
 	// ObjectDel creates a new version that points to a delete marker
 	ObjectDelete(id ObjectID) error
 
+	ObjectGetInfo(bucket, object string) (minio.ObjectInfo, error)
+
 	// // ObjectSet update the object with given Object
 	// ObjectGet(bucket, object string) (Object, error)
 	// // Create version, creates a new version for object with objectId and
@@ -87,7 +89,6 @@ type Manager interface {
 	// DEPRECATED
 	Mkdir(bucket, object string) error
 
-	GetObjectInfo(bucket, object string) (minio.ObjectInfo, error)
 	//GetObjectMeta(bucket, object string) (Metadata, error)
 
 	StreamBlobs(ctx context.Context) <-chan Stream
@@ -124,10 +125,14 @@ type Stream struct {
 
 // NewMetaManager creates a new metadata manager using the backend store provided
 func NewMetaManager(store Store, key string) Manager {
-	return &metaManager{
+	mgr := &metaManager{
 		store: store,
 		key:   key,
 	}
+
+	mgr.initialize()
+
+	return mgr
 }
 
 func getUserMetadataValue(key string, userMeta map[string]string) string {
