@@ -3,7 +3,6 @@ package meta
 import (
 	"context"
 	"errors"
-	"path/filepath"
 	"time"
 
 	minio "github.com/minio/minio/cmd"
@@ -32,118 +31,6 @@ var (
 	ErrDirectoryNotEmpty = errors.New("directory not empty")
 )
 
-// Collection defines a collection type under the metastore
-type Collection string
-
-const (
-	//ObjectCollection defines object collection
-	ObjectCollection Collection = "object"
-	//BlobCollection defines blob collection
-	BlobCollection Collection = "blob"
-	//UploadCollection defines upload collection
-	UploadCollection Collection = "upload"
-	//BucketCollection defines bucket collection
-	BucketCollection Collection = "bucket"
-	//VersionCollection defines version collection
-	VersionCollection Collection = "version"
-)
-
-//ScanMode scan mode type
-type ScanMode int
-
-const (
-	// ScanModeRecursive scans entire prefix recursively
-	ScanModeRecursive = iota
-	// ScanModeDelimited only scans direct object under a prefix
-	ScanModeDelimited
-)
-
-// Path defines a path to object in the metastore
-type Path struct {
-	Collection Collection
-	// Prefix is basically the "directory" where this object is stored.
-	// a Path with Prefix only is assumed to be a directory.
-	Prefix string
-	// Name is the name of the object, a Path with Name set is assumed to
-	// be a file.
-	Name string
-}
-
-// NewPath creates a new path from collection, prefix and name
-func NewPath(collection Collection, prefix string, name string) Path {
-	if len(collection) == 0 {
-		panic("invalid collection")
-	}
-
-	return Path{Collection: collection, Prefix: prefix, Name: name}
-}
-
-// FilePath always create a Path to an object (Name will be set to last part)
-// to create a path to a directory use NewPath
-func FilePath(collection Collection, parts ...string) Path {
-	prefix, name := filepath.Split(filepath.Join(parts...))
-	return NewPath(collection, prefix, name)
-}
-
-// DirPath always create a Path to a directory
-// to create a path to a file use FilePath
-func DirPath(collection Collection, parts ...string) Path {
-	return NewPath(collection, filepath.Join(parts...), "")
-}
-
-// Base return the name
-func (p *Path) Base() string {
-	return p.Name
-}
-
-// Relative joins prefix and name
-func (p *Path) Relative() string {
-	return filepath.Join(p.Prefix, p.Name)
-}
-
-// IsDir only check how the Path is constructed, a Path with empty Name (only Prefix)
-// is assumed to be a Directory. It's up to the implementation to make sure this
-// rule is in effect.
-func (p *Path) IsDir() bool {
-	return len(p.Name) == 0
-}
-
-// Join creates a new path from this path plus the new parts
-func (p *Path) Join(parts ...string) Path {
-	return FilePath(p.Collection, filepath.Join(p.Prefix, p.Name, filepath.Join(parts...)))
-}
-
-func (p *Path) String() string {
-	return filepath.Join(string(p.Collection), p.Prefix, p.Name)
-}
-
-// Record type returned by a store.Scan operation
-type Record struct {
-	Path Path
-	Data []byte
-	Time time.Time
-	Link bool
-}
-
-// Store defines the interface to a low level metastore
-type Store interface {
-	Set(path Path, data []byte) error
-	Get(path Path) (Record, error)
-	Del(path Path) error
-	Exists(path Path) (bool, error)
-	Link(link, target Path) error
-	List(path Path) ([]Path, error)
-	Scan(path Path, after []byte, limit int, mode ScanMode) (Scan, error)
-	Close() error
-}
-
-// Scan is result of a scan process
-type Scan struct {
-	Truncated bool
-	After     []byte
-	Results   []Path
-}
-
 // Manager interface for metadata managers
 type Manager interface {
 	BucketCreate(string) error
@@ -154,14 +41,22 @@ type Manager interface {
 	BucketsList() (map[string]*Bucket, error)
 
 	// ObjectEnsure returns or create a new initialized object
-	ObjectEnsure(bucket, object string) (Object, error)
-	// ObjectSet update the object with given Object
-	ObjectSet(bucket, object string, obj Object) error
-	// ObjectSet update the object with given Object
-	ObjectGet(bucket, object string) (Object, error)
-	// Create version, creates a new version for object with objectId and
-	// link to the given meta file head. returns the version string
-	CreateVersion(objectID string, meta string) (string, error)
+	// with default version (delete-marker = true)
+	ObjectEnsure(bucket, object string) (ObjectID, error)
+
+	ObjectGet(bucket, object string) (ObjectID, error)
+
+	// ObjectSet creates a new version that points to given meta
+	ObjectSet(id ObjectID, meta string) error
+
+	// ObjectDel creates a new version that points to a delete marker
+	ObjectDelete(id ObjectID) error
+
+	// // ObjectSet update the object with given Object
+	// ObjectGet(bucket, object string) (Object, error)
+	// // Create version, creates a new version for object with objectId and
+	// // link to the given meta file head. returns the version string
+	// CreateVersion(objectID string, meta string) (string, error)
 
 	// Upload operations
 	UploadCreate(bucket, object string, meta map[string]string) (string, error)
@@ -193,7 +88,7 @@ type Manager interface {
 	Mkdir(bucket, object string) error
 
 	GetObjectInfo(bucket, object string) (minio.ObjectInfo, error)
-	GetObjectMeta(bucket, object string) (Metadata, error)
+	//GetObjectMeta(bucket, object string) (Metadata, error)
 
 	StreamBlobs(ctx context.Context) <-chan Stream
 
@@ -207,14 +102,8 @@ type Bucket struct {
 	Policy  policy.Policy `json:"policy"`
 }
 
-// Object is main object entrypoint
-type Object struct {
-	ID      string
-	Version string
-
-	//TODO: add flags here like
-	//deleted marker and others
-}
+//ObjectID type
+type ObjectID string
 
 // Metadata defines meta for an object
 type Metadata struct {
