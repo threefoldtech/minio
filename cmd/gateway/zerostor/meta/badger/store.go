@@ -1,6 +1,7 @@
 package badger
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -158,13 +159,13 @@ func (s *badgerStore) List(path meta.Path) ([]meta.Path, error) {
 	return store.List(path)
 }
 
-func (s *badgerStore) Scan(path meta.Path, after []byte, limit int, mode meta.ScanMode) (meta.Scan, error) {
+func (s *badgerStore) Scan(ctx context.Context, path meta.Path, mode meta.ScanMode) (<-chan meta.Scan, error) {
 	store, err := s.storeFor(path.Collection)
 	if err != nil {
-		return meta.Scan{}, err
+		return nil, err
 	}
 
-	return store.Scan(path, after, limit, mode)
+	return store.Scan(ctx, path, mode)
 }
 
 func (s *badgerStore) Close() error {

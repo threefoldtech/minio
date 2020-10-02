@@ -2,6 +2,7 @@ package badger
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -284,86 +285,103 @@ func (s *badgerInodeStore) Link(link, target meta.Path) error {
 }
 
 func (s *badgerInodeStore) List(path meta.Path) ([]meta.Path, error) {
-	scan, err := s.scanDelimited(path, nil, 10000)
+	var paths []meta.Path
+	ctx, cancel := context.WithCancel(context.Background())
+
+	defer cancel()
+	results, err := s.scanDelimited(ctx, path)
 	if err != nil {
 		return nil, err
 	}
 
-	return scan.Results, nil
+	for result := range results {
+		if result.Error != nil {
+			return paths, result.Error
+		}
+
+		paths = append(paths, result.Path)
+		if len(paths) > 10000 {
+			break
+		}
+	}
+
+	return paths, nil
 }
 
-func (s *badgerInodeStore) scanDelimited(path meta.Path, after []byte, limit int) (meta.Scan, error) {
+func (s *badgerInodeStore) scanDelimited(ctx context.Context, path meta.Path) (<-chan meta.Scan, error) {
 	// path is a directory, always.
-	var paths []meta.Path
-	var truncated bool
-	err := s.db.View(func(txn *badger.Txn) error {
-		dir, err := s.getDir(txn, path.Relative())
-		if os.IsNotExist(err) || err == errNotDirectory {
-			return nil
-		} else if err != nil {
-			return err
+	ch := make(chan meta.Scan)
+	push := func(s meta.Scan) bool {
+		select {
+		case ch <- s:
+			return true
+		case <-ctx.Done():
+			return false
 		}
+	}
 
-		prefix := s.getPrefix(dir)
-		it := txn.NewIterator(badger.DefaultIteratorOptions)
-		defer it.Close()
-		// should be one level under this prefix
-		if len(after) == 0 {
-			after = prefix
-		}
+	go func() {
+		defer close(ch)
 
-		for it.Seek(after); it.ValidForPrefix(prefix); it.Next() {
-			item := it.Item()
-			key := item.Key()
-
-			if len(paths) >= limit {
-				truncated = true
-				after = key
+		err := s.db.View(func(txn *badger.Txn) error {
+			dir, err := s.getDir(txn, path.Relative())
+			if os.IsNotExist(err) || err == errNotDirectory {
 				return nil
+			} else if err != nil {
+				return err
 			}
 
-			name := string(bytes.TrimPrefix(key, prefix))
-			m := item.UserMeta()
-			if m == MetaTypeDirectory {
-				paths = append(paths,
-					meta.DirPath(
+			prefix := s.getPrefix(dir)
+			it := txn.NewIterator(badger.DefaultIteratorOptions)
+			defer it.Close()
+
+			for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+				item := it.Item()
+				key := item.Key()
+
+				name := string(bytes.TrimPrefix(key, prefix))
+				m := item.UserMeta()
+				var entry meta.Path
+
+				if m == MetaTypeDirectory {
+					entry = meta.DirPath(
 						path.Collection,
 						path.Relative(), name,
-					),
-				)
-
-			} else {
-				paths = append(paths,
-					meta.FilePath(
+					)
+				} else {
+					entry = meta.FilePath(
 						path.Collection,
 						path.Relative(),
 						name,
-					),
-				)
+					)
+				}
+
+				if !push(meta.Scan{Path: entry}) {
+					break
+				}
 			}
+
+			return nil
+		})
+
+		if err != nil {
+			push(meta.Scan{Error: err})
 		}
+	}()
 
-		return nil
-	})
-
-	if err != nil {
-		return meta.Scan{}, errors.Wrapf(err, "failed to scan '%s'", path.String())
-	}
-
-	return meta.Scan{Results: paths, Truncated: truncated, After: after}, err
+	return ch, nil
 }
 
 func (s *badgerInodeStore) scanRecursive(path meta.Path, after []byte, limit int) (meta.Scan, error) {
 	return meta.Scan{}, fmt.Errorf("recursive scan is not implemented")
 }
 
-func (s *badgerInodeStore) Scan(path meta.Path, after []byte, limit int, mode meta.ScanMode) (meta.Scan, error) {
+func (s *badgerInodeStore) Scan(ctx context.Context, path meta.Path, mode meta.ScanMode) (<-chan meta.Scan, error) {
 	switch mode {
 	case meta.ScanModeDelimited:
-		return s.scanDelimited(path, after, limit)
-	case meta.ScanModeRecursive:
-		return s.scanRecursive(path, after, limit)
+		return s.scanDelimited(ctx, path)
+	default:
+		return nil, meta.ErrUnsupportedScanMode
 	}
 
-	return meta.Scan{}, fmt.Errorf("unsupported scan mode: '%d'", mode)
 }

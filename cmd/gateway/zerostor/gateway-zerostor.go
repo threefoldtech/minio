@@ -4,6 +4,7 @@ package zerostor
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -566,7 +567,7 @@ func (zo *zerostorObjects) ListObjectVersions(
 	meta := zo.manager.GetMeta()
 	defer meta.Close()
 
-	_, err = meta.ListObjectsV2(ctx, bucket, prefix, marker, delimiter, maxKeys, false, "")
+	// _, err = meta.ListObjectsV2(ctx, bucket, prefix, marker, delimiter, maxKeys, false, "")
 
 	return minio.ListObjectVersionsInfo{}, err
 }
@@ -575,8 +576,7 @@ func (zo *zerostorObjects) GetBucketObjectLockConfig(context.Context, string) (*
 	return nil, minio.BucketObjectLockConfigNotFound{}
 }
 
-func (zo *zerostorObjects) ListObjects(ctx context.Context, bucket, prefix, marker, delimiter string,
-	maxKeys int) (result minio.ListObjectsInfo, err error) {
+func (zo *zerostorObjects) ListObjects(ctx context.Context, bucket, prefix, marker, delimiter string, maxKeys int) (result minio.ListObjectsInfo, err error) {
 	log.WithFields(log.Fields{
 		"bucket":    bucket,
 		"prefix":    prefix,
@@ -587,19 +587,46 @@ func (zo *zerostorObjects) ListObjects(ctx context.Context, bucket, prefix, mark
 
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
-
 	_, err = metaMgr.BucketGet(bucket)
 	if err != nil {
 		err = zstorToObjectErr(err, Operation("GetBucketInfo"), bucket)
 		return result, err
 	}
 
-	// get objects
-	result, err = metaMgr.ListObjects(ctx, bucket, prefix, marker, delimiter, maxKeys)
+	after, err := base64.StdEncoding.DecodeString(marker)
 	if err != nil {
-		err = zstorToObjectErr(errors.WithStack(err), Operation("ListObjects"), bucket)
-		return
+		return result, err
 	}
+
+	child, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	results, err := metaMgr.ObjectList(child, bucket, prefix, string(after))
+	if err != nil {
+		return result, err
+	}
+
+	count := 0
+	for obj := range results {
+		if obj.Error != nil {
+			return result, obj.Error
+		}
+
+		info := obj.Info
+		if info.IsDir {
+			result.Prefixes = append(result.Prefixes, info.Name+"/")
+		} else {
+			result.Objects = append(result.Objects, info)
+		}
+
+		count++
+		if count >= maxKeys {
+			result.IsTruncated = true
+			result.NextMarker = base64.StdEncoding.EncodeToString([]byte(info.Name))
+			break
+		}
+	}
+
 	return result, nil
 }
 
@@ -623,12 +650,41 @@ func (zo *zerostorObjects) ListObjectsV2(ctx context.Context, bucket, prefix, co
 		return result, err
 	}
 
-	// get objects
-	result, err = metaMgr.ListObjectsV2(ctx, bucket, prefix, continuationToken, delimiter, maxKeys, fetchOwner, startAfter)
+	after, err := base64.StdEncoding.DecodeString(continuationToken)
 	if err != nil {
-		err = zstorToObjectErr(errors.WithStack(err), Operation("ListObjectsV2"), bucket)
-		return
+		return result, err
 	}
+
+	child, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	results, err := metaMgr.ObjectList(child, bucket, prefix, string(after))
+	if err != nil {
+		return result, err
+	}
+
+	result.ContinuationToken = continuationToken
+	count := 0
+	for obj := range results {
+		if obj.Error != nil {
+			return result, obj.Error
+		}
+
+		info := obj.Info
+		if info.IsDir {
+			result.Prefixes = append(result.Prefixes, info.Name+"/")
+		} else {
+			result.Objects = append(result.Objects, info)
+		}
+
+		count++
+		if count >= maxKeys {
+			result.IsTruncated = true
+			result.NextContinuationToken = base64.StdEncoding.EncodeToString([]byte(info.Name))
+			break
+		}
+	}
+
 	return result, nil
 }
 

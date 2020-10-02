@@ -1,6 +1,7 @@
 package badger
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
@@ -162,60 +163,82 @@ func (s *badgerSimpleStore) Link(link, target meta.Path) error {
 }
 
 func (s *badgerSimpleStore) List(path meta.Path) ([]meta.Path, error) {
-	scan, err := s.scanFlat(path, nil, 10000)
+	var paths []meta.Path
+	ctx, cancel := context.WithCancel(context.Background())
+
+	defer cancel()
+	results, err := s.scanFlat(ctx, path)
 	if err != nil {
 		return nil, err
 	}
 
-	return scan.Results, nil
-}
-
-func (s *badgerSimpleStore) scanDelimited(path meta.Path, after []byte, limit int) (meta.Scan, error) {
-	return meta.Scan{}, fmt.Errorf("delimited scan mode not implemented for this store type")
-}
-
-func (s *badgerSimpleStore) scanFlat(path meta.Path, after []byte, limit int) (meta.Scan, error) {
-	prefix := []byte(path.Relative())
-	var paths []meta.Path
-	err := s.db.View(func(txn *badger.Txn) error {
-		it := txn.NewIterator(badger.DefaultIteratorOptions)
-		defer it.Close()
-		// should be one level under this prefix
-		if len(after) == 0 {
-			after = prefix
-		}
-		for it.Seek(after); it.ValidForPrefix(prefix); it.Next() {
-			item := it.Item()
-			key := item.Key()
-
-			typ := item.UserMeta()
-			var itemPath meta.Path
-			if typ == MetaTypeDirectory {
-				itemPath = meta.DirPath(path.Collection, string(key))
-			} else {
-				itemPath = meta.FilePath(path.Collection, string(key))
-			}
-
-			paths = append(paths, itemPath)
-
-			if len(paths) >= limit {
-				return nil
-			}
+	for result := range results {
+		if result.Error != nil {
+			return paths, result.Error
 		}
 
-		return nil
-	})
-
-	return meta.Scan{Results: paths}, err
-}
-
-func (s *badgerSimpleStore) Scan(path meta.Path, after []byte, limit int, mode meta.ScanMode) (meta.Scan, error) {
-	switch mode {
-	case meta.ScanModeDelimited:
-		return s.scanDelimited(path, after, limit)
-	case meta.ScanModeRecursive:
-		return s.scanFlat(path, after, limit)
+		paths = append(paths, result.Path)
+		if len(paths) > 10000 {
+			break
+		}
 	}
 
-	return meta.Scan{}, fmt.Errorf("unsupported scan mode: '%d'", mode)
+	return paths, nil
+}
+
+func (s *badgerSimpleStore) scanFlat(ctx context.Context, path meta.Path) (<-chan meta.Scan, error) {
+	prefix := []byte(path.Relative())
+	ch := make(chan meta.Scan)
+	push := func(s meta.Scan) bool {
+		select {
+		case ch <- s:
+			return true
+		case <-ctx.Done():
+			return false
+		}
+	}
+
+	go func() {
+		defer close(ch)
+
+		err := s.db.View(func(txn *badger.Txn) error {
+			it := txn.NewIterator(badger.DefaultIteratorOptions)
+			defer it.Close()
+			// should be one level under this prefix
+
+			for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+				item := it.Item()
+				key := item.Key()
+
+				typ := item.UserMeta()
+				var itemPath meta.Path
+				if typ == MetaTypeDirectory {
+					itemPath = meta.DirPath(path.Collection, string(key))
+				} else {
+					itemPath = meta.FilePath(path.Collection, string(key))
+				}
+
+				if !push(meta.Scan{Path: itemPath}) {
+					return nil
+				}
+			}
+
+			return nil
+		})
+
+		if err != nil {
+			push(meta.Scan{Error: err})
+		}
+	}()
+
+	return ch, nil
+}
+
+func (s *badgerSimpleStore) Scan(ctx context.Context, path meta.Path, mode meta.ScanMode) (<-chan meta.Scan, error) {
+	switch mode {
+	case meta.ScanModeFlat:
+		return s.scanFlat(ctx, path)
+	default:
+		return nil, fmt.Errorf("unsupported scan mode: '%d'", mode)
+	}
 }

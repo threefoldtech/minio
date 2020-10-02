@@ -458,6 +458,80 @@ func (m *metaManager) ObjectGetInfo(bucket, object, version string) (info minio.
 	return info, nil
 }
 
+func (m *metaManager) ObjectList(ctx context.Context, bucket, prefix, after string) (<-chan ObjectListResult, error) {
+	ch := make(chan ObjectListResult)
+
+	push := func(o ObjectListResult) bool {
+		select {
+		case ch <- o:
+			return true
+		case <-ctx.Done():
+			return false
+		}
+	}
+
+	go func() {
+		defer close(ch)
+
+		if len(prefix) > 0 && !strings.HasSuffix(prefix, "/") {
+			// the prefix does not end with a "/" but it still
+			// can be a directory. hence we get the object info
+			info, err := m.ObjectGetInfo(bucket, prefix, "")
+			if err != nil {
+				push(ObjectListResult{Error: err})
+				return
+			}
+
+			push(ObjectListResult{Info: info})
+			return
+		}
+
+		path := FilePath(ObjectCollection, bucket, prefix)
+
+		child, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		results, err := m.store.Scan(child, path, ScanModeDelimited)
+		if err != nil {
+			push(ObjectListResult{Error: err})
+			return
+		}
+
+		for scan := range results {
+			if scan.Error != nil {
+				push(ObjectListResult{Error: err})
+				return
+			}
+
+			path := scan.Path
+			name, _ := filepath.Rel(bucket, path.Relative())
+			if len(after) > 0 {
+				if after == name {
+					after = ""
+				}
+
+				continue
+			}
+
+			info, err := m.ObjectGetInfo(bucket, name, "")
+			if err != nil {
+				push(ObjectListResult{Error: err})
+				return
+			}
+
+			if info.DeleteMarker {
+				continue
+			}
+
+			if !push(ObjectListResult{Info: info}) {
+				return
+			}
+		}
+	}()
+
+	return ch, nil
+}
+
 func (m *metaManager) ObjectGetObjectVersions(id ObjectID) ([]string, error) {
 	path := DirPath(VersionCollection, string(id))
 	results, err := m.store.List(path)
@@ -1022,28 +1096,35 @@ func (m *metaManager) scanDelimited(ctx context.Context, bucket, prefix string, 
 		return nil, nil
 	}
 
+	child, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	//info := m.ObjectGetInfo(bucket, prefix)
-	results, err := m.store.Scan(scan, after, maxKeys, ScanModeDelimited)
+	results, err := m.store.Scan(child, scan, ScanModeDelimited)
 	if err != nil {
 		return after, err
 	}
 
-	for _, path := range results.Results {
-		relative, err := filepath.Rel(bucket, path.Relative())
+	for scan := range results {
+		if scan.Error != nil {
+			return nil, err
+		}
+		path := scan.Path
+		name, err := filepath.Rel(bucket, path.Relative())
 		if err != nil {
 			return nil, err
 		}
 
 		if path.IsDir() {
-			result.Prefixes = append(result.Prefixes, relative+"/")
+			result.Prefixes = append(result.Prefixes, name+"/")
 			continue
 		}
 
-		info, err := m.ObjectGetInfo(bucket, relative, "")
+		info, err := m.ObjectGetInfo(bucket, name, "")
 		if err != nil {
 			log.WithError(err).WithFields(log.Fields{
 				"bucket": bucket,
-				"object": relative,
+				"object": name,
 			}).Error("failed to get object info")
 			continue
 		}
@@ -1055,11 +1136,7 @@ func (m *metaManager) scanDelimited(ctx context.Context, bucket, prefix string, 
 		result.Objects = append(result.Objects, info)
 	}
 
-	if results.Truncated {
-		return results.After, errMaxKeyReached
-	}
-
-	return results.After, nil
+	return nil, nil
 }
 
 func (m *metaManager) scan(ctx context.Context, bucket, prefix, after string, delimited bool, maxKeys int, result *minio.ListObjectsV2Info) (string, error) {

@@ -1,13 +1,22 @@
 package meta
 
-import "time"
+import (
+	"context"
+	"fmt"
+	"time"
+)
+
+var (
+	// ErrUnsupportedScanMode error
+	ErrUnsupportedScanMode = fmt.Errorf("unsupported scan mode for this store type")
+)
 
 //ScanMode scan mode type
 type ScanMode int
 
 const (
-	// ScanModeRecursive scans entire prefix recursively
-	ScanModeRecursive = iota
+	// ScanModeFlat scans entire prefix recursively
+	ScanModeFlat = iota
 	// ScanModeDelimited only scans direct object under a prefix
 	ScanModeDelimited
 )
@@ -28,13 +37,12 @@ type Store interface {
 	Exists(path Path) (bool, error)
 	Link(link, target Path) error
 	List(path Path) ([]Path, error)
-	Scan(path Path, after []byte, limit int, mode ScanMode) (Scan, error)
+	Scan(ctx context.Context, path Path, mode ScanMode) (<-chan Scan, error)
 	Close() error
 }
 
 // Scan is result of a scan process
 type Scan struct {
-	Truncated bool
-	After     []byte
-	Results   []Path
+	Path  Path
+	Error error
 }

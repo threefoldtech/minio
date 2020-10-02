@@ -52,7 +52,10 @@ type Manager interface {
 	// ObjectGetInfo get info for an object
 	ObjectGetInfo(bucket, object, version string) (minio.ObjectInfo, error)
 
+	ObjectList(ctx context.Context, bucket, prefix, after string) (<-chan ObjectListResult, error)
+
 	ObjectGetObjectVersions(id ObjectID) ([]string, error)
+
 	// Upload operations
 	UploadCreate(bucket, object string, meta map[string]string) (string, error)
 	UploadGet(bucket, uploadID string) (info minio.MultipartInfo, err error)
@@ -76,8 +79,8 @@ type Manager interface {
 	SetBlob(obj *Metadata) error
 
 	//LinkPart(bucket, uploadID, partID, blob string) error
-	ListObjects(ctx context.Context, bucket, prefix, marker, delimiter string, maxKeys int) (minio.ListObjectsInfo, error)
-	ListObjectsV2(ctx context.Context, bucket, prefix, continuationToken, delimiter string, maxKeys int, fetchOwner bool, startAfter string) (minio.ListObjectsV2Info, error)
+	//ListObjects(ctx context.Context, bucket, prefix, marker, delimiter string, maxKeys int) (minio.ListObjectsInfo, error)
+	//ListObjectsV2(ctx context.Context, bucket, prefix, continuationToken, delimiter string, maxKeys int, fetchOwner bool, startAfter string) (minio.ListObjectsV2Info, error)
 
 	// DEPRECATED
 	Mkdir(bucket, object string) error
@@ -85,6 +88,12 @@ type Manager interface {
 	StreamBlobs(ctx context.Context) <-chan Stream
 
 	Close() error
+}
+
+// ObjectListResult result
+type ObjectListResult struct {
+	Info  minio.ObjectInfo
+	Error error
 }
 
 // Bucket defines a minio bucket

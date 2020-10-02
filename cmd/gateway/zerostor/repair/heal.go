@@ -234,43 +234,46 @@ func (h *Healer) CheckObject(ctx context.Context, cb Callback, bucket, object st
 
 // CheckBucket check entire bucket. if bucket is empty, scans the full installation
 func (h *Healer) CheckBucket(ctx context.Context, cb Callback, bucket string) <-chan Status {
-	ch := make(chan Status)
-	go func(ctx context.Context) {
-		defer close(ch)
-		token := ""
-		result := &BucketStatus{bucket: bucket}
-		for {
-			list, err := h.manager.ListObjectsV2(ctx, bucket, "", token, "", 1000, false, "")
-			if err != nil {
-				result = result.WithError(errors.Wrapf(err, "failed to list objects in bucket: %s", bucket))
-				break
-			}
+	panic("not implemented")
+	/*
+		ch := make(chan Status)
+		go func(ctx context.Context) {
+			defer close(ch)
+			token := ""
+			result := &BucketStatus{bucket: bucket}
+			for {
+				list, err := h.manager.ListObjectsV2(ctx, bucket, "", token, "", 1000, false, "")
+				if err != nil {
+					result = result.WithError(errors.Wrapf(err, "failed to list objects in bucket: %s", bucket))
+					break
+				}
 
-			for _, object := range list.Objects {
-				// forward object report
-				for status := range h.CheckObject(ctx, cb, bucket, object.Name) {
-					select {
-					case <-ctx.Done():
-						return
-					case ch <- status:
+				for _, object := range list.Objects {
+					// forward object report
+					for status := range h.CheckObject(ctx, cb, bucket, object.Name) {
+						select {
+						case <-ctx.Done():
+							return
+						case ch <- status:
+						}
 					}
+				}
+
+				token = list.ContinuationToken
+				if !list.IsTruncated {
+					break
 				}
 			}
 
-			token = list.ContinuationToken
-			if !list.IsTruncated {
-				break
+			select {
+			case <-ctx.Done():
+				return
+			case ch <- result:
 			}
-		}
+		}(ctx)
 
-		select {
-		case <-ctx.Done():
-			return
-		case ch <- result:
-		}
-	}(ctx)
-
-	return ch
+		return ch
+	*/
 }
 
 // Dryrun is a callback that does nothing.
