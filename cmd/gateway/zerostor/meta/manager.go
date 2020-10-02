@@ -985,7 +985,24 @@ func (m *metaManager) scanDelimited(ctx context.Context, bucket, prefix string, 
 	}).Debug("scan delimited bucket")
 
 	scan := FilePath(ObjectCollection, bucket, prefix)
-	//m.ObjectGetInfo(bucket, prefix)
+	if len(prefix) > 0 && !strings.HasSuffix(prefix, "/") {
+		// the prefix does not end with a "/" but it still
+		// can be a directory. hence we get the object info
+		info, err := m.ObjectGetInfo(bucket, prefix, "")
+		if err != nil {
+			return nil, err
+		}
+
+		if info.IsDir {
+			result.Prefixes = append(result.Prefixes, prefix+"/")
+		} else {
+			result.Objects = append(result.Objects, info)
+		}
+
+		return nil, nil
+	}
+
+	//info := m.ObjectGetInfo(bucket, prefix)
 	results, err := m.store.Scan(scan, after, maxKeys, ScanModeDelimited)
 	if err != nil {
 		return after, err

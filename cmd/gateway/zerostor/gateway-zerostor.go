@@ -538,6 +538,10 @@ func (zo *zerostorObjects) GetObjectInfo(ctx context.Context, bucket, object str
 		err = zstorToObjectErr(errors.WithStack(err), Operation("GetObjectInfo"), bucket, object)
 	}
 
+	if objInfo.IsDir {
+		return objInfo, minio.ObjectNotFound{Bucket: bucket, Object: object}
+	}
+
 	return objInfo, err
 }
 

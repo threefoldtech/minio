@@ -326,16 +326,15 @@ func (s *badgerInodeStore) scanDelimited(path meta.Path, after []byte, limit int
 			m := item.UserMeta()
 			if m == MetaTypeDirectory {
 				paths = append(paths,
-					meta.NewPath(
+					meta.DirPath(
 						path.Collection,
-						filepath.Join(path.Relative(), name),
-						"",
+						path.Relative(), name,
 					),
 				)
 
 			} else {
 				paths = append(paths,
-					meta.NewPath(
+					meta.FilePath(
 						path.Collection,
 						path.Relative(),
 						name,
