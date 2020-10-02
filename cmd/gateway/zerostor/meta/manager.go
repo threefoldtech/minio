@@ -458,6 +458,26 @@ func (m *metaManager) ObjectGetInfo(bucket, object, version string) (info minio.
 	return info, nil
 }
 
+func (m *metaManager) ObjectGetObjectVersions(id ObjectID) ([]string, error) {
+	path := DirPath(VersionCollection, string(id))
+	results, err := m.store.List(path)
+	if err != nil {
+		return nil, err
+	}
+
+	versions := make([]string, 0, len(results))
+	for _, result := range results {
+		name := result.Base()
+		if name == currentVersionFile {
+			continue
+		}
+
+		versions = append(versions, name)
+	}
+
+	return versions, nil
+}
+
 func (m *metaManager) getMetadata(path Path) (Metadata, error) {
 	var meta Metadata
 	record, err := m.store.Get(path)

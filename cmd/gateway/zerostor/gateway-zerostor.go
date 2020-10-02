@@ -563,7 +563,12 @@ func (zo *zerostorObjects) ListObjectVersions(
 		"max-keys":       maxKeys,
 	}).Debug("ListObjectVersions")
 
-	return minio.ListObjectVersionsInfo{}, minio.NotImplemented{}
+	meta := zo.manager.GetMeta()
+	defer meta.Close()
+
+	_, err = meta.ListObjectsV2(ctx, bucket, prefix, marker, delimiter, maxKeys, false, "")
+
+	return minio.ListObjectVersionsInfo{}, err
 }
 
 func (zo *zerostorObjects) GetBucketObjectLockConfig(context.Context, string) (*objectlock.Config, error) {

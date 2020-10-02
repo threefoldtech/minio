@@ -52,6 +52,7 @@ type Manager interface {
 	// ObjectGetInfo get info for an object
 	ObjectGetInfo(bucket, object, version string) (minio.ObjectInfo, error)
 
+	ObjectGetObjectVersions(id ObjectID) ([]string, error)
 	// Upload operations
 	UploadCreate(bucket, object string, meta map[string]string) (string, error)
 	UploadGet(bucket, uploadID string) (info minio.MultipartInfo, err error)
