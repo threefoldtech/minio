@@ -117,6 +117,51 @@ func (a *HealerAPI) repairObject(writer http.ResponseWriter, request *http.Reque
 	job.Process(status)
 }
 
+func (a *HealerAPI) repairBuckets(writer http.ResponseWriter, request *http.Request) {
+	// if the bucket is empty this will cause the scan function
+	// to go over all buckets, hence scanning entire instance
+
+	id, err := uuid.NewRandom()
+	if err != nil {
+		writer.WriteHeader(http.StatusInternalServerError)
+		writer.Write([]byte("failed to generate a job id"))
+		return
+	}
+
+	jobType := ForegroundJob
+	if request.FormValue("bg") != "" {
+		jobType = BackgroundJob
+	}
+
+	job := newJob(jobType, id.String(), "", writer, request)
+
+	a.m.Lock()
+	a.jobs[id.String()] = job
+	a.m.Unlock()
+
+	client := a.cfg.GetClient()
+	defer client.Close()
+	metaMgr := a.cfg.GetMeta()
+	defer metaMgr.Close()
+
+	healer := repair.NewHealer(metaMgr, client.Inner())
+
+	checker := healer.CheckAndRepair
+	if request.FormValue("dry-run") != "" {
+		checker = healer.Dryrun
+	}
+
+	status, err := healer.CheckBuckets(job.Context(), checker)
+	if err != nil {
+		writer.WriteHeader(http.StatusInternalServerError)
+		writer.Write([]byte("failed to start buckets check"))
+		return
+	}
+
+	writer.WriteHeader(200)
+	job.Process(status)
+}
+
 func (a *HealerAPI) repairBucket(writer http.ResponseWriter, request *http.Request) {
 	// if the bucket is empty this will cause the scan function
 	// to go over all buckets, hence scanning entire instance
@@ -152,7 +197,13 @@ func (a *HealerAPI) repairBucket(writer http.ResponseWriter, request *http.Reque
 		checker = healer.Dryrun
 	}
 
-	status := healer.CheckBucket(job.Context(), checker, bucket)
+	status, err := healer.CheckBucket(job.Context(), checker, bucket)
+	if err != nil {
+		writer.WriteHeader(http.StatusInternalServerError)
+		writer.Write([]byte("failed to start bucket check"))
+		return
+	}
+
 	writer.WriteHeader(200)
 	job.Process(status)
 }

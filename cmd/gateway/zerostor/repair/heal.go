@@ -6,6 +6,7 @@ import (
 
 	"github.com/minio/minio/cmd/gateway/zerostor/meta"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 	"github.com/threefoldtech/0-stor/client"
 	"github.com/threefoldtech/0-stor/client/datastor/pipeline/storage"
 	"github.com/threefoldtech/0-stor/client/metastor/metatypes"
@@ -191,7 +192,6 @@ func (h *Healer) Check(ctx context.Context, cb Callback) <-chan Status {
 				return
 			case ch <- status:
 			}
-
 		}
 	}()
 
@@ -233,47 +233,82 @@ func (h *Healer) CheckObject(ctx context.Context, cb Callback, bucket, object st
 }
 
 // CheckBucket check entire bucket. if bucket is empty, scans the full installation
-func (h *Healer) CheckBucket(ctx context.Context, cb Callback, bucket string) <-chan Status {
-	panic("not implemented")
-	/*
-		ch := make(chan Status)
-		go func(ctx context.Context) {
-			defer close(ch)
-			token := ""
-			result := &BucketStatus{bucket: bucket}
-			for {
-				list, err := h.manager.ListObjectsV2(ctx, bucket, "", token, "", 1000, false, "")
-				if err != nil {
-					result = result.WithError(errors.Wrapf(err, "failed to list objects in bucket: %s", bucket))
-					break
-				}
+func (h *Healer) CheckBucket(ctx context.Context, cb Callback, bucket string) (<-chan Status, error) {
+	list, err := h.manager.ObjectList(ctx, bucket, "", "")
+	if err != nil {
+		return nil, err
 
-				for _, object := range list.Objects {
-					// forward object report
-					for status := range h.CheckObject(ctx, cb, bucket, object.Name) {
-						select {
-						case <-ctx.Done():
-							return
-						case ch <- status:
-						}
-					}
-				}
+	}
+	ch := make(chan Status)
 
-				token = list.ContinuationToken
-				if !list.IsTruncated {
-					break
+	go func(ctx context.Context) {
+		defer close(ch)
+		result := &BucketStatus{bucket: bucket}
+
+		for object := range list {
+			if object.Error != nil {
+				log.WithError(err).WithField("bucket", bucket).Error("error while scanning bucket")
+				continue
+			}
+
+			// forward object report
+			for status := range h.CheckObject(ctx, cb, bucket, object.Info.Name) {
+				select {
+				case <-ctx.Done():
+					return
+				case ch <- status:
+				}
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case ch <- result:
+		}
+	}(ctx)
+
+	return ch, nil
+}
+
+// CheckBuckets check all buckets
+func (h *Healer) CheckBuckets(ctx context.Context, cb Callback) (<-chan Status, error) {
+	buckets, err := h.manager.BucketsList()
+	if err != nil {
+		return nil, err
+	}
+
+	ch := make(chan Status)
+	go func() {
+		defer close(ch)
+		for bucket := range buckets {
+			stream, err := h.CheckBucket(ctx, cb, bucket)
+			if err != nil {
+				select {
+				case ch <- &BucketStatus{bucket: bucket, err: err}:
+					continue
+				case <-ctx.Done():
+					return
+				}
+			}
+
+			for status := range stream {
+				select {
+				case ch <- status:
+				case <-ctx.Done():
+					return
 				}
 			}
 
 			select {
 			case <-ctx.Done():
 				return
-			case ch <- result:
+			case ch <- &BucketStatus{bucket: bucket}:
 			}
-		}(ctx)
+		}
+	}()
 
-		return ch
-	*/
+	return ch, nil
 }
 
 // Dryrun is a callback that does nothing.

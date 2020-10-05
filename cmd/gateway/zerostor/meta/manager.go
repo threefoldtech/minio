@@ -264,61 +264,6 @@ func (m *metaManager) LinkObject(bucket, object, fileID string) error {
 	)
 }
 
-// ListObjects lists objects in a bucket
-func (m *metaManager) ListObjects(ctx context.Context, bucket, prefix, marker, delimiter string, maxKeys int) (result minio.ListObjectsInfo, err error) {
-	resultV2, err := m.ListObjectsV2(ctx, bucket, prefix, "", delimiter, maxKeys, false, marker)
-	if err != nil {
-		return result, err
-	}
-
-	result.IsTruncated = resultV2.IsTruncated
-	if resultV2.IsTruncated {
-		result.NextMarker = resultV2.NextContinuationToken
-	}
-
-	result.Objects = make([]minio.ObjectInfo, 0, len(resultV2.Objects))
-
-	for _, obj := range resultV2.Objects {
-		//V1 of bucket list does not include directories
-		if obj.IsDir {
-			continue
-		}
-
-		result.Objects = append(result.Objects, obj)
-	}
-
-	result.Prefixes = resultV2.Prefixes
-
-	return
-}
-
-// ListObjectsV2 lists objects in a bucket
-func (m *metaManager) ListObjectsV2(ctx context.Context, bucket, prefix,
-	continuationToken, delimiter string, maxKeys int,
-	fetchOwner bool, startAfter string) (result minio.ListObjectsV2Info, err error) {
-	/*
-		The next implementation is based on docs at
-		https://docs.aws.amazon.com/AmazonS3/latest/API/RESTBucketGET.html
-
-		we will only support delimeted '/' since we use filesystem to store
-		meta structures.
-	*/
-
-	if len(delimiter) != 0 && delimiter != "/" {
-		return result, fmt.Errorf("only delimeter / is supported")
-	}
-
-	result.ContinuationToken = continuationToken
-	token, err := m.scan(ctx, bucket, prefix, continuationToken, len(delimiter) != 0, maxKeys, &result)
-	if err == errMaxKeyReached {
-		result.IsTruncated = true
-		result.NextContinuationToken = token
-		err = nil
-	}
-
-	return result, err
-}
-
 func (m *metaManager) BlobSet(obj *Metadata) error {
 	if len(obj.Filename) == 0 {
 		return fmt.Errorf("invalid metadata object filename")
@@ -870,39 +815,40 @@ func (m *metaManager) MetaWriteStream(cb func() (*metatypes.Metadata, error)) (M
 // StreamObjectMeta streams all blobs through a channel
 func (m *metaManager) StreamBlobs(ctx context.Context) <-chan Stream {
 	c := make(chan Stream)
+
+	push := func(s Stream) bool {
+		select {
+		case c <- s:
+			return true
+		case <-ctx.Done():
+			return false
+		}
+	}
+
 	go func() {
 		defer close(c)
-
-		dirs, err := m.store.List(FilePath(BlobCollection))
+		in, err := m.store.Scan(ctx, DirPath(BlobCollection), ScanModeFlat)
 		if err != nil {
-			log.Fatal(err)
+			push(Stream{Error: err})
 			return
 		}
 
-		for _, dir := range dirs {
-			if !dir.IsDir() {
+		for scan := range in {
+			if scan.Error != nil {
+				if push(Stream{Error: err}) {
+					continue
+				} else {
+					return
+				}
+			}
+
+			if scan.Path.IsDir() {
 				continue
 			}
 
-			blobs, err := m.store.List(dir)
-			if err != nil {
-				log.WithFields(log.Fields{"path": dir}).WithError(err)
-			}
-
-			for _, blob := range blobs {
-				if blob.IsDir() {
-					continue
-				}
-				objMeta, err := m.getMetadata(blob)
-				if err != nil {
-					log.WithFields(log.Fields{"file": blob}).WithError(err)
-				}
-
-				select {
-				case c <- Stream{objMeta, err}:
-				case <-ctx.Done():
-					return
-				}
+			meta, err := m.getMetadata(scan.Path)
+			if !push(Stream{Obj: meta, Error: err}) {
+				return
 			}
 		}
 	}()
