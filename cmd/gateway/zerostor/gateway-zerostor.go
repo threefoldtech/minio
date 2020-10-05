@@ -380,6 +380,33 @@ func (zo *zerostorObjects) DeleteObjects(ctx context.Context, bucket string, obj
 	return
 }
 
+func (zo *zerostorObjects) deleteData(ctx context.Context, manager meta.Manager, bucket, object, version string) error {
+	stream := manager.MetaGetStream(ctx, bucket, object, version)
+	cl := zo.manager.GetClient()
+	defer cl.Close()
+
+	log := log.WithFields(log.Fields{
+		"bucket":     bucket,
+		"object":     object,
+		"version-id": version,
+	})
+
+	for meta := range stream {
+		if meta.Error != nil {
+			log.WithError(meta.Error).Error("failed to stream object meta")
+		} else if err := cl.Delete(meta.Obj.Metadata); err != nil {
+			log.WithError(err).Error("failed to delete data")
+		}
+
+		//delete the meta object anyway
+		if err := manager.BlobDel(&meta.Obj); err != nil {
+			log.WithError(err).Error("failed to delete object meta")
+		}
+	}
+
+	return nil
+}
+
 func (zo *zerostorObjects) DeleteObject(ctx context.Context, bucket, object string, opts minio.ObjectOptions) (info minio.ObjectInfo, err error) {
 	log.WithFields(log.Fields{
 		"bucket":     bucket,
@@ -395,6 +422,10 @@ func (zo *zerostorObjects) DeleteObject(ctx context.Context, bucket, object stri
 	defer manager.Close()
 
 	if len(opts.VersionID) != 0 {
+		if err := zo.deleteData(ctx, manager, bucket, object, opts.VersionID); err != nil {
+			return info, err
+		}
+
 		err = manager.ObjectDeleteVersion(bucket, object, opts.VersionID)
 		return info, err
 	}

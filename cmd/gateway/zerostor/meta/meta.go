@@ -56,6 +56,8 @@ type Manager interface {
 	ObjectGetObjectVersions(id ObjectID) ([]string, error)
 
 	// ObjectDel creates a new version that points to a delete marker
+	// if you wanna completely delete information about an object version
+	// please use ObjectDeleteVersion method
 	ObjectDelete(bucket, object string) error
 
 	// ObjectDeleteVersion perminantely deletes a version entry

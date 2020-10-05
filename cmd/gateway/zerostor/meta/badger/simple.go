@@ -97,7 +97,6 @@ func (s *badgerSimpleStore) Get(path meta.Path) (meta.Record, error) {
 
 // Del deletes item, if path is a prefix, all keys are deleted.
 func (s *badgerSimpleStore) Del(path meta.Path) error {
-	log.WithField("path", path.String()).Debug("deleting path")
 	//TODO: this should be done in patches to avoid allocating a big
 	//arrays
 	var keys [][]byte
