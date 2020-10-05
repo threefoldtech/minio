@@ -47,14 +47,22 @@ type Manager interface {
 	ObjectGet(bucket, object string) (ObjectID, error)
 	// ObjectSet creates a new version that points to given meta
 	ObjectSet(id ObjectID, meta string) (version string, err error)
-	// ObjectDel creates a new version that points to a delete marker
-	ObjectDelete(id ObjectID) error
+
 	// ObjectGetInfo get info for an object
 	ObjectGetInfo(bucket, object, version string) (minio.ObjectInfo, error)
 
 	ObjectList(ctx context.Context, bucket, prefix, after string) (<-chan ObjectListResult, error)
 
 	ObjectGetObjectVersions(id ObjectID) ([]string, error)
+
+	// ObjectDel creates a new version that points to a delete marker
+	ObjectDelete(bucket, object string) error
+
+	// ObjectDeleteVersion perminantely deletes a version entry
+	// if version is the latest version, the object id will point
+	// to the latest possible version. If no more versions are available, the object
+	// is also perminantely deleted
+	ObjectDeleteVersion(bucket, object, version string) error
 
 	// Upload operations
 	UploadCreate(bucket, object string, meta map[string]string) (string, error)
@@ -76,8 +84,9 @@ type Manager interface {
 	// MetaGetStream returns meta stream for an object
 	MetaGetStream(ctx context.Context, bucket, object, version string) <-chan Stream
 
-	SetBlob(obj *Metadata) error
+	BlobSet(obj *Metadata) error
 
+	BlobDel(obj *Metadata) error
 	//LinkPart(bucket, uploadID, partID, blob string) error
 	//ListObjects(ctx context.Context, bucket, prefix, marker, delimiter string, maxKeys int) (minio.ListObjectsInfo, error)
 	//ListObjectsV2(ctx context.Context, bucket, prefix, continuationToken, delimiter string, maxKeys int, fetchOwner bool, startAfter string) (minio.ListObjectsV2Info, error)

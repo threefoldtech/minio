@@ -171,7 +171,7 @@ func (h *Healer) checkBlob(ctx context.Context, cb Callback, meta meta.Metadata)
 
 	meta.Metadata = *updated
 
-	if err := h.manager.SetBlob(&meta); err != nil {
+	if err := h.manager.BlobSet(&meta); err != nil {
 		return result.WithError(errors.Wrapf(err, "failed to update meta object for blob (%s)", meta.Filename))
 	}
 	// if repaired then status should be back to optimal

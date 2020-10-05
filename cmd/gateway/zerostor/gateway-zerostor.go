@@ -358,12 +358,15 @@ func (zo *zerostorObjects) DeleteBucketPolicy(ctx context.Context, bucket string
 
 func (zo *zerostorObjects) DeleteObjects(ctx context.Context, bucket string, objects []minio.ObjectToDelete, opts minio.ObjectOptions) (results []minio.DeletedObject, errors []error) {
 	log.WithFields(log.Fields{
-		"bucket":  bucket,
-		"objects": objects,
+		"bucket":     bucket,
+		"objects":    objects,
+		"version-id": opts.VersionID,
 	}).Debug("DeleteObjects")
 
 	for _, object := range objects {
-		info, err := zo.DeleteObject(ctx, bucket, object.ObjectName, opts)
+		copy := opts
+		copy.VersionID = object.VersionID
+		info, err := zo.DeleteObject(ctx, bucket, object.ObjectName, copy)
 		if err != nil {
 			errors = append(errors, err)
 		}
@@ -379,8 +382,9 @@ func (zo *zerostorObjects) DeleteObjects(ctx context.Context, bucket string, obj
 
 func (zo *zerostorObjects) DeleteObject(ctx context.Context, bucket, object string, opts minio.ObjectOptions) (info minio.ObjectInfo, err error) {
 	log.WithFields(log.Fields{
-		"bucket": bucket,
-		"object": object,
+		"bucket":     bucket,
+		"object":     object,
+		"version-id": opts.VersionID,
 	}).Debug("DeleteObject")
 
 	if zo.isReadOnly() {
@@ -390,13 +394,12 @@ func (zo *zerostorObjects) DeleteObject(ctx context.Context, bucket, object stri
 	manager := zo.manager.GetMeta()
 	defer manager.Close()
 
-	id, err := manager.ObjectGet(bucket, object)
-	if os.IsNotExist(err) {
-		return info, minio.ObjectNotFound{Bucket: bucket, Object: object}
+	if len(opts.VersionID) != 0 {
+		err = manager.ObjectDeleteVersion(bucket, object, opts.VersionID)
+		return info, err
 	}
 
-	//TODO: use version id
-	if err := manager.ObjectDelete(id); err != nil {
+	if err := manager.ObjectDelete(bucket, object); err != nil {
 		return info, err
 	}
 

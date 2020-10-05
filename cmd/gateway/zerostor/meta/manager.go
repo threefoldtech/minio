@@ -152,8 +152,13 @@ func (m *metaManager) BucketSetPolicy(name string, policy *policy.Policy) error 
 }
 
 // ObjectDel creates a new version that points to a delete marker
-func (m *metaManager) ObjectDelete(id ObjectID) error {
-	_, err := m.ObjectSet(id, "") // create a new empty version
+func (m *metaManager) ObjectDelete(bucket, object string) error {
+	id, err := m.ObjectGet(bucket, object)
+	if err != nil {
+		return err
+	}
+
+	_, err = m.ObjectSet(id, "") // create a new empty version
 	return err
 }
 
@@ -314,7 +319,7 @@ func (m *metaManager) ListObjectsV2(ctx context.Context, bucket, prefix,
 	return result, err
 }
 
-func (m *metaManager) SetBlob(obj *Metadata) error {
+func (m *metaManager) BlobSet(obj *Metadata) error {
 	if len(obj.Filename) == 0 {
 		return fmt.Errorf("invalid metadata object filename")
 	}
@@ -326,6 +331,15 @@ func (m *metaManager) SetBlob(obj *Metadata) error {
 	}
 
 	return m.store.Set(path, data)
+}
+
+func (m *metaManager) BlobDel(obj *Metadata) error {
+	if len(obj.Filename) == 0 {
+		return fmt.Errorf("invalid metadata object filename")
+	}
+
+	path := FilePath(BlobCollection, obj.Filename)
+	return m.store.Del(path)
 }
 
 // CompleteMultipartUpload completes a multipart upload by linking all metadata blobs
@@ -364,7 +378,7 @@ func (m *metaManager) UploadComplete(bucket, _object, uploadID string, parts []m
 		if tail != nil {
 			// if tail has a value, we need to chain it to this blob
 			tail.NextBlob = next.Filename
-			if err := m.SetBlob(tail); err != nil {
+			if err := m.BlobSet(tail); err != nil {
 				return Metadata{}, err
 			}
 		}
@@ -409,7 +423,7 @@ func (m *metaManager) UploadComplete(bucket, _object, uploadID string, parts []m
 	// put the object info in the first blob and save it
 	head.ObjectUserMeta = uploadInfo.UserDefined
 	head.ObjectSize = totalSize
-	if err := m.SetBlob(head); err != nil {
+	if err := m.BlobSet(head); err != nil {
 		return Metadata{}, err
 	}
 
@@ -547,6 +561,83 @@ func (m *metaManager) ObjectGetObjectVersions(id ObjectID) ([]string, error) {
 	return versions, nil
 }
 
+func (m *metaManager) ObjectDeleteVersion(bucket, object, version string) error {
+	id, err := m.ObjectGet(bucket, object)
+	if err != nil {
+		return err
+	}
+
+	versions, err := m.ObjectGetObjectVersions(id)
+	if err != nil {
+		return err
+	}
+
+	var match string
+	for _, ver := range versions {
+		if ver == version {
+			match = version
+			break
+		}
+	}
+
+	if len(match) == 0 {
+		return minio.VersionNotFound{Bucket: bucket, Object: object, VersionID: version}
+	}
+
+	if len(versions) == 1 {
+		// we deleting the only remaining version
+		// perminantely delete the object
+		if err := m.store.Del(FilePath(ObjectCollection, bucket, object)); err != nil {
+			return err
+		}
+
+		return m.store.Del(DirPath(VersionCollection, string(id)))
+	}
+
+	info, err := m.getObjectVersion(id, version)
+	if err != nil {
+		return err
+	}
+
+	path := FilePath(VersionCollection, string(id), info.ID)
+	current, err := m.getObjectVersion(id, "")
+	if current.ID != info.ID {
+		// we are NOT deleting the current version
+		// so we can simply delete this version object from the
+		// store.
+		return m.store.Del(path)
+	}
+
+	// otherwise we are deleting the LAST (current) version, in that case
+	// we need to find the next suitable one.
+	candidates := make([]versionInfo, 0, len(versions)-1)
+	for _, ver := range versions {
+		if ver == current.ID {
+			continue
+		}
+
+		info, err := m.getObjectVersion(id, ver)
+		if err != nil {
+			return err
+		}
+
+		candidates = append(candidates, info)
+	}
+
+	sort.Slice(candidates, func(i, j int) bool {
+		// sorting in reverse so the bigger is at index 0
+		return candidates[i].Timestamp > candidates[j].Timestamp
+	})
+
+	// set current version to the one with the highest timestamp
+	if err := m.objectSetCurrentVersion(id, candidates[0].ID); err != nil {
+		return err
+	}
+
+	// finally delete the given version
+	return m.store.Del(path)
+}
+
 func (m *metaManager) getMetadata(path Path) (Metadata, error) {
 	var meta Metadata
 	record, err := m.store.Get(path)
@@ -607,9 +698,16 @@ func (m *metaManager) ObjectSet(id ObjectID, meta string) (string, error) {
 		return version.ID, err
 	}
 
-	current := FilePath(VersionCollection, string(id), currentVersionFile)
 	// now link current version to this version
-	return version.ID, m.store.Link(current, path)
+	return version.ID, m.objectSetCurrentVersion(id, version.ID)
+}
+
+func (m *metaManager) objectSetCurrentVersion(id ObjectID, version string) error {
+	path := FilePath(VersionCollection, string(id), version)
+	current := FilePath(VersionCollection, string(id), currentVersionFile)
+
+	// now link current version to this version
+	return m.store.Link(current, path)
 }
 
 func (m *metaManager) getObjectVersion(id ObjectID, version string) (versionInfo, error) {
@@ -727,7 +825,7 @@ func (m *metaManager) MetaWriteStream(cb func() (*metatypes.Metadata, error)) (M
 		currentMeta.Filename = current
 		currentMeta.NextBlob = next
 
-		if err := m.SetBlob(currentMeta); err != nil {
+		if err := m.BlobSet(currentMeta); err != nil {
 			return Metadata{}, err
 		}
 
@@ -752,7 +850,7 @@ func (m *metaManager) MetaWriteStream(cb func() (*metatypes.Metadata, error)) (M
 
 	if currentMeta != head {
 		// write the meta of the last received metadata
-		if err := m.SetBlob(currentMeta); err != nil {
+		if err := m.BlobSet(currentMeta); err != nil {
 			return Metadata{}, err
 		}
 	}
@@ -762,7 +860,7 @@ func (m *metaManager) MetaWriteStream(cb func() (*metatypes.Metadata, error)) (M
 	head.ObjectUserMeta = head.UserDefined
 
 	// update the the first meta part with the size and mod time
-	if err := m.SetBlob(head); err != nil {
+	if err := m.BlobSet(head); err != nil {
 		return Metadata{}, err
 	}
 
