@@ -423,8 +423,9 @@ func (zo *zerostorObjects) CopyObject(ctx context.Context, srcBucket, srcObject,
 
 func (zo *zerostorObjects) GetObjectNInfo(ctx context.Context, bucket, object string, rs *minio.HTTPRangeSpec, h http.Header, lockType minio.LockType, opts minio.ObjectOptions) (reader *minio.GetObjectReader, err error) {
 	log.WithFields(log.Fields{
-		"bucket": bucket,
-		"object": object,
+		"bucket":     bucket,
+		"object":     object,
+		"version-id": opts.VersionID,
 	}).Debug("GetObjectNInfo")
 
 	var objInfo minio.ObjectInfo
@@ -454,10 +455,11 @@ func (zo *zerostorObjects) GetObjectNInfo(ctx context.Context, bucket, object st
 func (zo *zerostorObjects) GetObject(ctx context.Context, bucket, object string, startOffset int64, length int64,
 	writer io.Writer, etag string, opts minio.ObjectOptions) error {
 	log.WithFields(log.Fields{
-		"bucket":      bucket,
-		"object":      object,
-		"startOffset": startOffset,
-		"length":      length,
+		"bucket":       bucket,
+		"object":       object,
+		"version-id":   opts.VersionID,
+		"start-offset": startOffset,
+		"length":       length,
 	}).Debug("GetObject")
 
 	if length < 0 && length != -1 {
@@ -527,8 +529,9 @@ func (zo *zerostorObjects) GetObject(ctx context.Context, bucket, object string,
 
 func (zo *zerostorObjects) GetObjectInfo(ctx context.Context, bucket, object string, opts minio.ObjectOptions) (objInfo minio.ObjectInfo, err error) {
 	log.WithFields(log.Fields{
-		"bucket": bucket,
-		"object": object,
+		"bucket":     bucket,
+		"object":     object,
+		"version-id": opts.VersionID,
 	}).Debug("GetObjectInfo")
 
 	metaMgr := zo.manager.GetMeta()
@@ -564,12 +567,83 @@ func (zo *zerostorObjects) ListObjectVersions(
 		"max-keys":       maxKeys,
 	}).Debug("ListObjectVersions")
 
-	meta := zo.manager.GetMeta()
-	defer meta.Close()
+	metaMgr := zo.manager.GetMeta()
+	defer metaMgr.Close()
+	_, err = metaMgr.BucketGet(bucket)
+	if err != nil {
+		err = zstorToObjectErr(err, Operation("GetBucketInfo"), bucket)
+		return result, err
+	}
 
-	// _, err = meta.ListObjectsV2(ctx, bucket, prefix, marker, delimiter, maxKeys, false, "")
+	after, err := base64.StdEncoding.DecodeString(marker)
+	if err != nil {
+		return result, err
+	}
 
-	return minio.ListObjectVersionsInfo{}, err
+	child, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	results, err := metaMgr.ObjectList(child, bucket, prefix, string(after))
+	if err != nil {
+		return result, err
+	}
+
+	count := 0
+	for obj := range results {
+		if obj.Error != nil {
+			return result, obj.Error
+		}
+
+		info := obj.Info
+
+		if info.IsDir {
+			result.Prefixes = append(result.Prefixes, info.Name+"/")
+			continue
+		}
+
+		id, err := metaMgr.ObjectGet(info.Bucket, info.Name)
+		if err != nil {
+			log.WithError(err).WithFields(log.Fields{
+				"bucket": info.Bucket,
+				"object": info.Name,
+			}).Error("failed to get object id")
+
+			continue
+		}
+
+		versions, err := metaMgr.ObjectGetObjectVersions(id)
+		if err != nil {
+			log.WithError(err).WithFields(log.Fields{
+				"bucket": info.Bucket,
+				"object": info.Name,
+			}).Error("failed to get object versions")
+
+			continue
+		}
+
+		for _, version := range versions {
+			info, err := metaMgr.ObjectGetInfo(info.Bucket, info.Name, version)
+			if err != nil {
+				log.WithError(err).WithFields(log.Fields{
+					"bucket": info.Bucket,
+					"object": info.Name,
+				}).Error("failed to get object versions")
+
+				continue
+			}
+
+			result.Objects = append(result.Objects, info)
+
+			count++
+			if count >= maxKeys {
+				result.IsTruncated = true
+				result.NextMarker = base64.StdEncoding.EncodeToString([]byte(info.Name))
+				break
+			}
+		}
+	}
+
+	return result, nil
 }
 
 func (zo *zerostorObjects) GetBucketObjectLockConfig(context.Context, string) (*objectlock.Config, error) {
@@ -613,6 +687,10 @@ func (zo *zerostorObjects) ListObjects(ctx context.Context, bucket, prefix, mark
 		}
 
 		info := obj.Info
+		if info.DeleteMarker {
+			continue
+		}
+
 		if info.IsDir {
 			result.Prefixes = append(result.Prefixes, info.Name+"/")
 		} else {
@@ -671,6 +749,10 @@ func (zo *zerostorObjects) ListObjectsV2(ctx context.Context, bucket, prefix, co
 		}
 
 		info := obj.Info
+		if info.DeleteMarker {
+			continue
+		}
+
 		if info.IsDir {
 			result.Prefixes = append(result.Prefixes, info.Name+"/")
 		} else {

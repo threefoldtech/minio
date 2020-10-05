@@ -32,8 +32,9 @@ const (
 )
 
 type versionInfo struct {
-	ID   string
-	Meta string
+	ID        string
+	Meta      string
+	Timestamp int64
 }
 
 // multiPartInfo represents info/metadata of a multipart upload
@@ -441,10 +442,8 @@ func (m *metaManager) ObjectGetInfo(bucket, object, version string) (info minio.
 	info.VersionID = ver.ID
 
 	if len(ver.Meta) == 0 {
-		var ts int64
-		fmt.Sscanf(ver.ID, "%x", &ts)
 		info.DeleteMarker = true
-		info.ModTime = EpochToTimestamp(ts)
+		info.ModTime = EpochToTimestamp(ver.Timestamp)
 		return
 	}
 
@@ -517,10 +516,6 @@ func (m *metaManager) ObjectList(ctx context.Context, bucket, prefix, after stri
 			if err != nil {
 				push(ObjectListResult{Error: err})
 				return
-			}
-
-			if info.DeleteMarker {
-				continue
 			}
 
 			if !push(ObjectListResult{Info: info}) {
@@ -597,8 +592,9 @@ func (m *metaManager) objectGet(bucket, object string) (bool, ObjectID, error) {
 
 func (m *metaManager) ObjectSet(id ObjectID, meta string) (string, error) {
 	version := versionInfo{
-		ID:   fmt.Sprintf("%x", time.Now().UnixNano()),
-		Meta: meta,
+		ID:        uuid.New().String(),
+		Meta:      meta,
+		Timestamp: time.Now().UnixNano(),
 	}
 
 	path := FilePath(VersionCollection, string(id), version.ID)
