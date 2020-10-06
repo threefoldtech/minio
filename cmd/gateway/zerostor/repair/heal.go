@@ -115,6 +115,7 @@ func (s *ObjectStatus) String() string {
 // BucketStatus struct
 type BucketStatus struct {
 	bucket string
+	prefix string
 	err    error
 }
 
@@ -129,7 +130,7 @@ func (s *BucketStatus) Error() error {
 }
 
 func (s *BucketStatus) String() string {
-	str := fmt.Sprintf("bucket: %s", s.bucket)
+	str := fmt.Sprintf("bucket: %s (prefix: %s)", s.bucket, s.prefix)
 	if s.err != nil {
 		str = fmt.Sprintf("%s [error: %s]", str, s.err)
 	}
@@ -234,37 +235,63 @@ func (h *Healer) CheckObject(ctx context.Context, cb Callback, bucket, object st
 
 // CheckBucket check entire bucket. if bucket is empty, scans the full installation
 func (h *Healer) CheckBucket(ctx context.Context, cb Callback, bucket string) (<-chan Status, error) {
-	list, err := h.manager.ObjectList(ctx, bucket, "", "")
-	if err != nil {
-		return nil, err
-
-	}
 	ch := make(chan Status)
+
+	// we start with empty prefix
+	// we use prefixes as a stack
+	// to avoid recursion and propability of
+	// hitting a stack overflow.
+	prefixes := []string{""}
 
 	go func(ctx context.Context) {
 		defer close(ch)
-		result := &BucketStatus{bucket: bucket}
 
-		for object := range list {
-			if object.Error != nil {
-				log.WithError(err).WithField("bucket", bucket).Error("error while scanning bucket")
-				continue
-			}
-
-			// forward object report
-			for status := range h.CheckObject(ctx, cb, bucket, object.Info.Name) {
-				select {
-				case <-ctx.Done():
-					return
-				case ch <- status:
-				}
+		push := func(s Status) bool {
+			select {
+			case ch <- s:
+				return true
+			case <-ctx.Done():
+				return false
 			}
 		}
 
-		select {
-		case <-ctx.Done():
-			return
-		case ch <- result:
+		for i := 0; i < len(prefixes); i++ {
+			prefix := prefixes[i]
+			result := &BucketStatus{bucket: bucket, prefix: prefix}
+
+			list, err := h.manager.ObjectList(ctx, bucket, prefix, "")
+			if err != nil {
+				if push(result.WithError(err)) {
+					continue
+				} else {
+					return
+				}
+			}
+
+			for object := range list {
+				if object.Error != nil {
+					log.WithError(err).WithField("bucket", bucket).Error("error while scanning bucket")
+					continue
+				}
+
+				if object.Info.IsDir {
+					prefixes = append(prefixes, object.Info.Name+"/")
+					continue
+				}
+
+				// forward object report
+				for status := range h.CheckObject(ctx, cb, bucket, object.Info.Name) {
+					select {
+					case <-ctx.Done():
+						return
+					case ch <- status:
+					}
+				}
+			}
+
+			if !push(result) {
+				return
+			}
 		}
 	}(ctx)
 
@@ -282,6 +309,7 @@ func (h *Healer) CheckBuckets(ctx context.Context, cb Callback) (<-chan Status, 
 	go func() {
 		defer close(ch)
 		for bucket := range buckets {
+
 			stream, err := h.CheckBucket(ctx, cb, bucket)
 			if err != nil {
 				select {
@@ -298,12 +326,6 @@ func (h *Healer) CheckBuckets(ctx context.Context, cb Callback) (<-chan Status, 
 				case <-ctx.Done():
 					return
 				}
-			}
-
-			select {
-			case <-ctx.Done():
-				return
-			case ch <- &BucketStatus{bucket: bucket}:
 			}
 		}
 	}()

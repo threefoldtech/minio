@@ -259,7 +259,7 @@ func (a *HealerAPI) setup() *mux.Router {
 	}
 
 	router.Use(mw)
-	router.HandleFunc("/repair", a.repairBucket).Methods(http.MethodPost)
+	router.HandleFunc("/repair", a.repairBuckets).Methods(http.MethodPost)
 	router.HandleFunc("/repair/{bucket}", a.repairBucket).Methods(http.MethodPost)
 	router.PathPrefix("/repair/{bucket}/").HandlerFunc(a.repairObject).Methods(http.MethodPost)
 	router.HandleFunc("/jobs", a.getJobs).Methods(http.MethodGet)
