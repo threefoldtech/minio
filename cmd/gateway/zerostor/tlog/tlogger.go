@@ -57,7 +57,7 @@ type TLogger interface {
 	HealthChecker(ctx context.Context)
 }
 
-type fsTLogger struct {
+type tlogger struct {
 	recorder *zdbRecorder
 	meta.Store
 }
@@ -69,7 +69,7 @@ func NewTLogger(address, namespace, password, stateFile string, store meta.Store
 		return nil, err
 	}
 
-	return &fsTLogger{
+	return &tlogger{
 		recorder: recorder,
 		Store:    store,
 	}, nil

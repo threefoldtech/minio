@@ -13,7 +13,7 @@ func init() {
 	gob.Register(meta.Path{})
 }
 
-func (t *fsTLogger) Set(path meta.Path, data []byte) error {
+func (t *tlogger) Set(path meta.Path, data []byte) error {
 	t.recorder.Begin()
 	defer t.recorder.End()
 
@@ -30,7 +30,7 @@ func (t *fsTLogger) Set(path meta.Path, data []byte) error {
 	return err
 }
 
-func (t *fsTLogger) Del(path meta.Path) error {
+func (t *tlogger) Del(path meta.Path) error {
 	t.recorder.Begin()
 	defer t.recorder.End()
 
@@ -46,7 +46,7 @@ func (t *fsTLogger) Del(path meta.Path) error {
 	return err
 }
 
-func (t *fsTLogger) Link(link, target meta.Path) error {
+func (t *tlogger) Link(link, target meta.Path) error {
 	t.recorder.Begin()
 	defer t.recorder.End()
 
@@ -64,7 +64,7 @@ func (t *fsTLogger) Link(link, target meta.Path) error {
 }
 
 //Sync syncs the backend storage with the latest records from the tlog storage
-func (t *fsTLogger) Sync() error {
+func (t *tlogger) Sync() error {
 
 	return t.recorder.Play(nil, func(key []byte, rec Record) error {
 		if err := rec.Play(t.Store); err != nil {
@@ -87,7 +87,7 @@ func (t *fsTLogger) Sync() error {
 }
 
 //HealthChecker start health checker for TLogger
-func (t *fsTLogger) HealthChecker(ctx context.Context) {
+func (t *tlogger) HealthChecker(ctx context.Context) {
 	for {
 		select {
 		case <-time.After(10 * time.Minute):
@@ -108,7 +108,7 @@ func (t *fsTLogger) HealthChecker(ctx context.Context) {
 				"tlog":      t.recorder.p.address,
 				"namespace": t.recorder.p.namespace,
 				"master":    false,
-			}).Error("tlog state is okay")
+			}).Info("tlog state is okay")
 		}
 	}
 }
