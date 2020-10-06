@@ -162,6 +162,11 @@ func (s *badgerInodeStore) getDir(txn *badger.Txn, path string) (inode, error) {
 
 	return ind, nil
 }
+
+// NOTICE: Get on a inode store does NOT follow links. But that
+// is okay because simple store is not public. Hence users can't
+// make an instance of simple store. the public store interface
+// follows the interface rules of following links.
 func (s *badgerInodeStore) Get(path meta.Path) (meta.Record, error) {
 	_, record, err := s.get(path)
 	return record, err

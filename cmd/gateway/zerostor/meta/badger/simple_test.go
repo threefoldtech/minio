@@ -1,49 +1,34 @@
 package badger
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"testing"
 
 	"github.com/minio/minio/cmd/gateway/zerostor/meta"
 	"github.com/stretchr/testify/require"
 )
 
-const (
-	testCollection = meta.Collection("test")
-)
-
-func getTestInodeStore(t *testing.T, name string) meta.Store {
+func getTestSimpleeStore(t *testing.T, name string) meta.Store {
 	db := filepath.Join(os.TempDir(), name)
 	os.RemoveAll(db)
-	store, err := newBadgerInodeStore(db)
+	store, err := newBadgerSimpleStore(db)
 
 	require.NoError(t, err)
 
 	return store
 }
 
-func TestInodeStoreCreateDirectory(t *testing.T) {
-	store := getTestInodeStore(t, "inode_create_dir")
+func TestSimpleStoreCreateDirectory(t *testing.T) {
+	store := getTestSimpleeStore(t, "simple_create_dir")
 	defer store.Close()
 
 	err := store.Set(meta.DirPath(testCollection, "documents"), nil)
-	require.NoError(t, err)
-
-	err = store.Set(meta.DirPath(testCollection, "videos", "movies"), nil)
-	require.NoError(t, err)
-
-	record, err := store.Get(meta.DirPath(testCollection, "documents"))
-	require.NoError(t, err)
-
-	require.True(t, record.Path.IsDir())
-	require.Equal(t, "documents", record.Path.Relative())
+	require.Errorf(t, err, "simple store does not support directory entries")
 }
 
-func TestInodeStoreCreateFile(t *testing.T) {
-	store := getTestInodeStore(t, "inode_create_file")
+func TestSimpleStoreCreateFile(t *testing.T) {
+	store := getTestSimpleeStore(t, "simple_create_file")
 	defer store.Close()
 
 	err := store.Set(meta.FilePath(testCollection, "test.txt"), []byte("hello world"))
@@ -56,8 +41,8 @@ func TestInodeStoreCreateFile(t *testing.T) {
 	require.Equal(t, "test.txt", record.Path.Relative())
 }
 
-func TestInodeStoreCreateMany(t *testing.T) {
-	store := getTestInodeStore(t, "inode_create_many")
+func TestSimpleStoreCreateMany(t *testing.T) {
+	store := getTestSimpleeStore(t, "simple_create_many")
 	defer store.Close()
 
 	err := store.Set(meta.FilePath(testCollection, "documents/test.txt"), []byte("hello world"))
@@ -66,27 +51,25 @@ func TestInodeStoreCreateMany(t *testing.T) {
 	err = store.Set(meta.FilePath(testCollection, "documents/data.txt"), []byte("some data"))
 	require.NoError(t, err)
 
-	err = store.Set(meta.DirPath(testCollection, "documents/important"), nil)
-	require.NoError(t, err)
-
 	record, err := store.Get(meta.FilePath(testCollection, "documents", "test.txt"))
 	require.NoError(t, err)
 
 	require.False(t, record.Path.IsDir())
 	require.Equal(t, "documents/test.txt", record.Path.Relative())
 
+	record, err = store.Get(meta.FilePath(testCollection, "documents"))
+	require.Error(t, err, os.ErrNotExist)
+
 	// list
 	objects, err := store.List(meta.DirPath(testCollection, "documents"))
 	require.NoError(t, err)
 
-	require.Len(t, objects, 3)
+	require.Len(t, objects, 2)
 
 	require.False(t, objects[0].IsDir())
-	require.True(t, objects[1].IsDir())
-	require.False(t, objects[2].IsDir())
+	require.False(t, objects[1].IsDir())
 	require.Equal(t, "documents/data.txt", objects[0].Relative())
-	require.Equal(t, "documents/important", objects[1].Relative())
-	require.Equal(t, "documents/test.txt", objects[2].Relative())
+	require.Equal(t, "documents/test.txt", objects[1].Relative())
 
 	// get
 
@@ -95,15 +78,9 @@ func TestInodeStoreCreateMany(t *testing.T) {
 
 	require.False(t, record.Path.IsDir())
 	require.Equal(t, "documents/test.txt", record.Path.Relative())
-
-	record, err = store.Get(meta.FilePath(testCollection, "documents/important"))
-	require.NoError(t, err)
-
-	require.True(t, record.Path.IsDir())
-	require.Equal(t, "documents/important", record.Path.Relative())
 }
 
-func TestInodeList(t *testing.T) {
+func TestSimpleList(t *testing.T) {
 	files := []string{
 		"readme.txt",
 		"docs/document-1.txt",
@@ -124,7 +101,7 @@ func TestInodeList(t *testing.T) {
 
 	data := []byte("some random data!")
 
-	store := getTestInodeStore(t, "inode_list")
+	store := getTestSimpleeStore(t, "inode_list")
 	defer store.Close()
 
 	for _, file := range files {
@@ -139,19 +116,19 @@ func TestInodeList(t *testing.T) {
 	}{
 		{
 			List:     meta.DirPath(testCollection),
-			Expected: []string{"readme.txt", "docs", "videos", "archive"},
+			Expected: files,
 		},
 		{
 			List:     meta.DirPath(testCollection, "docs"),
-			Expected: []string{"document-1.txt", "document-2.txt", "document-3.txt"},
+			Expected: files[1:4],
 		},
 		{
 			List:     meta.DirPath(testCollection, "archive"),
-			Expected: []string{"2009", "2010"},
+			Expected: files[7:],
 		},
 		{
 			List:     meta.DirPath(testCollection, "archive", "2009"),
-			Expected: []string{"photos"},
+			Expected: files[7:11],
 		},
 	}
 
@@ -164,19 +141,4 @@ func TestInodeList(t *testing.T) {
 		})
 	}
 
-}
-
-func pathsMatch(l []meta.Path, p ...string) error {
-	if len(l) != len(p) {
-		return fmt.Errorf("invalid count '%d' expecting '%d'", len(p), len(l))
-	}
-
-	sort.Strings(p)
-
-	for _, x := range l {
-		if sort.SearchStrings(p, x.Relative()) < 0 {
-			return fmt.Errorf("path '%s' not expected", x.Relative())
-		}
-	}
-	return nil
 }

@@ -29,7 +29,18 @@ type Record struct {
 	Link bool
 }
 
-// Store defines the interface to a low level metastore
+// Store defines the interface to a low level store
+// the store provides a filesystem similar functionality
+// which can be easily implemented as real filesystem operations
+// or differently.
+// Implementations of the store can decide the following
+// - Which scan modes to support, one, or both modes can be supported:
+//  - flat: which means the scanner can recursively return all files under a path
+//  - delimited: which means the scanner return only the direct children of a path
+// if a scan mode is used that is not supported, an ErrUnsupportedScanMode should
+// be returned
+// Also Get operation will always follow "links". Implementations must make sure links
+// are followed until a file/directory is found.
 type Store interface {
 	Set(path Path, data []byte) error
 	Get(path Path) (Record, error)

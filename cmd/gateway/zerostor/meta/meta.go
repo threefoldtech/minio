@@ -1,3 +1,6 @@
+// Package meta provides the necessary tool to maintain and work with metadata.
+// Metadata are pieces of information that is needed to be able to reconstruct your
+// objects.
 package meta
 
 import (
@@ -31,7 +34,10 @@ var (
 	ErrDirectoryNotEmpty = errors.New("directory not empty")
 )
 
-// Manager interface for metadata managers
+// Manager interface for metadata managers. Provides a wrapper around basic
+// meta operations. A meta manager will probably use a Store implementation
+// to set/get metadata data from a low level storage, while providing a higher
+// level interface for more complex functionality
 type Manager interface {
 	BucketCreate(string) error
 	BucketGet(name string) (*Bucket, error)
@@ -47,19 +53,18 @@ type Manager interface {
 	ObjectGet(bucket, object string) (ObjectID, error)
 	// ObjectSet creates a new version that points to given meta
 	ObjectSet(id ObjectID, meta string) (version string, err error)
-
 	// ObjectGetInfo get info for an object
 	ObjectGetInfo(bucket, object, version string) (minio.ObjectInfo, error)
-
+	// ObjectList list objects from a bucket with given prefix, accepts an optional
+	// after which will be used as a start point (exclusive) for the returned results.
 	ObjectList(ctx context.Context, bucket, prefix, after string) (<-chan ObjectListResult, error)
-
+	// ObjectGetObjectVersions list versions associated with object id.
 	ObjectGetObjectVersions(id ObjectID) ([]string, error)
 
 	// ObjectDel creates a new version that points to a delete marker
 	// if you wanna completely delete information about an object version
 	// please use ObjectDeleteVersion method
 	ObjectDelete(bucket, object string) error
-
 	// ObjectDeleteVersion perminantely deletes a version entry
 	// if version is the latest version, the object id will point
 	// to the latest possible version. If no more versions are available, the object

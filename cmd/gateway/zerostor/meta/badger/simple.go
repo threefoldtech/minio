@@ -62,6 +62,10 @@ func (s *badgerSimpleStore) isPrefix(txn *badger.Txn, key string) bool {
 	return it.ValidForPrefix(k)
 }
 
+// NOTICE: Get on a simple store does NOT follow links. But that
+// is okay because simple store is not public. Hence users can't
+// make an instance of simple store. the public store interface
+// follows the interface rules of following links.
 func (s *badgerSimpleStore) Get(path meta.Path) (meta.Record, error) {
 	var data []byte
 	var stamp time.Time
