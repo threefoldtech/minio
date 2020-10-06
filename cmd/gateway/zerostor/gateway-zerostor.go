@@ -820,13 +820,18 @@ func (zo *zerostorObjects) PutObject(ctx context.Context, bucket, object string,
 	metaMgr := zo.manager.GetMeta()
 	defer metaMgr.Close()
 
-	if strings.HasSuffix(object, "/") && data.Reader.Size() == 0 {
-		return minio.ObjectInfo{
-			Bucket: bucket,
-			Name:   object,
-			IsDir:  true,
-		}, metaMgr.Mkdir(bucket, object)
-	}
+	// NOTICE: this commented out block was a hack to fix a compatability
+	// issue with Veeam. I think the new code already fix this fundemintally
+	// so we comment out this hack for now. In case the tests proves otherwise
+	// we can put it back (for now)
+	//
+	// if strings.HasSuffix(object, "/") && data.Reader.Size() == 0 {
+	// 	return minio.ObjectInfo{
+	// 		Bucket: bucket,
+	// 		Name:   object,
+	// 		IsDir:  true,
+	// 	}, metaMgr.Mkdir(bucket, object)
+	// }
 
 	id, err := metaMgr.ObjectEnsure(bucket, object)
 	if err != nil {
