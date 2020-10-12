@@ -184,6 +184,8 @@ POST /repair/{bucket}/{object}
 
 GET    /jobs
 DELETE /jobs/{id}
+
+POST /config
 ```
 
 > All `repair` endpoints accepts optional query `dry-run` and `bg`
@@ -321,3 +323,7 @@ func main() {
 }
 
 ```
+
+# Changing minio config
+The api also provide a `/config` endpoint. This endpoint can be used to update full minio config on the fly. This is done by posting the full
+minio config as described above. Please be careful with this, because currently there is no validation done on the provided config.
