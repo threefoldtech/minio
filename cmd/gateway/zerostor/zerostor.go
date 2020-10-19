@@ -217,6 +217,7 @@ func (zc *storClientWrapper) getKey(bucket, object string) []byte {
 type configManager struct {
 	mux sync.RWMutex
 
+	cfg         config.Config
 	metaDir     string
 	metaPrivKey string
 
@@ -242,6 +243,10 @@ func (c *configManager) GetClient() Client {
 func (c *configManager) GetMeta() meta.Manager {
 	c.borrow()
 	return c.metaManager
+}
+
+func (c *configManager) Current() config.Config {
+	return c.cfg
 }
 
 func (c *configManager) Reload(cfg config.Config) error {
@@ -280,6 +285,7 @@ func (c *configManager) Reload(cfg config.Config) error {
 	}
 
 	go c.client.healthReporter(ctx)
+	c.cfg = cfg
 
 	return nil
 }
@@ -321,6 +327,7 @@ type ConfigManager interface {
 	GetClient() Client
 	GetMeta() meta.Manager
 	Reload(cfg config.Config) error
+	Current() config.Config
 	Close() error
 }
 

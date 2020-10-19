@@ -20,6 +20,10 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+const (
+	dryRunKey = "dry-run"
+)
+
 var (
 	newLine    = []byte{'\n'}
 	activeJobs = promauto.NewGauge(prometheus.GaugeOpts{
@@ -108,7 +112,7 @@ func (a *HealerAPI) repairObject(writer http.ResponseWriter, request *http.Reque
 	healer := repair.NewHealer(metaMgr, client.Inner())
 
 	checker := healer.CheckAndRepair
-	if request.FormValue("dry-run") != "" {
+	if request.FormValue(dryRunKey) != "" {
 		checker = healer.Dryrun
 	}
 
@@ -193,7 +197,7 @@ func (a *HealerAPI) repairBucket(writer http.ResponseWriter, request *http.Reque
 	healer := repair.NewHealer(metaMgr, client.Inner())
 
 	checker := healer.CheckAndRepair
-	if request.FormValue("dry-run") != "" {
+	if request.FormValue(dryRunKey) != "" {
 		checker = healer.Dryrun
 	}
 
@@ -206,6 +210,18 @@ func (a *HealerAPI) repairBucket(writer http.ResponseWriter, request *http.Reque
 
 	writer.WriteHeader(200)
 	job.Process(status)
+}
+
+func (a *HealerAPI) getConfig(writer http.ResponseWriter, request *http.Request) {
+	cfg := a.cfg.Current()
+
+	writer.WriteHeader(http.StatusOK)
+	enc := yaml.NewEncoder(writer)
+	if err := enc.Encode(cfg); err != nil {
+		writer.WriteHeader(http.StatusInternalServerError)
+		writer.Write([]byte(fmt.Sprintf("failed to process config: %v", err)))
+	}
+
 }
 
 func (a *HealerAPI) updateConfig(writer http.ResponseWriter, request *http.Request) {
@@ -250,21 +266,27 @@ func (a *HealerAPI) setup() *mux.Router {
 	// middleware function to disable healer API if minio is running in slave mode
 	mw := func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if a.isReadOnly() {
+			dryRun := r.FormValue(dryRunKey) != ""
+			if a.isReadOnly() && !dryRun {
 				w.WriteHeader(http.StatusForbidden)
+				w.Write([]byte("minio running in read-only mode."))
 				return
 			}
 			h.ServeHTTP(w, r)
 		})
 	}
 
-	router.Use(mw)
-	router.HandleFunc("/repair", a.repairBuckets).Methods(http.MethodPost)
-	router.HandleFunc("/repair/{bucket}", a.repairBucket).Methods(http.MethodPost)
-	router.PathPrefix("/repair/{bucket}/").HandlerFunc(a.repairObject).Methods(http.MethodPost)
+	repair := router.NewRoute().Subrouter()
+	repair.Use(mw)
+
+	repair.HandleFunc("/repair", a.repairBuckets).Methods(http.MethodPost)
+	repair.HandleFunc("/repair/{bucket}", a.repairBucket).Methods(http.MethodPost)
+	repair.PathPrefix("/repair/{bucket}/").HandlerFunc(a.repairObject).Methods(http.MethodPost)
+
 	router.HandleFunc("/jobs", a.getJobs).Methods(http.MethodGet)
 	router.HandleFunc("/jobs/{id}", a.cancelJob).Methods(http.MethodDelete)
 	router.HandleFunc("/config", a.updateConfig).Methods(http.MethodPost)
+	router.HandleFunc("/config", a.getConfig).Methods(http.MethodGet)
 	return router
 }
 

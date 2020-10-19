@@ -784,6 +784,11 @@ func (c *testConfigMgr) GetMeta() meta.Manager {
 func (c *testConfigMgr) Reload(cfg config.Config) error {
 	return nil
 }
+
+func (c *testConfigMgr) Current() config.Config {
+	return config.Config{}
+}
+
 func (c *testConfigMgr) Close() error {
 	return nil
 }
