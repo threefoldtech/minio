@@ -23,7 +23,6 @@ import (
 	"errors"
 	"io"
 	"net/url"
-	"time"
 
 	"github.com/minio/minio/cmd/http"
 	xhttp "github.com/minio/minio/cmd/http"
@@ -75,6 +74,11 @@ func (client *lockRESTClient) callWithContext(ctx context.Context, method string
 // IsOnline - returns whether REST client failed to connect or not.
 func (client *lockRESTClient) IsOnline() bool {
 	return client.restClient.IsOnline()
+}
+
+// Not a local locker
+func (client *lockRESTClient) IsLocal() bool {
+	return false
 }
 
 // Close - marks the client as closed.
@@ -154,7 +158,7 @@ func newlockRESTClient(endpoint Endpoint) *lockRESTClient {
 		}
 	}
 
-	trFn := newInternodeHTTPTransport(tlsConfig, 10*time.Second)
+	trFn := newInternodeHTTPTransport(tlsConfig, rest.DefaultTimeout)
 	restClient := rest.NewClient(serverURL, trFn, newAuthToken)
 	restClient.HealthCheckFn = func() bool {
 		ctx, cancel := context.WithTimeout(GlobalContext, restClient.HealthCheckTimeout)

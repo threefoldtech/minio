@@ -121,9 +121,6 @@ type storageRESTClient struct {
 // permanently. The only way to restore the storage connection is at the xl-sets layer by xlsets.monitorAndConnectEndpoints()
 // after verifying format.json
 func (client *storageRESTClient) call(ctx context.Context, method string, values url.Values, body io.Reader, length int64) (io.ReadCloser, error) {
-	if !client.IsOnline() {
-		return nil, errDiskNotFound
-	}
 	if values == nil {
 		values = make(url.Values)
 	}
@@ -134,7 +131,6 @@ func (client *storageRESTClient) call(ctx context.Context, method string, values
 	}
 
 	err = toStorageErr(err)
-
 	return nil, err
 }
 
@@ -161,6 +157,12 @@ func (client *storageRESTClient) Endpoint() Endpoint {
 }
 
 func (client *storageRESTClient) Healing() bool {
+	// This call should never be called over the network
+	// this function should always return 'false'
+	//
+	// To know if a remote disk is being healed
+	// perform DiskInfo() call which would return
+	// back the correct data if disk is being healed.
 	return false
 }
 
@@ -674,7 +676,7 @@ func newStorageRESTClient(endpoint Endpoint) *storageRESTClient {
 		}
 	}
 
-	trFn := newInternodeHTTPTransport(tlsConfig, rest.DefaultRESTTimeout)
+	trFn := newInternodeHTTPTransport(tlsConfig, rest.DefaultTimeout)
 	restClient := rest.NewClient(serverURL, trFn, newAuthToken)
 	restClient.HealthCheckFn = func() bool {
 		ctx, cancel := context.WithTimeout(GlobalContext, restClient.HealthCheckTimeout)

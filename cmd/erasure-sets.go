@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"math/rand"
 	"net/http"
 	"sort"
 	"sync"
@@ -30,10 +31,12 @@ import (
 	"github.com/dchest/siphash"
 	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7/pkg/tags"
+	"github.com/minio/minio/cmd/config"
 	"github.com/minio/minio/cmd/config/storageclass"
 	"github.com/minio/minio/cmd/logger"
 	"github.com/minio/minio/pkg/bpool"
 	"github.com/minio/minio/pkg/dsync"
+	"github.com/minio/minio/pkg/env"
 	"github.com/minio/minio/pkg/madmin"
 	"github.com/minio/minio/pkg/sync/errgroup"
 )
@@ -233,7 +236,7 @@ func (s *erasureSets) connectDisks() {
 			disk.SetDiskID(format.Erasure.This)
 			if endpoint.IsLocal && disk.Healing() {
 				globalBackgroundHealState.pushHealLocalDisks(disk.Endpoint())
-				logger.Info(fmt.Sprintf("Found the drive %s which needs healing, attempting to heal...", disk))
+				logger.Info(fmt.Sprintf("Found the drive %s that needs healing, attempting to heal...", disk))
 			}
 
 			s.erasureDisksMu.Lock()
@@ -259,6 +262,13 @@ func (s *erasureSets) connectDisks() {
 // endpoints by reconnecting them and making sure to place them into right position in
 // the set topology, this monitoring happens at a given monitoring interval.
 func (s *erasureSets) monitorAndConnectEndpoints(ctx context.Context, monitorInterval time.Duration) {
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	time.Sleep(time.Duration(r.Float64() * float64(time.Second)))
+
+	// Pre-emptively connect the disks if possible.
+	s.connectDisks()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -269,10 +279,28 @@ func (s *erasureSets) monitorAndConnectEndpoints(ctx context.Context, monitorInt
 	}
 }
 
+// GetAllLockers return a list of all lockers for all sets.
+func (s *erasureSets) GetAllLockers() []dsync.NetLocker {
+	allLockers := make([]dsync.NetLocker, s.setDriveCount*s.setCount)
+	for i, lockers := range s.erasureLockers {
+		for j, locker := range lockers {
+			allLockers[i*s.setDriveCount+j] = locker
+		}
+	}
+	return allLockers
+}
+
 func (s *erasureSets) GetLockers(setIndex int) func() ([]dsync.NetLocker, string) {
 	return func() ([]dsync.NetLocker, string) {
 		lockers := make([]dsync.NetLocker, s.setDriveCount)
 		copy(lockers, s.erasureLockers[setIndex])
+		sort.Slice(lockers, func(i, j int) bool {
+			// re-order lockers with affinity for
+			// - non-local lockers
+			// - online lockers
+			// are used first
+			return !lockers[i].IsLocal() && lockers[i].IsOnline()
+		})
 		return lockers, s.erasureLockOwner
 	}
 }
@@ -311,17 +339,24 @@ func newErasureSets(ctx context.Context, endpoints Endpoints, storageDisks []Sto
 	setDriveCount := len(format.Erasure.Sets[0])
 
 	endpointStrings := make([]string, len(endpoints))
+
+	listTolerancePerSet := 3
+	// By default this is off
+	if env.Get("MINIO_API_LIST_STRICT_QUORUM", config.EnableOff) == config.EnableOn {
+		listTolerancePerSet = -1
+	}
+
 	// Initialize the erasure sets instance.
 	s := &erasureSets{
 		sets:                make([]*erasureObjects, setCount),
 		erasureDisks:        make([][]StorageAPI, setCount),
 		erasureLockers:      make([][]dsync.NetLocker, setCount),
-		erasureLockOwner:    mustGetUUID(),
+		erasureLockOwner:    GetLocalPeer(globalEndpoints),
 		endpoints:           endpoints,
 		endpointStrings:     endpointStrings,
 		setCount:            setCount,
 		setDriveCount:       setDriveCount,
-		listTolerancePerSet: 3, // Expect 3 good entries across disks.
+		listTolerancePerSet: listTolerancePerSet,
 		format:              format,
 		disksConnectEvent:   make(chan diskConnectInfo),
 		distributionAlgo:    format.Erasure.DistributionAlgo,
@@ -400,7 +435,7 @@ func (s *erasureSets) SetDriveCount() int {
 }
 
 // StorageUsageInfo - combines output of StorageInfo across all erasure coded object sets.
-// This only returns disk usage info for Zones to perform placement decision, this call
+// This only returns disk usage info for ServerSets to perform placement decision, this call
 // is not implemented in Object interface and is not meant to be used by other object
 // layer implementations.
 func (s *erasureSets) StorageUsageInfo(ctx context.Context) StorageInfo {
@@ -991,6 +1026,7 @@ func (s *erasureSets) startMergeWalksVersionsN(ctx context.Context, bucket, pref
 			wg.Add(1)
 			go func(disk StorageAPI) {
 				defer wg.Done()
+
 				entryCh, err := disk.WalkVersions(GlobalContext, bucket, prefix, marker, recursive, endWalkCh)
 				if err != nil {
 					return

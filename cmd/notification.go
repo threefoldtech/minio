@@ -33,6 +33,8 @@ import (
 	"github.com/minio/minio-go/v7/pkg/set"
 	"github.com/minio/minio/cmd/crypto"
 	"github.com/minio/minio/cmd/logger"
+	bandwidth "github.com/minio/minio/pkg/bandwidth"
+	bucketBandwidth "github.com/minio/minio/pkg/bucket/bandwidth"
 	"github.com/minio/minio/pkg/bucket/policy"
 	"github.com/minio/minio/pkg/event"
 	"github.com/minio/minio/pkg/madmin"
@@ -534,13 +536,13 @@ func (sys *NotificationSys) GetLocks(ctx context.Context, r *http.Request) []*Pe
 	}
 	// Once we have received all the locks currently used from peers
 	// add the local peer locks list as well.
-	var getRespLocks GetLocksResp
+	llockers := make(GetLocksResp, 0, len(globalLockServers))
 	for _, llocker := range globalLockServers {
-		getRespLocks = append(getRespLocks, llocker.DupLockMap())
+		llockers = append(llockers, llocker.DupLockMap())
 	}
 	locksResp = append(locksResp, &PeerLocks{
 		Addr:  getHostName(r),
-		Locks: getRespLocks,
+		Locks: llockers,
 	})
 	return locksResp
 }
@@ -588,7 +590,7 @@ func (sys *NotificationSys) DeleteBucketMetadata(ctx context.Context, bucketName
 }
 
 // Loads notification policies for all buckets into NotificationSys.
-func (sys *NotificationSys) load(buckets []BucketInfo, objAPI ObjectLayer) error {
+func (sys *NotificationSys) load(buckets []BucketInfo) error {
 	for _, bucket := range buckets {
 		ctx := logger.SetReqInfo(GlobalContext, &logger.ReqInfo{BucketName: bucket.Name})
 		config, err := globalBucketMetadataSys.GetNotificationConfig(bucket.Name)
@@ -613,18 +615,12 @@ func (sys *NotificationSys) Init(ctx context.Context, buckets []BucketInfo, objA
 		return errServerNotInitialized
 	}
 
-	// In gateway mode, notifications are not supported.
+	// In gateway mode, notifications are not supported - except NAS gateway.
 	if globalIsGateway && !objAPI.IsNotificationSupported() {
 		return nil
 	}
 
-	if globalConfigTargetList != nil {
-		for _, target := range globalConfigTargetList.Targets() {
-			if err := sys.targetList.Add(target); err != nil {
-				return err
-			}
-		}
-	}
+	logger.LogIf(ctx, sys.targetList.Add(globalConfigTargetList.Targets()...))
 
 	go func() {
 		for res := range sys.targetResCh {
@@ -636,7 +632,7 @@ func (sys *NotificationSys) Init(ctx context.Context, buckets []BucketInfo, objA
 		}
 	}()
 
-	go logger.LogIf(ctx, sys.load(buckets, objAPI))
+	go logger.LogIf(ctx, sys.load(buckets))
 	return nil
 }
 
@@ -1191,7 +1187,7 @@ func (sys *NotificationSys) GetLocalDiskIDs(ctx context.Context) (localDiskIDs [
 }
 
 // NewNotificationSys - creates new notification system object.
-func NewNotificationSys(endpoints EndpointZones) *NotificationSys {
+func NewNotificationSys(endpoints EndpointServerSets) *NotificationSys {
 	// targetList/bucketRulesMap/bucketRemoteTargetRulesMap are populated by NotificationSys.Init()
 	return &NotificationSys{
 		targetList:                 event.NewTargetList(),
@@ -1288,4 +1284,51 @@ func sendEvent(args eventArgs) {
 	}
 
 	globalNotificationSys.Send(args)
+}
+
+// GetBandwidthReports - gets the bandwidth report from all nodes including self.
+func (sys *NotificationSys) GetBandwidthReports(ctx context.Context, buckets ...string) bandwidth.Report {
+	reports := make([]*bandwidth.Report, len(sys.peerClients))
+	g := errgroup.WithNErrs(len(sys.peerClients))
+	for index := range sys.peerClients {
+		if sys.peerClients[index] == nil {
+			continue
+		}
+		index := index
+		g.Go(func() error {
+			var err error
+			reports[index], err = sys.peerClients[index].MonitorBandwidth(ctx, buckets)
+			return err
+		}, index)
+	}
+
+	for index, err := range g.Wait() {
+		reqInfo := (&logger.ReqInfo{}).AppendTags("peerAddress",
+			sys.peerClients[index].host.String())
+		ctx := logger.SetReqInfo(ctx, reqInfo)
+		logger.LogOnceIf(ctx, err, sys.peerClients[index].host.String())
+	}
+	reports = append(reports, globalBucketMonitor.GetReport(bucketBandwidth.SelectBuckets(buckets...)))
+	consolidatedReport := bandwidth.Report{
+		BucketStats: make(map[string]bandwidth.Details),
+	}
+	for _, report := range reports {
+		if report == nil || report.BucketStats == nil {
+			continue
+		}
+		for bucket := range report.BucketStats {
+			d, ok := consolidatedReport.BucketStats[bucket]
+			if !ok {
+				consolidatedReport.BucketStats[bucket] = bandwidth.Details{}
+				d = consolidatedReport.BucketStats[bucket]
+				d.LimitInBytesPerSecond = report.BucketStats[bucket].LimitInBytesPerSecond
+			}
+			if d.LimitInBytesPerSecond < report.BucketStats[bucket].LimitInBytesPerSecond {
+				d.LimitInBytesPerSecond = report.BucketStats[bucket].LimitInBytesPerSecond
+			}
+			d.CurrentBandwidthInBytesPerSecond += report.BucketStats[bucket].CurrentBandwidthInBytesPerSecond
+			consolidatedReport.BucketStats[bucket] = d
+		}
+	}
+	return consolidatedReport
 }

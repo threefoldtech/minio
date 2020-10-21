@@ -322,6 +322,10 @@ func isStringEqual(s1 string, s2 string) bool {
 
 // Ignores all reserved bucket names or invalid bucket names.
 func isReservedOrInvalidBucket(bucketEntry string, strict bool) bool {
+	if bucketEntry == "" {
+		return true
+	}
+
 	bucketEntry = strings.TrimSuffix(bucketEntry, SlashSeparator)
 	if strict {
 		if err := s3utils.CheckValidBucketNameStrict(bucketEntry); err != nil {
@@ -561,6 +565,15 @@ type ObjReaderFn func(inputReader io.Reader, h http.Header, pcfn CheckPreconditi
 // not all run!).
 func NewGetObjectReader(rs *HTTPRangeSpec, oi ObjectInfo, opts ObjectOptions, cleanUpFns ...func()) (
 	fn ObjReaderFn, off, length int64, err error) {
+
+	if rs == nil && opts.PartNumber > 0 {
+		var start, end int64
+		for i := 0; i < len(oi.Parts) && i < opts.PartNumber; i++ {
+			start = end
+			end = start + oi.Parts[i].ActualSize - 1
+		}
+		rs = &HTTPRangeSpec{Start: start, End: end}
+	}
 
 	// Call the clean-up functions immediately in case of exit
 	// with error

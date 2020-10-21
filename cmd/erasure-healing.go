@@ -449,7 +449,7 @@ func (er erasureObjects) healObject(ctx context.Context, bucket string, object s
 		}
 	}
 
-	defer er.deleteObject(ctx, minioMetaTmpBucket, tmpID, len(storageDisks)/2+1)
+	defer er.deleteObject(context.Background(), minioMetaTmpBucket, tmpID, len(storageDisks)/2+1)
 
 	// Generate and write `xl.meta` generated from other disks.
 	outDatedDisks, err = writeUniqueFileInfo(ctx, outDatedDisks, minioMetaTmpBucket, tmpID,
@@ -711,7 +711,8 @@ func isObjectDangling(metaArr []FileInfo, errs []error, dataErrs []error) (valid
 	}
 
 	if validMeta.Deleted {
-		return validMeta, false
+		// notFoundParts is ignored since a delete marker does not have any parts
+		return validMeta, corruptedErasureMeta+notFoundErasureMeta > len(errs)/2
 	}
 
 	// We couldn't find any valid meta we are indeed corrupted, return true right away.
