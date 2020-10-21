@@ -1,6 +1,8 @@
 name: Build Flist
 on:
   push:
+    branches:
+      - '**'
     tags-ignore:
       - v*
 
