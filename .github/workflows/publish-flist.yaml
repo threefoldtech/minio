@@ -31,7 +31,7 @@ jobs:
 
     - name: Collecting files
       run: |
-        scripts/collect.sh ${{ github.workspace }}/archive
+        sudo scripts/collect.sh ${{ github.workspace }}/archive
     - name: Set name of the development build
       id: setname
       run: |
