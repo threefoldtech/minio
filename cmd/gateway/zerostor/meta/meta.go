@@ -99,7 +99,7 @@ type Manager interface {
 	//ListObjectsV2(ctx context.Context, bucket, prefix, continuationToken, delimiter string, maxKeys int, fetchOwner bool, startAfter string) (minio.ListObjectsV2Info, error)
 
 	// DEPRECATED
-	// Mkdir(bucket, object string) error
+	Mkdir(bucket, object string) error
 
 	StreamBlobs(ctx context.Context) <-chan Stream
 

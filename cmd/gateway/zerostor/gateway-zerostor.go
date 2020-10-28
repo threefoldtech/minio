@@ -825,13 +825,13 @@ func (zo *zerostorObjects) PutObject(ctx context.Context, bucket, object string,
 	// so we comment out this hack for now. In case the tests proves otherwise
 	// we can put it back (for now)
 	//
-	// if strings.HasSuffix(object, "/") && data.Reader.Size() == 0 {
-	// 	return minio.ObjectInfo{
-	// 		Bucket: bucket,
-	// 		Name:   object,
-	// 		IsDir:  true,
-	// 	}, metaMgr.Mkdir(bucket, object)
-	// }
+	if strings.HasSuffix(object, "/") && data.Reader.Size() == 0 {
+		return minio.ObjectInfo{
+			Bucket: bucket,
+			Name:   object,
+			IsDir:  true,
+		}, metaMgr.Mkdir(bucket, object)
+	}
 
 	id, err := metaMgr.ObjectEnsure(bucket, object)
 	if err != nil {

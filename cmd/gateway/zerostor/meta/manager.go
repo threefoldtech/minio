@@ -183,7 +183,7 @@ func (m *metaManager) ObjectEnsure(bucket, object string) (ObjectID, error) {
 }
 
 func (m *metaManager) Mkdir(bucket, object string) error {
-	return m.store.Set(NewPath(ObjectCollection, filepath.Join(bucket, object), ""), nil)
+	return m.store.Set(DirPath(ObjectCollection, bucket, object), nil)
 }
 
 // PutObjectPart creates metadata for an object upload part
