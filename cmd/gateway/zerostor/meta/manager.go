@@ -31,10 +31,15 @@ const (
 	currentVersionFile = ".current"
 )
 
+// versionInfo is version information for files
 type versionInfo struct {
 	ID        string
 	Meta      string
 	Timestamp int64
+}
+
+type dirVersionInfo struct {
+	Deleted bool
 }
 
 // multiPartInfo represents info/metadata of a multipart upload
@@ -151,15 +156,61 @@ func (m *metaManager) BucketSetPolicy(name string, policy *policy.Policy) error 
 	return m.saveBucket(bkt, true)
 }
 
-// ObjectDel creates a new version that points to a delete marker
-func (m *metaManager) ObjectDelete(bucket, object string) error {
-	id, err := m.ObjectGet(bucket, object)
+// ObjectDelete creates a new version that points to a delete marker
+// if the deleted object is a directory, only marked as deleted
+// if it was empty
+func (m *metaManager) ObjectDelete(bucket, prefix string) error {
+	isDir, id, err := m.objectGet(bucket, prefix)
 	if err != nil {
 		return err
 	}
 
-	_, err = m.ObjectSet(id, "") // create a new empty version
-	return err
+	if !isDir {
+		_, err = m.ObjectSet(id, "") // create a new empty version
+		if err != nil {
+			return err
+		}
+
+		prefix = filepath.Dir(prefix)
+	}
+
+	return m.deleteEmptyDirs(bucket, prefix)
+}
+
+// isDirEmpty scans the given prefix, return true if all entries
+// under that prefix are deleted!
+func (m *metaManager) isDirEmpty(bucket, prefix string) (bool, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	logCtx := log.WithFields(log.Fields{
+		"bucket": bucket,
+		"prefix": prefix,
+	})
+
+	logCtx.Debug("listing")
+
+	ch, err := m.ObjectList(ctx, bucket, prefix+"/", "")
+	if err != nil {
+		return false, err
+	}
+
+	for entry := range ch {
+		if entry.Error != nil {
+			return false, err
+		}
+
+		logCtx.WithFields(log.Fields{
+			"entry":         entry.Info.Name,
+			"delete-marker": entry.Info.DeleteMarker,
+		}).Debug("checking entry")
+
+		if !entry.Info.DeleteMarker {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }
 
 // EnsureObject makes sure that this object exists in the metastore
@@ -167,10 +218,16 @@ func (m *metaManager) ObjectDelete(bucket, object string) error {
 func (m *metaManager) ObjectEnsure(bucket, object string) (ObjectID, error) {
 	path := FilePath(ObjectCollection, bucket, object)
 	record, err := m.store.Get(path)
+
 	if os.IsNotExist(err) {
 		id := ObjectID(uuid.New().String())
-
-		return id, m.store.Set(path, []byte(id))
+		if err := m.store.Set(path, []byte(id)); err != nil {
+			return id, err
+		}
+		// we call undelete dir to make sure creating new objects
+		// will always restore the parent directories if they
+		// were deleted.
+		return id, m.undeleteDirs(bucket, filepath.Dir(object))
 	} else if err != nil {
 		return "", err
 	}
@@ -179,11 +236,16 @@ func (m *metaManager) ObjectEnsure(bucket, object string) (ObjectID, error) {
 		return "", minio.ObjectExistsAsDirectory{Bucket: bucket, Object: object}
 	}
 
-	return ObjectID(record.Data), err
+	return ObjectID(record.Data), nil
 }
 
-func (m *metaManager) Mkdir(bucket, object string) error {
-	return m.store.Set(DirPath(ObjectCollection, bucket, object), nil)
+func (m *metaManager) Mkdir(bucket, prefix string) error {
+	// create if not already exists
+	if err := m.store.Set(DirPath(ObjectCollection, bucket, prefix), nil); err != nil {
+		return err
+	}
+
+	return m.undeleteDirs(bucket, prefix)
 }
 
 // PutObjectPart creates metadata for an object upload part
@@ -216,52 +278,9 @@ func (m *metaManager) UploadDeletePart(bucket, uploadID string, partID int) erro
 	return nil
 }
 
-// DeleteBlob deletes a metadata blob file
-func (m *metaManager) DeleteBlob(blob string) error {
-
-	if len(blob) < 2 {
-		//invalid blob name, skip
-		return nil
-	}
-
-	path := m.blobPath(blob)
-	return m.store.Del(path)
-}
-
 // DeleteUpload deletes the temporary multipart upload dir
 func (m *metaManager) UploadDelete(bucket, uploadID string) error {
 	return m.store.Del(DirPath(UploadCollection, bucket, uploadID))
-}
-
-// DeleteObject deletes an object file from a bucket
-func (m *metaManager) DeleteObject(bucket, object string) error {
-	//TODO: if last file is deleted from a directory the directory
-	// need to be delted as well.
-	return m.store.Del(FilePath(ObjectCollection, bucket, object))
-}
-
-// LinkObject creates a symlink from the object file under /objects to the first metadata blob file
-func (m *metaManager) LinkObject(bucket, object, fileID string) error {
-	link := FilePath(ObjectCollection, bucket, object)
-
-	record, err := m.store.Get(link)
-	if os.IsNotExist(err) {
-		return m.store.Link(
-			link,
-			m.blobPath(fileID),
-		)
-	} else if err != nil {
-		return errors.Wrapf(err, "failed to check object '%s'", link)
-	}
-
-	if record.Path.IsDir() {
-		return minio.ObjectExistsAsDirectory{Bucket: bucket, Object: object}
-	}
-
-	return m.store.Link(
-		link,
-		m.blobPath(fileID),
-	)
 }
 
 func (m *metaManager) BlobSet(obj *Metadata) error {
@@ -390,7 +409,12 @@ func (m *metaManager) ObjectGetInfo(bucket, object, version string) (info minio.
 
 	if directory {
 		info.IsDir = true
-		return
+		// directory does not have versions
+		// instead an info about its state if it's deleted or not.
+		ver, err := m.getDirVersion(id)
+		info.DeleteMarker = ver.Deleted
+
+		return info, err
 	}
 
 	ver, err := m.getObjectVersion(id, version)
@@ -618,12 +642,9 @@ func (m *metaManager) objectGet(bucket, object string) (bool, ObjectID, error) {
 		return false, "", err
 	}
 
-	if record.Path.IsDir() {
-		// empty data is used for directories.
-		return true, "", nil
-	}
+	id := ObjectID(record.Data)
 
-	return false, ObjectID(record.Data), nil
+	return record.Path.IsDir(), id, nil
 }
 
 func (m *metaManager) ObjectSet(id ObjectID, meta string) (string, error) {
@@ -674,6 +695,90 @@ func (m *metaManager) getObjectVersion(id ObjectID, version string) (versionInfo
 	}
 
 	return ver, nil
+}
+
+func (m *metaManager) deleteEmptyDirs(bucket, prefix string) error {
+	for prefix != "" && prefix != "." {
+		isDir, id, err := m.objectGet(bucket, prefix)
+		if err != nil {
+			return err
+		}
+
+		if !isDir {
+			return nil
+		}
+
+		isEmpty, err := m.isDirEmpty(bucket, prefix)
+		if err != nil {
+			return err
+		}
+
+		if !isEmpty {
+			return nil
+		}
+
+		// mark this prefix as deleted (since all of it's children are)
+		if err := m.setDirVersion(id, dirVersionInfo{Deleted: true}); err != nil {
+			return err
+		}
+
+		prefix = filepath.Dir(prefix)
+	}
+
+	return nil
+}
+
+// undeleteDirs recreates directories in case they were marked before as deleted
+func (m *metaManager) undeleteDirs(bucket, prefix string) error {
+	for prefix != "" && prefix != "." {
+		isDir, id, err := m.objectGet(bucket, prefix)
+		if os.IsNotExist(err) {
+			return nil
+		} else if err != nil {
+			return err
+		}
+
+		if !isDir {
+			return nil
+		}
+
+		// mark this prefix as deleted (since all of it's children are)
+		if err := m.setDirVersion(id, dirVersionInfo{Deleted: false}); err != nil {
+			return err
+		}
+
+		prefix = filepath.Dir(prefix)
+	}
+
+	return nil
+}
+
+func (m *metaManager) getDirVersion(id ObjectID) (dirVersionInfo, error) {
+	path := FilePath(VersionCollection, string(id))
+	record, err := m.store.Get(path)
+	if err == os.ErrNotExist {
+		return dirVersionInfo{}, nil
+	} else if err != nil {
+		return dirVersionInfo{}, err
+	}
+
+	var ver dirVersionInfo
+	if err := m.decode(record.Data, &ver); err != nil {
+		return ver, err
+	}
+
+	return ver, nil
+}
+
+func (m *metaManager) setDirVersion(id ObjectID, info dirVersionInfo) error {
+	path := FilePath(VersionCollection, string(id))
+
+	data, err := m.encode(info)
+	if err != nil {
+		return err
+	}
+
+	return m.store.Set(path, data)
 }
 
 // getBlob returns only the first metadata part. This can
@@ -873,11 +978,6 @@ func (m *metaManager) UploadList(bucket string) (minio.ListMultipartsInfo, error
 	} else if err != nil {
 		return minio.ListMultipartsInfo{}, err
 	}
-
-	log.WithFields(log.Fields{
-		"paths":  paths,
-		"bucket": bucket,
-	}).Debug("all upload paths")
 
 	var info minio.ListMultipartsInfo
 

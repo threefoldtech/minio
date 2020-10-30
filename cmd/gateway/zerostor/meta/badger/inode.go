@@ -194,16 +194,18 @@ func (s *badgerInodeStore) get(path meta.Path) ([]byte, meta.Record, error) {
 
 		stamp = time.Unix(int64(item.Version()), 0)
 		typ := item.UserMeta()
+		path = meta.FilePath(path.Collection, path.Relative())
+
 		if typ == MetaTypeDirectory {
 			path = meta.DirPath(path.Collection, path.Relative())
-			// no associated value
-			return nil
 		} else if typ == MetaTypeLink {
 			link = true
 		}
 
-		path = meta.FilePath(path.Collection, path.Relative())
-
+		// the value here is different for each Type
+		// a dir value is it's inode
+		// a file value is used defined data
+		// a link value is the target path
 		return item.Value(func(val []byte) error {
 			data = val
 			return nil
